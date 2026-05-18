@@ -66,6 +66,9 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
   double _height = 600;
   double _bgOpacity = 0.4;
   Offset _offset = const Offset(200, 100);
+  
+  bool _showRedCheckmark = false;
+  Timer? _checkmarkTimer;
 
   AiTask? existingTask;
   AiTask? _shadowTask;
@@ -1189,12 +1192,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                     _executeAutoSave();
                                     
                                     if (verificationCriteriaList[i].status == AiVerificationStatus.verified) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Checklist item completed'),
-                                          duration: Duration(seconds: 2),
-                                        ),
-                                      );
+                                      // Removed
                                     }
                                   });
                                 },
@@ -1623,6 +1621,11 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                 text: newSubTaskController.text.trim()));
                             _verificationGoalControllers.add(TextEditingController());
                             newSubTaskController.clear();
+                            _showRedCheckmark = true;
+                            _checkmarkTimer?.cancel();
+                            _checkmarkTimer = Timer(const Duration(seconds: 2), () {
+                              if (mounted) setStateBuilder(() => _showRedCheckmark = false);
+                            });
                             _executeAutoSave();
                           });
                         }
@@ -1668,6 +1671,11 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                             text: newSubTaskController.text.trim()));
                         _verificationGoalControllers.add(TextEditingController());
                         newSubTaskController.clear();
+                        _showRedCheckmark = true;
+                        _checkmarkTimer?.cancel();
+                        _checkmarkTimer = Timer(const Duration(seconds: 2), () {
+                          if (mounted) setStateBuilder(() => _showRedCheckmark = false);
+                        });
                         _executeAutoSave();
                       });
                     }
@@ -2340,13 +2348,6 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                           item.status = AiVerificationStatus.verified;
                                                         }
                                                         _executeAutoSave();
-                                                        
-                                                        ScaffoldMessenger.of(context).showSnackBar(
-                                                          const SnackBar(
-                                                            content: Text('All checklist items completed'),
-                                                            duration: Duration(seconds: 2),
-                                                          ),
-                                                        );
                                                       });
                                                     },
                                                     icon: const Icon(Icons.done_all, size: 14),
@@ -3055,6 +3056,12 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                       text: newSubTaskController.text.trim()));
                                                   _verificationGoalControllers.add(TextEditingController());
                                                   newSubTaskController.clear();
+                                                  
+                                                  _showRedCheckmark = true;
+                                                  _checkmarkTimer?.cancel();
+                                                  _checkmarkTimer = Timer(const Duration(seconds: 2), () {
+                                                    if (mounted) setStateBuilder(() => _showRedCheckmark = false);
+                                                  });
                                                 });
                                               }
                                               _executeAutoSave(instant: true);
@@ -3207,6 +3214,36 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                     ),
                   ],
                 ),
+                if (_showRedCheckmark)
+                  Positioned(
+                    bottom: 20,
+                    right: 20,
+                    child: IgnorePointer(
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween<double>(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 500),
+                        curve: Curves.elasticOut,
+                        builder: (context, val, child) {
+                          return Transform.scale(
+                            scale: val,
+                            child: child,
+                          );
+                        },
+                        child: Icon(
+                          Icons.check_circle_outline,
+                          color: Colors.red.withOpacity(0.8),
+                          size: 100,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withOpacity(0.5),
+                              blurRadius: 10,
+                              offset: const Offset(2, 2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 rz(
                     t: 0,
                     b: 0,

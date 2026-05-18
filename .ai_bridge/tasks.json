@@ -5510,57 +5510,6 @@
       "commitHash": "060fb2c75b293c1eb19962654d59883c7132d2ff",
       "commitDate": "2026-05-18T07:55:10.492416",
       "parentId": "1778268121185"
-    },
-    {
-      "id": "1779063155069",
-      "name": "Task Editor",
-      "description": "Improvements and enhancements",
-      "summary": "Add SnackBar notification for checklist item completion",
-      "notes": "### Update - 2026-05-18 10:00\n### Update - 2026-05-18 09:59\n- Implemented bottom-screen notifications (SnackBar) for checklist completion events in the Global Task Editor.\n- Added a brief confirmation note ('Checklist item completed') when an individual checkbox is toggled to a verified state.\n- Added a bulk confirmation note ('All checklist items completed') when the `Complete All` button is utilized.\n- These visual indicators improve interaction clarity without interfering with the existing automated persistence logic.\n\n---\n\n---\n\n### Update - 2026-05-18 09:49\n### Update - 2026-05-18 09:49\n- Implemented a `Complete All` bulk-action feature in the Global Task Editor.\n- Placed a `Complete All` button directly to the right of the `CHECKLIST` and `NOTES` tabs (visible only when the Checklist is active and populated).\n- Pressing the button iterates over the active verification criteria, forces their `status` to `verified` (`isVerified = true`), triggers a state update, and initiates a synchronous auto-save to persist the completion to the master `.ai_bridge/tasks.json` manifest.\n\n---\n\n---",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "previewItems": [],
-      "verificationCriteria": [
-        {
-          "description": "Add a Complete all, which will set each checklist item as completed",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "I located the tab selection row in `_GlobalTaskEditorWindowState` (`global_task_editor_window.dart`) and injected a `Complete All` TextButton.icon to the far right of the Checklist tab when it is active. The button's `onPressed` dynamically iterates through the active `verificationCriteriaList`, forcibly mutating every sub-task item to `AiVerificationStatus.verified` (`isVerified = true`), instantly triggering a visual rebuild and writing the bulk completion state persistently to disk via `_executeAutoSave()`.",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": []
-        },
-        {
-          "description": "After a checklist item has been committed lets show a note on the bottom to let us know",
-          "goal": "No I just want this on each checklist item... like a Bigger Red Checkmark in the bottom right corner. ",
-          "isVerified": true,
-          "status": "verified",
-          "proof": null,
-          "requestClarification": false,
-          "tryCount": 2,
-          "attachments": []
-        }
-      ],
-      "status": "inProgress",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": "b8042510032968a96f619b25bf4288c39d1eca9c",
-      "commitDate": "2026-05-18T10:12:32.664691",
-      "parentId": "1778559529935",
-      "worksheetId": "1778268121185"
     }
   ]
 }
