@@ -292,6 +292,63 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                   ),
                   const Spacer(),
                   TextButton.icon(
+                    icon: const Icon(Icons.commit, size: 14, color: Colors.blueAccent),
+                    label: const Text('Commit Tasks', style: TextStyle(color: Colors.blueAccent, fontSize: 12)),
+                    onPressed: () async {
+                      if (AiBridgeService.instance.isThinking) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot commit while AI bridge is working.')));
+                        return;
+                      }
+                      if (activeTasks.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No active tasks to commit.')));
+                        return;
+                      }
+                      
+                      bool hasOpen = false;
+                      for (var t in activeTasks) {
+                        if (t.verificationCriteria.any((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored)) {
+                          hasOpen = true;
+                          break;
+                        }
+                      }
+                      
+                      if (hasOpen) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please resolve all open checklist items before committing, or ignore them.')));
+                        return;
+                      }
+                      
+                      final commitNameController = TextEditingController(text: activeTasks.length == 1 ? activeTasks.first.name : 'Merged Checkpoint');
+                      final bool? confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: AppColors.panelBackground,
+                          title: const Text('Verify Commit Name', style: TextStyle(color: Colors.white)),
+                          content: TextField(
+                            controller: commitNameController,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Commit Name',
+                              labelStyle: TextStyle(color: Colors.white70),
+                            ),
+                          ),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: AppColors.textMuted))),
+                            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Commit', style: TextStyle(color: Colors.blueAccent))),
+                          ],
+                        ),
+                      );
+                      
+                      if (confirm == true) {
+                        final taskIds = activeTasks.map((t) => t.id).toList();
+                        final success = await AiBridgeService.instance.performManualCommitAll(taskIds, commitNameController.text);
+                        if (success && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tasks committed successfully.')));
+                        }
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
                     icon: const Icon(Icons.save_alt, size: 14, color: Colors.orangeAccent),
                     label: const Text('Create Restore Point', style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
                     onPressed: () async {
@@ -372,58 +429,76 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                                 itemCount: activeTasks.length,
                                 itemBuilder: (ctx, i) {
                                   final t = activeTasks[i];
+                                  List<Widget> taskChildren = [];
+                                  if (t.verificationCriteria.isEmpty) {
+                                    taskChildren.add(
+                                      ListTile(
+                                        dense: true,
+                                        leading: const Icon(Icons.info_outline, color: Colors.blueAccent, size: 16),
+                                        title: Text(
+                                          t.description.isNotEmpty ? t.description : 'Pending implementation',
+                                          style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize),
+                                        ),
+                                        onTap: () {
+                                          GlobalTaskEditorState.instance.requestEdit(existingTask: t);
+                                          showTaskEditorWindow(context);
+                                        },
+                                      )
+                                    );
+                                  } else {
+                                    taskChildren.addAll(t.verificationCriteria.map((vc) {
+                                      IconData iconData = Icons.radio_button_unchecked;
+                                      Color iconColor = AppColors.textMuted;
+                                      
+                                      if (vc.isVerified) {
+                                        iconData = Icons.check_circle;
+                                        iconColor = Colors.green;
+                                      } else if (vc.status == AiVerificationStatus.pendingReview) {
+                                        iconData = Icons.hourglass_empty;
+                                        iconColor = Colors.orange;
+                                      } else if (vc.status == AiVerificationStatus.ignored) {
+                                        iconData = Icons.block;
+                                        iconColor = Colors.redAccent;
+                                      }
+                                      
+                                      return ListTile(
+                                        dense: true,
+                                        leading: Icon(iconData, color: iconColor, size: 16),
+                                        title: Text(
+                                          vc.description,
+                                          style: TextStyle(
+                                            color: AppColors.textPrimary, 
+                                            fontSize: AppUIConfig.smallFontSize,
+                                            decoration: vc.isVerified ? TextDecoration.lineThrough : null,
+                                            decorationColor: Colors.white,
+                                          ),
+                                        ),
+                                        subtitle: vc.goal.isNotEmpty
+                                            ? Text(
+                                                vc.goal,
+                                                style: TextStyle(
+                                                  color: AppColors.textSecondary,
+                                                  fontSize: AppUIConfig.smallFontSize - 1,
+                                                  fontStyle: FontStyle.italic,
+                                                ),
+                                              )
+                                            : null,
+                                        onTap: () {
+                                          GlobalTaskEditorState.instance.requestEdit(existingTask: t);
+                                          showTaskEditorWindow(context);
+                                        },
+                                      );
+                                    }));
+                                  }
+
+
+
                                   return ExpansionTile(
                                     key: PageStorageKey<String>('active_task_${t.id}'),
                                     initiallyExpanded: true,
                                     title: Text(t.name, style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold)),
                                     subtitle: t.summary.isNotEmpty ? Text(t.summary, style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize, fontStyle: FontStyle.italic)) : null,
-                                    children: t.verificationCriteria.isEmpty
-                                        ? [
-                                            ListTile(
-                                              dense: true,
-                                              leading: const Icon(Icons.info_outline, color: Colors.blueAccent, size: 16),
-                                              title: Text(
-                                                t.description.isNotEmpty ? t.description : 'Pending implementation',
-                                                style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize),
-                                              ),
-                                              onTap: () {
-                                                GlobalTaskEditorState.instance.requestEdit(existingTask: t);
-                                                showTaskEditorWindow(context);
-                                              },
-                                            )
-                                          ]
-                                        : t.verificationCriteria.map((vc) {
-                                            IconData iconData = Icons.radio_button_unchecked;
-                                            Color iconColor = AppColors.textMuted;
-                                            
-                                            if (vc.isVerified) {
-                                              iconData = Icons.check_circle;
-                                              iconColor = Colors.green;
-                                            } else if (vc.status == AiVerificationStatus.pendingReview) {
-                                              iconData = Icons.hourglass_empty;
-                                              iconColor = Colors.orange;
-                                            } else if (vc.status == AiVerificationStatus.ignored) {
-                                              iconData = Icons.block;
-                                              iconColor = Colors.redAccent;
-                                            }
-                                            
-                                            return ListTile(
-                                              dense: true,
-                                              leading: Icon(iconData, color: iconColor, size: 16),
-                                              title: Text(
-                                                vc.description,
-                                                style: TextStyle(
-                                                  color: vc.isVerified ? AppColors.textMuted : AppColors.textPrimary, 
-                                                  fontSize: AppUIConfig.smallFontSize,
-                                                  decoration: vc.isVerified ? TextDecoration.lineThrough : null,
-                                                ),
-                                              ),
-                                              onTap: () {
-                                                GlobalTaskEditorState.instance.requestEdit(existingTask: t);
-                                                showTaskEditorWindow(context);
-                                              },
-                                            );
-                                          }).toList(),
+                                    children: taskChildren,
                                   );
                                 }
                               ),

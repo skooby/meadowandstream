@@ -1188,6 +1188,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                       verificationCriteriaList[i].isVerified =
                                           false;
                                       verificationCriteriaList[i].proof = null;
+verificationCriteriaList[i].isCommitted = false;
                                     }
                                     _executeAutoSave();
                                     
@@ -1262,6 +1263,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                             verificationCriteriaList[i].status = AiVerificationStatus.none;
                                             verificationCriteriaList[i].isVerified = false;
                                             verificationCriteriaList[i].proof = null;
+verificationCriteriaList[i].isCommitted = false;
                                           });
                                         }
                                         _performAutoSave();
@@ -1280,6 +1282,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                               verificationCriteriaList[i].status = AiVerificationStatus.none;
                                               verificationCriteriaList[i].isVerified = false;
                                               verificationCriteriaList[i].proof = null;
+verificationCriteriaList[i].isCommitted = false;
                                               if (verificationCriteriaList[i].tryCount < 9) {
                                                 verificationCriteriaList[i].tryCount++;
                                               }
@@ -1371,6 +1374,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                   verificationCriteriaList[i].status = AiVerificationStatus.none;
                                                   verificationCriteriaList[i].isVerified = false;
                                                   verificationCriteriaList[i].proof = null;
+verificationCriteriaList[i].isCommitted = false;
                                                 });
                                               }
                                               _performAutoSave();
@@ -1437,6 +1441,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                     verificationCriteriaList[i].status = AiVerificationStatus.ignored;
                                     verificationCriteriaList[i].isVerified = false;
                                     verificationCriteriaList[i].proof = null;
+verificationCriteriaList[i].isCommitted = false;
                                   }
                                   _executeAutoSave();
                                 });
@@ -1563,6 +1568,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                           verificationCriteriaList[i].status = AiVerificationStatus.none;
                                                           verificationCriteriaList[i].isVerified = false;
                                                           verificationCriteriaList[i].proof = null;
+verificationCriteriaList[i].isCommitted = false;
                                                         }
                                                         _executeAutoSave();
                                                       });
@@ -1579,6 +1585,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                     verificationCriteriaList[i].status = AiVerificationStatus.none;
                                                     verificationCriteriaList[i].isVerified = false;
                                                     verificationCriteriaList[i].proof = null;
+verificationCriteriaList[i].isCommitted = false;
                                                   }
                                                   _executeAutoSave();
                                                 });
@@ -1617,7 +1624,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                             ],
                       ],
                     ),
-                    if (verificationCriteriaList[i].status == AiVerificationStatus.verified)
+                    if (verificationCriteriaList[i].isCommitted)
                       Positioned(
                         bottom: -4,
                         right: -4,

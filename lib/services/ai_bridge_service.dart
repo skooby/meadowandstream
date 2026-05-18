@@ -89,6 +89,7 @@ class AiVerificationCriteria {
   bool requestClarification;
   int tryCount;
   List<String> attachments;
+  bool isCommitted;
 
   AiVerificationCriteria({
     required this.description,
@@ -98,6 +99,7 @@ class AiVerificationCriteria {
     this.proof,
     this.requestClarification = false,
     this.tryCount = 0,
+    this.isCommitted = false,
     List<String>? attachments,
   }) : attachments = attachments ?? [];
 
@@ -111,6 +113,7 @@ class AiVerificationCriteria {
         'requestClarification': requestClarification,
         'tryCount': tryCount,
         'attachments': attachments,
+        'isCommitted': isCommitted,
       };
 
   factory AiVerificationCriteria.fromJson(Map<String, dynamic> json) {
@@ -132,6 +135,7 @@ class AiVerificationCriteria {
       proof: json['proof'],
       requestClarification: json['requestClarification'] ?? false,
       tryCount: json['tryCount'] ?? 0,
+      isCommitted: json['isCommitted'] ?? false,
       attachments: json['attachments'] != null
           ? List<String>.from(json['attachments'])
           : [],
@@ -2217,13 +2221,20 @@ wshShell.AppActivate $myPid
                     if (kDebugMode) print('Auto-commit failed: $e');
                     return '';
                  });
-                 if (hash.isNotEmpty && hash != 'No changes to commit.' && hash != 'Committed successfully.' && !hash.startsWith('Local repository path')) {
+                 if (hash.isNotEmpty && !hash.startsWith('Local repository path')) {
+                    final actualHash = (hash == 'No changes to commit.' || hash == 'Committed successfully.') ? 'No Git Changes' : hash;
                     final commitDateStr = DateTime.now().toIso8601String();
                     for (final id in tasksToCommit) {
                        try {
                           final t = _tasks.firstWhere((t) => t.id == id);
-                          t.commitHash = hash;
+                          t.commitHash = actualHash;
                           t.commitDate = commitDateStr;
+                          t.status = AiTaskStatus.completed;
+                          for (var vc in t.verificationCriteria) {
+                            if (vc.status == AiVerificationStatus.verified) {
+                              vc.isCommitted = true;
+                            }
+                          }
                        } catch (_) {}
                     }
                     _timelineHistory.insert(0, TimelineCommit(
@@ -2231,16 +2242,75 @@ wshShell.AppActivate $myPid
                        taskIds: tasksToCommit,
                        title: allNames,
                        summary: allDescriptions,
-                       commitHash: hash,
+                       commitHash: actualHash,
                        commitDate: commitDateStr,
                        verifiedNotes: finalVerifiedNotes,
                     ));
                     await _save(); // Save again to persist the commit hash
+                    notifyListeners();
                  }
              } catch (_) {}
         }
       }
     }
+  }
+
+  Future<bool> performManualCommitAll(List<String> taskIds, String commitName) async {
+    try {
+      final tasksToCommit = _tasks.where((t) => taskIds.contains(t.id)).toList();
+      if (tasksToCommit.isEmpty) return false;
+
+      final allDescriptions = tasksToCommit.map((t) => t.description).where((d) => d.isNotEmpty).join('\n\n');
+
+      final allVerifiedNotes = tasksToCommit.map((t) {
+        return t.verificationCriteria
+            .where((c) => c.status == AiVerificationStatus.verified)
+            .map((c) => '- ${c.description}')
+            .join('\n');
+      }).where((n) => n.isNotEmpty).join('\n');
+
+      final notesToCommit = allVerifiedNotes.isEmpty ? 'No items verified.' : allVerifiedNotes;
+
+      final hash = await VersionControlService.instance.commitTimelineTasks(
+         taskIds,
+         commitName,
+         allDescriptions,
+         '',
+         notesToCommit,
+      ).catchError((e) {
+         if (kDebugMode) print('Manual commit failed: $e');
+         return '';
+      });
+
+      if (hash.isNotEmpty && !hash.startsWith('Local repository path')) {
+         final actualHash = (hash == 'No changes to commit.' || hash == 'Committed successfully.') ? 'No Git Changes' : hash;
+         final commitDateStr = DateTime.now().toIso8601String();
+         for (var task in tasksToCommit) {
+           task.commitHash = actualHash;
+           task.commitDate = commitDateStr;
+           task.status = AiTaskStatus.completed;
+           for (var vc in task.verificationCriteria) {
+             if (vc.status == AiVerificationStatus.verified) {
+               vc.isCommitted = true;
+             }
+           }
+         }
+         
+         _timelineHistory.insert(0, TimelineCommit(
+            id: const Uuid().v4(),
+            taskIds: taskIds,
+            title: commitName,
+            summary: allDescriptions,
+            commitHash: actualHash,
+            commitDate: commitDateStr,
+            verifiedNotes: notesToCommit,
+         ));
+         await _save();
+         notifyListeners();
+         return true;
+      }
+    } catch (_) {}
+    return false;
   }
 
   Future<void> deleteTimelineCommit(String commitId) async {
