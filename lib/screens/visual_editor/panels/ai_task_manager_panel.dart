@@ -20,6 +20,7 @@ import 'backup_manager_panel.dart';
 import '../../../services/version_control_service.dart';
 
 import '../../../services/ai_bridge_service.dart';
+import '../../../services/sandbox_service.dart';
 import '../../../widgets/draggable_alert_dialog.dart';
 import '../../../services/macro_service.dart';
 import '../../../constants.dart';
@@ -827,14 +828,17 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     }
 
     final bool isIgnored = isTaskOrParentIgnored(task);
+    final bool isActive = SandboxService.instance.sandboxTaskIds.contains(task.id);
 
     Color bgColor = Colors.transparent;
     if (isIgnored) {
       bgColor = Colors.white;
+    } else if (isActive) {
+      bgColor = AppColors.activeTaskHighlight.withValues(alpha: 0.25);
     } else if (effectiveColor != null) {
-      bgColor = _getThemeAwareColor(effectiveColor).withOpacity(isEven ? 0.08 : 0.03);
+      bgColor = _getThemeAwareColor(effectiveColor).withValues(alpha: isEven ? 0.08 : 0.03);
     } else if (isEven) {
-      bgColor = AppColors.panelTextPrimary.withOpacity(0.02);
+      bgColor = AppColors.panelTextPrimary.withValues(alpha: 0.02);
     }
 
     final bool isActiveEditorTask = GlobalTaskEditorState.instance.activeRequest.value?.existingTask?.id == task.id;

@@ -108,6 +108,10 @@ class AppColors {
   static const Color folderDark = Color(0xFFFFD54F);
   static const Color folderDracula = Color(0xFFF1FA8C);
 
+  static const Color activeTaskHighlightLight = Color(0xFFE3F2FD); // Light blue for light theme
+  static const Color activeTaskHighlightDark = Color(0xFF1E3A8A); // Deep blue for dark theme
+  static const Color activeTaskHighlightDracula = Color(0xFF383A59); // Dracula deep purple
+
   static const Color summaryLight = Color(0xFF4CAF50);
   static const Color summaryDark = Color(0xFF81C784);
   static const Color summaryDracula = Color(0xFF50FA7B);
@@ -240,6 +244,12 @@ class AppColors {
   static Color get iconMuted => getContrastIconMuted(background);
   static Color get folder =>
       background.computeLuminance() > 0.5 ? folderLight : folderDark;
+  static Color get activeTaskHighlight {
+    if (AppUIConfig.activeTheme?.activeTaskHighlightColor != null) {
+      return Color(AppUIConfig.activeTheme!.activeTaskHighlightColor!);
+    }
+    return background.computeLuminance() > 0.5 ? activeTaskHighlightLight : activeTaskHighlightDark;
+  }
   static Color get primary => accent;
   static Color get summary =>
       background.computeLuminance() > 0.5 ? summaryLight : summaryDark;
@@ -344,6 +354,7 @@ class CustomColorTheme {
   final int? windowBorderColor;
   final int? controlBorderColor;
   final int? activeWindowBorderColor;
+  final int? activeTaskHighlightColor;
   final bool? windowTitleUppercase;
   final bool? windowTitleBold;
 
@@ -378,6 +389,7 @@ class CustomColorTheme {
     this.windowBorderColor,
     this.controlBorderColor,
     this.activeWindowBorderColor,
+    this.activeTaskHighlightColor,
     this.windowTitleUppercase,
     this.windowTitleBold,
   });
@@ -413,6 +425,7 @@ class CustomColorTheme {
     int? windowBorderColor,
     int? controlBorderColor,
     int? activeWindowBorderColor,
+    int? activeTaskHighlightColor,
     bool? windowTitleUppercase,
     bool? windowTitleBold,
   }) {
@@ -454,6 +467,8 @@ class CustomColorTheme {
       controlBorderColor: controlBorderColor ?? this.controlBorderColor,
       activeWindowBorderColor:
           activeWindowBorderColor ?? this.activeWindowBorderColor,
+      activeTaskHighlightColor:
+          activeTaskHighlightColor ?? this.activeTaskHighlightColor,
       windowTitleUppercase: windowTitleUppercase ?? this.windowTitleUppercase,
       windowTitleBold: windowTitleBold ?? this.windowTitleBold,
     );
@@ -490,6 +505,7 @@ class CustomColorTheme {
         'windowBorderColor': windowBorderColor,
         'controlBorderColor': controlBorderColor,
         'activeWindowBorderColor': activeWindowBorderColor,
+        'activeTaskHighlightColor': activeTaskHighlightColor,
         'windowTitleUppercase': windowTitleUppercase,
         'windowTitleBold': windowTitleBold,
       };
@@ -526,6 +542,7 @@ class CustomColorTheme {
         windowBorderColor: json['windowBorderColor'],
         controlBorderColor: json['controlBorderColor'],
         activeWindowBorderColor: json['activeWindowBorderColor'],
+        activeTaskHighlightColor: json['activeTaskHighlightColor'],
         windowTitleUppercase: json['windowTitleUppercase'],
         windowTitleBold: json['windowTitleBold'],
       );

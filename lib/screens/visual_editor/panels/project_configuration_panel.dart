@@ -265,6 +265,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   int? _customWindowBorderColor;
   int? _customControlBorderColor;
   int? _customActiveWindowBorderColor;
+  int? _customActiveTaskHighlightColor;
   bool _iconFontBold = false;
   bool _windowTitleUppercase = true;
   bool _windowTitleBold = true;
@@ -388,6 +389,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _customWindowBorderColor = prefs.getInt('ve_windowBorderColor');
       _customControlBorderColor = prefs.getInt('ve_controlBorderColor');
       _customActiveWindowBorderColor = prefs.getInt('ve_activeWindowBorderColor');
+      _customActiveTaskHighlightColor = prefs.getInt('ve_activeTaskHighlightColor');
       _queueClearCompletedMinutes = prefs.getInt('queueClearCompletedMinutes') ?? -1;
       _agentRules = prefs.getString('project_agent_rules');
       _versionControlRepoUrl = prefs.getString('project_version_control_repo_url');
@@ -448,6 +450,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
          windowBorderColor: _customWindowBorderColor,
          controlBorderColor: _customControlBorderColor,
          activeWindowBorderColor: _customActiveWindowBorderColor,
+         activeTaskHighlightColor: _customActiveTaskHighlightColor,
       );
       
       AppUIConfig.activeTheme = newTheme;
@@ -490,6 +493,11 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           await prefs.setInt('ve_activeWindowBorderColor', _customActiveWindowBorderColor!);
       } else {
           await prefs.remove('ve_activeWindowBorderColor');
+      }
+      if (_customActiveTaskHighlightColor != null) {
+          await prefs.setInt('ve_activeTaskHighlightColor', _customActiveTaskHighlightColor!);
+      } else {
+          await prefs.remove('ve_activeTaskHighlightColor');
       }
       
       final idx = AppUIConfig.savedThemes.indexWhere((t) => t.id == newTheme.id);
@@ -578,6 +586,12 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       await prefs.setInt('ve_activeWindowBorderColor', _customActiveWindowBorderColor!);
     } else {
       await prefs.remove('ve_activeWindowBorderColor');
+    }
+    _customActiveTaskHighlightColor = theme.activeTaskHighlightColor;
+    if (_customActiveTaskHighlightColor != null) {
+      await prefs.setInt('ve_activeTaskHighlightColor', _customActiveTaskHighlightColor!);
+    } else {
+      await prefs.remove('ve_activeTaskHighlightColor');
     }
     if (theme.iconOutlineWidth != null) {
       _iconOutlineWidth = theme.iconOutlineWidth!;
@@ -1892,6 +1906,15 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                     Function(int?) onSelected = (c) async { setState(() => _customActiveWindowBorderColor = c); await _updateActiveThemeAndSave(); };
                                     GlobalPickerState.instance.requestColor(
                                       initialColor: currentColor != null ? Color(currentColor!) : AppColors.accent,
+                                      onColorSelected: (cc) => onSelected(cc?.value),
+                                    );
+                                    showColorPickerWindow(context);
+                                  }),
+                                  buildColorCard('Active Task', AppColors.activeTaskHighlight, () {
+                                    int? currentColor = _customActiveTaskHighlightColor;
+                                    Function(int?) onSelected = (c) async { setState(() => _customActiveTaskHighlightColor = c); await _updateActiveThemeAndSave(); };
+                                    GlobalPickerState.instance.requestColor(
+                                      initialColor: currentColor != null ? Color(currentColor!) : AppColors.activeTaskHighlight,
                                       onColorSelected: (cc) => onSelected(cc?.value),
                                     );
                                     showColorPickerWindow(context);
