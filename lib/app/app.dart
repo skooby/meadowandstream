@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cyclop/cyclop.dart';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
@@ -182,26 +183,75 @@ class _GlobalOverlayInjector extends StatefulWidget {
   State<_GlobalOverlayInjector> createState() => _GlobalOverlayInjectorState();
 }
 
+String isTextInputFocused() {
+  final focus = FocusManager.instance.primaryFocus;
+  if (focus != null && focus.hasFocus && focus.parent != null) {
+      if (focus.context == null) return 'NO CONTEXT';
+      
+      bool isTextInput = false;
+      final selfType = focus.context!.widget.runtimeType.toString();
+      if (selfType.contains('EditableText') || selfType.contains('TextField') || selfType.contains('TextFormField')) {
+        return 'YES: $selfType';
+      }
+
+      String ancestorType = '';
+      focus.context!.visitAncestorElements((element) {
+        final type = element.widget.runtimeType.toString();
+        if (type.contains('EditableText') || 
+            type.contains('TextField') || 
+            type.contains('TextFormField')) {
+          isTextInput = true;
+          ancestorType = type;
+          return false;
+        }
+        return true;
+      });
+      
+      if (isTextInput) return 'YES: Ancestor $ancestorType';
+      return 'NO: $selfType';
+  }
+  return 'NO FOCUS';
+}
+
+final ValueNotifier<String> isTextInputFocusedNotifier = ValueNotifier('INIT');
+
 class _GlobalOverlayInjectorState extends State<_GlobalOverlayInjector> {
   OverlayEntry? _entry;
   int? _reloadCountdown;
+  DateTime _lastKeystrokeTime = DateTime.now().subtract(const Duration(days: 1));
+
+  bool _handleKeyEvent(KeyEvent event) {
+    _lastKeystrokeTime = DateTime.now();
+    return false; // do not consume
+  }
 
   bool _isSafeToReload() {
-      if (globalAppNavigatorKey.currentState?.canPop() ?? false) return false;
-      if (!AiBridgeService.instance.isWindowFocused) return true; // Safe if window isn't active
-      if (GlobalTaskEditorState.instance.hasUnsavedEdits) return false;
-      final focus = FocusManager.instance.primaryFocus;
-      if (focus != null && focus.hasFocus) {
-          if (focus.context?.widget is EditableText) return false;
+      if (GlobalTaskEditorState.instance.hasUnsavedEdits) {
+          isTextInputFocusedNotifier.value = 'BLOCKED: hasUnsavedEdits is true';
+          return false;
       }
+      if (isTextInputFocused().startsWith('YES')) {
+          if (DateTime.now().difference(_lastKeystrokeTime).inMilliseconds < 1500) {
+              isTextInputFocusedNotifier.value = 'BLOCKED: Still typing';
+              return false; // Still typing!
+          }
+      }
+      isTextInputFocusedNotifier.value = 'SAFE TO RELOAD';
       return true;
+  }
+
+  void _onFocusChanged() {
+    isTextInputFocusedNotifier.value = isTextInputFocused();
   }
 
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    FocusManager.instance.addListener(_onFocusChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _onFocusChanged();
       
        // Wire up the new automated pipeline
        AiBridgeService.instance.onAutoReloadTriggered = (type) async {
@@ -336,6 +386,8 @@ class _GlobalOverlayInjectorState extends State<_GlobalOverlayInjector> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    FocusManager.instance.removeListener(_onFocusChanged);
     _entry?.remove();
     _entry?.dispose();
     super.dispose();

@@ -7,6 +7,7 @@ import '../../../services/backup_service.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../../widgets/markdown_code_block_builder.dart';
 import 'package:flutter/material.dart';
+import '../../../app/app.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../constants.dart';
@@ -463,7 +464,6 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
       }
     }
     
-    _shadowTask = AiTask.fromJson(existingTask!.toJson());
 
     await AiBridgeService.instance.updateTaskDetails(existingTask!.id,
         nameController.text.trim(), descController.text.trim(),
@@ -515,6 +515,8 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
         AiBridgeService.instance.tasks.any((t) => t.id == existingTask!.id)) {
       AiBridgeService.instance.saveTasks();
     }
+
+    _shadowTask = AiTask.fromJson(existingTask!.toJson());
 
     if (mounted) {
       try {
@@ -3085,6 +3087,18 @@ verificationCriteriaList[i].isCommitted = false;
                                                         .withOpacity(0.8))),
                                           ),
                                           const SizedBox(width: 8),
+                                          ValueListenableBuilder<String>(
+                                            valueListenable: isTextInputFocusedNotifier,
+                                            builder: (context, focusStatus, child) {
+                                               return Tooltip(
+                                                 message: 'Focus: $focusStatus',
+                                                 child: Padding(
+                                                   padding: const EdgeInsets.only(right: 8),
+                                                   child: Icon(Icons.edit_note, color: focusStatus.startsWith('YES') ? Colors.redAccent : Colors.transparent, size: 20),
+                                                 ),
+                                               );
+                                            }
+                                          ),
                                           ElevatedButton.icon(
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor: hasUnsavedEdits

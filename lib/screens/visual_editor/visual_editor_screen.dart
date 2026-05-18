@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../app/app.dart';
 import 'panels/karaoke_gen_window.dart';
 import '../../services/karaoke_gen_service.dart';
 import 'package:flutter/gestures.dart';
@@ -142,12 +143,6 @@ class _VisualEditorScreenState extends State<VisualEditorScreen> {
   }
 
   Future<void> _executeHotReload({bool validateCompilation = false}) async {
-      if (GlobalTaskEditorState.instance.hasUnsavedEdits) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Cannot Hot Reload while you have unsaved edits in the Task Editor. Please finish typing to let it auto-save.'),
-              backgroundColor: Colors.orange));
-          return;
-      }
       await MacroService.instance.executeTrigger('BeforeReload');
       await AutoBackupService.instance.snapshot(reason: 'pre_reload');
       if (!kIsWeb && Platform.isWindows) {
@@ -189,12 +184,6 @@ foreach (\$title in \$titles) {
   }
 
   Future<void> _executeHotRestart({bool validateCompilation = false}) async {
-      if (GlobalTaskEditorState.instance.hasUnsavedEdits) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Cannot Hot Restart while you have unsaved edits in the Task Editor. Please finish typing to let it auto-save.'),
-              backgroundColor: Colors.orange));
-          return;
-      }
       await MacroService.instance.executeTrigger('BeforeReload');
       await AutoBackupService.instance.snapshot(reason: 'pre_restart');
       if (!kIsWeb && Platform.isWindows) {
@@ -1326,6 +1315,22 @@ Expanded(
                           const SizedBox(width: 12),
                           Container(width: 1, height: 24 * _uiScale, color: Colors.white12),
                           const SizedBox(width: 12),
+                          ValueListenableBuilder<String>(
+                            valueListenable: isTextInputFocusedNotifier,
+                            builder: (context, focusStatus, child) {
+                               return Padding(
+                                 padding: const EdgeInsets.only(right: 8),
+                                 child: Row(
+                                   mainAxisSize: MainAxisSize.min,
+                                   children: [
+                                     Text('Focus: $focusStatus', style: const TextStyle(color: Colors.redAccent, fontSize: 10)),
+                                     const SizedBox(width: 4),
+                                     Icon(Icons.edit_note, color: focusStatus.startsWith('YES') ? Colors.redAccent : Colors.white24, size: 22),
+                                   ],
+                                 ),
+                               );
+                            }
+                          ),
                           IconButton(
                              onPressed: _executeHotReload,
                             icon: Icon(AppUIConfig.reloadIconCodePoint != null ? IconData(AppUIConfig.reloadIconCodePoint!, fontFamily: 'MaterialIcons') : Icons.refresh,
@@ -3719,6 +3724,35 @@ class TimelinePanelState extends State<TimelinePanel> {
                        child: const Icon(Icons.close, color: Colors.white54, size: 14),
                      )
                    ],
+                 )
+               );
+            }
+          ),
+        ),
+        Positioned(
+          bottom: 16,
+          left: 16,
+          child: ValueListenableBuilder<String>(
+            valueListenable: isTextInputFocusedNotifier,
+            builder: (context, focusStatus, child) {
+               return Tooltip(
+                 message: 'Focus Status: $focusStatus',
+                 child: Container(
+                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                   decoration: BoxDecoration(
+                     color: const Color(0xFF1E1E1E).withValues(alpha: 0.9),
+                     borderRadius: BorderRadius.circular(16),
+                     border: Border.all(color: focusStatus.startsWith('YES') ? Colors.redAccent.withValues(alpha: 0.5) : Colors.white24),
+                     boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2))],
+                   ),
+                   child: Row(
+                     mainAxisSize: MainAxisSize.min,
+                     children: [
+                       Text('Focus: $focusStatus', style: TextStyle(color: focusStatus.startsWith('YES') ? Colors.redAccent : Colors.white54, fontSize: 10)),
+                       const SizedBox(width: 8),
+                       Icon(Icons.edit_note, color: focusStatus.startsWith('YES') ? Colors.redAccent : Colors.white54, size: 20),
+                     ]
+                   )
                  )
                );
             }

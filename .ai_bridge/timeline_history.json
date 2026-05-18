@@ -1,5 +1,16 @@
 [
   {
+    "id": "8370f1f9-96c3-4db2-a690-7b9340ee3228",
+    "taskIds": [
+      "1779063155069"
+    ],
+    "title": "Task Editor [Isolate AI bridge queue lock to dispatch button]",
+    "summary": "Improvements and enhancements",
+    "commitHash": "dff4e0bbde1119dd79dda9922acc2ae510dc2185",
+    "commitDate": "2026-05-18T13:46:23.664781",
+    "verifiedNotes": "- Verify we are not busy editing when trying to execute a hot reload or hot restart\n- Don't allow multiple send to AI Bridge presses from Task Editor.\n- I want to still be able to edit a task... it is after the app detects that a hot reload/restart needs to happen that it needs to wait until I am not editing an input field... Since it flashes away and looses focus"
+  },
+  {
     "id": "94ee6f12-d66a-441d-9af9-5b4a87641cc6",
     "taskIds": [
       "1778503455784"

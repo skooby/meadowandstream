@@ -66,11 +66,23 @@ Future<void> main(List<String> args) async {
     final dump = details.exceptionAsString();
     if (dump.contains('A KeyDownEvent is dispatched') ||
         dump.contains('A KeyUpEvent is dispatched') ||
-        dump.contains('HardwareKeyboard._assertEventIsRegular')) {
+        dump.contains('HardwareKeyboard._assertEventIsRegular') ||
+        dump.contains('The document is empty') ||
+        dump.contains('Unable to parse JSON message')) {
       return;
     }
     SystemLogsService.instance.addLog(dump, category: LogCategory.ERROR);
     if (originalOnError != null) originalOnError(details);
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    final dump = error.toString();
+    if (dump.contains('The document is empty') || 
+        dump.contains('Unable to parse JSON message')) {
+      return true; // Handle and swallow
+    }
+    SystemLogsService.instance.addLog(dump, category: LogCategory.ERROR);
+    return false;
   };
 
   JustAudioMediaKit.ensureInitialized();
