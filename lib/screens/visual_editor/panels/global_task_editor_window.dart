@@ -1480,7 +1480,36 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                             ),
                           ],
                         ),
-                        if (verificationCriteriaList[i].proof != null &&
+                        if (verificationCriteriaList[i].status == AiVerificationStatus.verified) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            constraints: const BoxConstraints(maxHeight: 120),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black45,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.white.withOpacity(0.1)),
+                            ),
+                            child: TextFormField(
+                              initialValue: verificationCriteriaList[i].proof ?? '',
+                              style: TextStyle(
+                                  color: Colors.lightBlueAccent,
+                                  fontSize: AppUIConfig.rootFontSize * 0.9,
+                                  fontFamily: 'monospace'),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                hintText: 'Add a completion note / proof...',
+                                hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                                border: InputBorder.none,
+                              ),
+                              maxLines: null,
+                              onChanged: (val) {
+                                verificationCriteriaList[i].proof = val;
+                                _executeAutoSave();
+                              },
+                            ),
+                          ),
+                        ] else if (verificationCriteriaList[i].proof != null &&
                             verificationCriteriaList[i].proof!.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Container(
