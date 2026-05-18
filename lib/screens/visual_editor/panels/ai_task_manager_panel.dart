@@ -3243,32 +3243,24 @@ showColorPickerWindow(context);
             builder: (context, _) {
               final tasks = AiBridgeService.instance.tasks;
 
-
-              final completed = tasks
-                  .where((t) => t.status == AiTaskStatus.completed)
-                  .toList();
-              final active = tasks
-                  .where((t) => t.status != AiTaskStatus.completed)
-                  .toList();
-
               List<Widget> activeWidgets = [];
 
               bool passesFilter(AiTask task) {
                 if (task.isFolder) {
-                  return true; // Folders are filtered through hasActiveChildren and hideEmptyFolders
+                  return true; // Folders are filtered through hasChildren and hideEmptyFolders
                 }
                 return task.priority.index >= AiBridgeService.instance.filterPriority.index;
               }
 
-              bool hasActiveChildren(String folderId, {Set<String>? visited}) {
+              bool hasChildren(String folderId, {Set<String>? visited}) {
                 visited ??= {};
                 if (visited.contains(folderId)) return false;
                 visited.add(folderId);
                 final children =
-                    active.where((t) => t.parentId == folderId).toList();
+                    tasks.where((t) => t.parentId == folderId).toList();
                 for (var child in children) {
                   if (!child.isFolder && passesFilter(child)) return true;
-                  if (child.isFolder && hasActiveChildren(child.id, visited: visited)) {
+                  if (child.isFolder && hasChildren(child.id, visited: visited)) {
                     return true;
                   }
                 }
@@ -3283,12 +3275,12 @@ showColorPickerWindow(context);
                     visited.add(parentId);
                 }
                 final children =
-                    active.where((t) => t.parentId == parentId).toList();
+                    tasks.where((t) => t.parentId == parentId).toList();
                 for (var child in children) {
                   if (child.isWorksheet) continue;
                   if (AiBridgeService.instance.hideEmptyFolders &&
                       child.isFolder &&
-                      !hasActiveChildren(child.id)) {
+                      !hasChildren(child.id)) {
                     continue;
                   }
                   if (!child.isFolder && !passesFilter(child)) continue;
@@ -3296,7 +3288,7 @@ showColorPickerWindow(context);
                   bool isEven = activeIndex % 2 == 0;
                   activeIndex++;
                   activeWidgets
-                      .add(_buildTaskItem(child, depth, isEven: isEven));
+                      .add(_buildTaskItem(child, depth, isEven: isEven, isCompletedSection: child.status == AiTaskStatus.completed));
                   activeWidgets
                       .add(Divider(color: AppColors.overlaySubtle, height: 1));
                   if (child.isFolder &&
@@ -3317,69 +3309,6 @@ showColorPickerWindow(context);
                 }
               }
 
-              bool folderContainsCompleted(String folderId, {Set<String>? visited}) {
-                visited ??= {};
-                if (visited.contains(folderId)) return false;
-                visited.add(folderId);
-                final children =
-                    tasks.where((t) => t.parentId == folderId).toList();
-                for (var child in children) {
-                  if (child.status == AiTaskStatus.completed) return true;
-                  if (child.isFolder && folderContainsCompleted(child.id, visited: visited)) {
-                    return true;
-                  }
-                }
-                return false;
-              }
-
-              int completedIndex = 0;
-              List<Widget> completedWidgets = [];
-              void traverseCompleted(String? parentId, int depth, {Set<String>? visited}) {
-                visited ??= {};
-                if (parentId != null) {
-                    if (visited.contains(parentId)) return;
-                    visited.add(parentId);
-                }
-                final children =
-                    tasks.where((t) => t.parentId == parentId).toList();
-                for (var child in children) {
-                  if (child.isWorksheet) continue;
-                  bool isEven = completedIndex % 2 == 0;
-                  if (child.isFolder) {
-                    if (folderContainsCompleted(child.id)) {
-                      completedIndex++;
-                      completedWidgets.add(_buildTaskItem(child, depth,
-                          isDraggable: false,
-                          isCompletedSection: true,
-                          isEven: isEven));
-                      completedWidgets
-                          .add(Divider(color: AppColors.overlaySubtle, height: 1));
-                      if (!_collapsedCompletedFolders.contains(child.id)) {
-                        traverseCompleted(child.id, depth + 1, visited: visited);
-                      }
-                    }
-                  } else if (child.status == AiTaskStatus.completed) {
-                    completedIndex++;
-                    completedWidgets.add(_buildTaskItem(child, depth,
-                        isDraggable: false,
-                        isCompletedSection: true,
-                        isEven: isEven));
-                    completedWidgets
-                        .add(Divider(color: AppColors.overlaySubtle, height: 1));
-                  }
-                }
-              }
-
-              if (completed.isNotEmpty) {
-                if (visibleWorksheets.isEmpty) {
-                  traverseCompleted(null, 0);
-                } else {
-                  for (var ws in visibleWorksheets) {
-                    traverseCompleted(ws.id, 0);
-                  }
-                }
-              }
-
               return LayoutBuilder(builder: (context, constraints) {
                 return ScrollConfiguration(
                     behavior: const MaterialScrollBehavior().copyWith(
@@ -3394,7 +3323,6 @@ showColorPickerWindow(context);
 
                       _buildWorksheetManager(),
                       Expanded(
-                          flex: (_showCompleted && completed.isNotEmpty) ? (_activeRatio * 100).toInt() : 100,
                           child: DragTarget<String>(
                             onAcceptWithDetails: (details) {
                               if (activeWs == _unassignedWs) {
@@ -3418,74 +3346,6 @@ showColorPickerWindow(context);
                               ),
                             ),
                           )),
-                      if (completed.isNotEmpty) ...[
-                        if (_showCompleted)
-                          MouseRegion(
-                              cursor: SystemMouseCursors.resizeUpDown,
-                              child: GestureDetector(
-                                onVerticalDragUpdate: (details) {
-                                  double newRatio = _activeRatio +
-                                      (details.delta.dy /
-                                          constraints.maxHeight);
-                                  if (newRatio < 0.1) newRatio = 0.1;
-                                  if (newRatio > 0.9) newRatio = 0.9;
-                                  setState(() => _activeRatio = newRatio);
-                                },
-                                onVerticalDragEnd: (_) =>
-                                    _saveRatio(_activeRatio),
-                                child: Container(
-                                    height: 8,
-                                    color: AppColors.panelBackground,
-                                    child: Center(
-                                        child: Container(
-                                            width: 32,
-                                            height: 2,
-                                            color: AppColors.borderSubtle))),
-                              )),
-                        GestureDetector(
-                            onTap: () => _toggleCompleted(!_showCompleted),
-                            child: Container(
-                                height: 32,
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 16),
-                                decoration: BoxDecoration(
-                                    color: AppColors.windowBackground,
-                                    border: Border(
-                                        top: BorderSide(
-                                            color: AppColors.controlBorder))),
-                                child: Row(children: [
-                                  Icon(
-                                      _showCompleted
-                                          ? Icons.keyboard_arrow_down
-                                          : Icons.keyboard_arrow_right,
-                                      color: AppColors.panelTextSecondary,
-                                      size: 16),
-                                  const SizedBox(width: 8),
-                                  Text('COMPLETED TASKS', style: TextStyle(
-                                          color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize)),
-                                  const Spacer(),
-                                  IconButton(
-                                    icon: Icon(Icons.delete_sweep, size: 16, color: AppColors.getAdaptiveRed(AppColors.titleBarBackground)),
-                                    onPressed: () => AiBridgeService.instance
-                                        .clearAllCompleted(),
-                                    tooltip: 'Clear All Completed',
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                  )
-                                ]))),
-                        if (_showCompleted)
-                          Expanded(
-                              flex: ((1.0 - _activeRatio) * 100).toInt(),
-                              child: Container(
-                                  color: wsBgColor == Colors.transparent ? AppColors.windowBackground : wsBgColor,
-                                  child: Scrollbar(
-                                      controller: _completedScrollController,
-                                      thumbVisibility: true,
-                                      child: ListView(
-                                          controller: _completedScrollController,
-                                          children: completedWidgets,
-                                        )))),
-                      ],
                       Container(
                                 height: 32,
                                 padding:
