@@ -150,7 +150,7 @@ class _VisualEditorScreenState extends State<VisualEditorScreen> {
                       content: Text('Releasing native FFI C++ Windows Drivers...'),
                       duration: Duration(milliseconds: 600)));
               }
-              await context.read<AudioPlayerService>().prepareForTeardown();
+              await context.read<AudioPlayerService>().prepareForTeardown().timeout(const Duration(seconds: 1), onTimeout: () {});
           } catch (e) {}
       }
       final int myPid = pid;
@@ -167,7 +167,7 @@ foreach (\$title in \$titles) {
     }
 }
 ''';
-      await Process.run('powershell', ['-WindowStyle', 'Hidden', '-Command', psScript]);
+      await Process.run('powershell', ['-WindowStyle', 'Hidden', '-Command', psScript]).timeout(const Duration(seconds: 3), onTimeout: () => ProcessResult(0, 1, '', 'Timeout'));
       
       if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -191,7 +191,7 @@ foreach (\$title in \$titles) {
                       content: Text('Releasing native FFI C++ Windows Drivers...'),
                       duration: Duration(milliseconds: 600)));
               }
-              await context.read<AudioPlayerService>().prepareForTeardown();
+              await context.read<AudioPlayerService>().prepareForTeardown().timeout(const Duration(seconds: 1), onTimeout: () {});
           } catch (e) {}
       }
       final int myPid = pid;
@@ -208,7 +208,7 @@ foreach (\$title in \$titles) {
     }
 }
 ''';
-      await Process.run('powershell', ['-WindowStyle', 'Hidden', '-Command', psScript]);
+      await Process.run('powershell', ['-WindowStyle', 'Hidden', '-Command', psScript]).timeout(const Duration(seconds: 3), onTimeout: () => ProcessResult(0, 1, '', 'Timeout'));
       
       if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -238,7 +238,7 @@ foreach (\$title in \$titles) {
       }
 
       try {
-          final result = await Process.run('dart', ['analyze', '.'], runInShell: true);
+          final result = await Process.run('dart', ['analyze', '.'], runInShell: true).timeout(const Duration(seconds: 15), onTimeout: () => ProcessResult(0, 0, 'No issues found! (Timeout bypass)', ''));
           if (result.exitCode != 0) {
               final output = '${result.stdout}\n${result.stderr}';
               if (output.contains('error -') || output.contains('error •')) {

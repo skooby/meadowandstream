@@ -1,5 +1,16 @@
 [
   {
+    "id": "400da417-d6d0-4679-a881-0b92a18c33f6",
+    "taskIds": [
+      "task_timeline_cleanup_1779079091180"
+    ],
+    "title": "Implement Timeline History Cleanup Engine [Recover documentation lost during compiler trap]",
+    "summary": "Build a safe 'Clean Up History' mechanism that squashes old Git checkpoints to reduce bloat, while simultaneously deleting those nodes from timeline_history.json to prevent UI crashes.",
+    "commitHash": "f784251619b143b5d3968d41b76395987c6c0d02",
+    "commitDate": "2026-05-18T07:17:33.615465",
+    "verifiedNotes": "- Add a 'Clean Up History' button to the Timeline UI that triggers the cleanup sequence.\n- Implement Git squashing logic that isolates the most recent N checkpoints (e.g., 50), and permanently squashes all older commits into a single baseline commit to reduce repository bloat.\n- Update the UI JSON logic to synchronously delete the squashed timeline nodes from timeline_history.json, ensuring users cannot click 'Restore' on hashes that no longer exist.\n- Summary not created, I think it is due to there being compile errors and it not writing notes before trying to resolve compile errors resulting in the latest_notes.json information getting lost.\n- Clean up History, we need to have this be connected to commit or checkpoint"
+  },
+  {
     "id": "e79b0069-7961-46f5-b2da-72aee429886c",
     "taskIds": [
       "1778503455784"

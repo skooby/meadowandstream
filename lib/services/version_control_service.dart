@@ -454,7 +454,7 @@ class VersionControlService {
       final newBase = newBaseResult.stdout.toString().trim();
 
       // 3. Cherry pick
-      final cherryResult = await Process.run('git', ['cherry-pick', '$squashBaseCommit..$oldHead'], workingDirectory: path, runInShell: true);
+      final cherryResult = await Process.run('git', ['cherry-pick', '--keep-redundant-commits', '$squashBaseCommit..$oldHead'], workingDirectory: path, runInShell: true);
       if (cherryResult.exitCode != 0) {
         throw Exception('Failed to cherry-pick: ${cherryResult.stderr}');
       }

@@ -769,9 +769,6 @@ wshShell.AppActivate $myPid
         } catch (_) {}
       }
 
-      if (changed) {
-        await _save();
-      }
     } catch (_) {}
   }
 

@@ -2932,6 +2932,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                             onPressed: () {
                                               setStateBuilder(() {
                                                 notesController.clear();
+                                                summaryController.clear();
                                                 verificationCriteriaList
                                                     .clear();
                                                 for (var c

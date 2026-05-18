@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -486,8 +487,38 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                     // But we can also manually trigger a refresh of the commits.
                     SandboxService.instance.reload(); // Cheap way to trigger global listenable
                   }
-                } catch (e) {
-                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+                } catch (e, st) {
+                  debugPrint('Squash Error: $e\n$st');
+                  try {
+                    File('.ai_bridge/bridge_error.txt').writeAsStringSync('Squash Error:\n$e\n$st', mode: FileMode.append);
+                  } catch (_) {}
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Failed: $e',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.copy, color: Colors.white, size: 20),
+                              tooltip: 'Copy Error Log',
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: 'Squash Error:\n$e\n$st'));
+                              },
+                            ),
+                          ],
+                        ),
+                        backgroundColor: Colors.red.shade900,
+                        duration: const Duration(seconds: 8),
+                      ),
+                    );
+                  }
                 }
               },
             ),
