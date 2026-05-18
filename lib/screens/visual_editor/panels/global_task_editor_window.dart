@@ -189,6 +189,17 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     }
 
     AiBridgeService.instance.addListener(_onAiBridgeTasksChanged);
+    
+    AiBridgeService.instance.onChecklistCommitted = () {
+      if (mounted) {
+        _showRedCheckmark = true;
+        _checkmarkTimer?.cancel();
+        _checkmarkTimer = Timer(const Duration(seconds: 2), () {
+          if (mounted) setStateBuilder(() => _showRedCheckmark = false);
+        });
+        setStateBuilder(() {});
+      }
+    };
   }
 
   @override
@@ -1621,11 +1632,6 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                 text: newSubTaskController.text.trim()));
                             _verificationGoalControllers.add(TextEditingController());
                             newSubTaskController.clear();
-                            _showRedCheckmark = true;
-                            _checkmarkTimer?.cancel();
-                            _checkmarkTimer = Timer(const Duration(seconds: 2), () {
-                              if (mounted) setStateBuilder(() => _showRedCheckmark = false);
-                            });
                             _executeAutoSave();
                           });
                         }
@@ -1671,11 +1677,6 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                             text: newSubTaskController.text.trim()));
                         _verificationGoalControllers.add(TextEditingController());
                         newSubTaskController.clear();
-                        _showRedCheckmark = true;
-                        _checkmarkTimer?.cancel();
-                        _checkmarkTimer = Timer(const Duration(seconds: 2), () {
-                          if (mounted) setStateBuilder(() => _showRedCheckmark = false);
-                        });
                         _executeAutoSave();
                       });
                     }
@@ -3056,12 +3057,6 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                       text: newSubTaskController.text.trim()));
                                                   _verificationGoalControllers.add(TextEditingController());
                                                   newSubTaskController.clear();
-                                                  
-                                                  _showRedCheckmark = true;
-                                                  _checkmarkTimer?.cancel();
-                                                  _checkmarkTimer = Timer(const Duration(seconds: 2), () {
-                                                    if (mounted) setStateBuilder(() => _showRedCheckmark = false);
-                                                  });
                                                 });
                                               }
                                               _executeAutoSave(instant: true);

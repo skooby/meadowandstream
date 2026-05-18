@@ -439,6 +439,8 @@ class QueuedPrompt {
 
 class AiBridgeService extends ChangeNotifier with WindowListener {
   static final AiBridgeService instance = AiBridgeService._internal();
+  void Function()? onChecklistCommitted;
+
   AiBridgeService._internal() {
     init();
   }
@@ -748,6 +750,7 @@ wshShell.AppActivate $myPid
               if (vcIdx != -1) {
                 _tasks[taskIdx].verificationCriteria[vcIdx].proof = proof;
                 changed = true;
+                if (onChecklistCommitted != null) onChecklistCommitted!();
               }
             }
           }

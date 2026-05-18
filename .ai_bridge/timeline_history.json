@@ -1,12 +1,14 @@
 [
   {
-    "id": "2224ff4c-4679-48af-9fc3-6b904f34da19",
-    "taskIds": [],
-    "title": "",
-    "summary": "",
-    "commitHash": "4f0b6f45c3c7ab08b885a93423b409c73234ffcc",
-    "commitDate": "2026-05-18T10:16:25.206109",
-    "verifiedNotes": "No items verified."
+    "id": "ddaffedd-6acb-404b-88bc-1344d960f763",
+    "taskIds": [
+      "1779063155069"
+    ],
+    "title": "Task Editor [Add animated Big Red Checkmark on checklist completion]",
+    "summary": "Improvements and enhancements",
+    "commitHash": "95a03d44502125560b54b998c3d62ab21dc8a3d3",
+    "commitDate": "2026-05-18T10:37:28.461255",
+    "verifiedNotes": "- Add a Complete all, which will set each checklist item as completed\n- After a checklist item has been committed .. show an big Red Checkmark in the bottom right corner. "
   },
   {
     "id": "f2e9ab32-42e2-4743-aa70-9b4aac208679",
