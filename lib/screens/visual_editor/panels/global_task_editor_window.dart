@@ -1366,6 +1366,13 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                             ),
                                             onChanged: (val) {
                                               verificationCriteriaList[i].goal = val;
+                                              if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
+                                                setStateBuilder(() {
+                                                  verificationCriteriaList[i].status = AiVerificationStatus.none;
+                                                  verificationCriteriaList[i].isVerified = false;
+                                                  verificationCriteriaList[i].proof = null;
+                                                });
+                                              }
                                               _performAutoSave();
                                             },
                                           ),
@@ -1552,6 +1559,11 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                     if (!verificationCriteriaList[i].attachments.contains(linkedPath)) {
                                                       setStateBuilder(() {
                                                         verificationCriteriaList[i].attachments.add(linkedPath);
+                                                        if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
+                                                          verificationCriteriaList[i].status = AiVerificationStatus.none;
+                                                          verificationCriteriaList[i].isVerified = false;
+                                                          verificationCriteriaList[i].proof = null;
+                                                        }
                                                         _executeAutoSave();
                                                       });
                                                     }
@@ -1563,6 +1575,11 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                 // Right-click removes
                                                 setStateBuilder(() {
                                                   verificationCriteriaList[i].attachments.removeAt(ai);
+                                                  if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
+                                                    verificationCriteriaList[i].status = AiVerificationStatus.none;
+                                                    verificationCriteriaList[i].isVerified = false;
+                                                    verificationCriteriaList[i].proof = null;
+                                                  }
                                                   _executeAutoSave();
                                                 });
                                               },
