@@ -444,7 +444,14 @@ class VersionControlService {
     final originalBranchResult = await Process.run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], workingDirectory: path, runInShell: true);
     final originalBranch = originalBranchResult.stdout.toString().trim();
 
+    final statusResult = await Process.run('git', ['status', '--porcelain'], workingDirectory: path, runInShell: true);
+    final hasChanges = statusResult.stdout.toString().trim().isNotEmpty;
+
     try {
+      if (hasChanges) {
+        await Process.run('git', ['stash', 'push', '-u', '-m', 'temp-squash-stash'], workingDirectory: path, runInShell: true);
+      }
+
       // 1. Create orphan branch at squash base
       await Process.run('git', ['checkout', '--orphan', tempBranch, squashBaseCommit], workingDirectory: path, runInShell: true);
 
@@ -454,7 +461,7 @@ class VersionControlService {
       final newBase = newBaseResult.stdout.toString().trim();
 
       // 3. Cherry pick
-      final cherryResult = await Process.run('git', ['cherry-pick', '--keep-redundant-commits', '$squashBaseCommit..$oldHead'], workingDirectory: path, runInShell: true);
+      final cherryResult = await Process.run('git', ['cherry-pick', '--keep-redundant-commits', '--strategy-option=theirs', '$squashBaseCommit..$oldHead'], workingDirectory: path, runInShell: true);
       if (cherryResult.exitCode != 0) {
         throw Exception('Failed to cherry-pick: ${cherryResult.stderr}');
       }
@@ -483,10 +490,17 @@ class VersionControlService {
 
       // 7. Update timeline JSON
       await AiBridgeService.instance.applyTimelineCleanup(keepCount, hashMap);
+
+      if (hasChanges) {
+        await Process.run('git', ['stash', 'pop'], workingDirectory: path, runInShell: true);
+      }
     } catch (e) {
       await Process.run('git', ['cherry-pick', '--abort'], workingDirectory: path, runInShell: true);
       await Process.run('git', ['checkout', originalBranch], workingDirectory: path, runInShell: true);
       await Process.run('git', ['branch', '-D', tempBranch], workingDirectory: path, runInShell: true);
+      if (hasChanges) {
+        await Process.run('git', ['stash', 'pop'], workingDirectory: path, runInShell: true);
+      }
       throw Exception('Failed timeline cleanup: $e');
     }
   }
