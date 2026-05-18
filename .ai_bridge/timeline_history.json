@@ -1,5 +1,16 @@
 [
   {
+    "id": "94ee6f12-d66a-441d-9af9-5b4a87641cc6",
+    "taskIds": [
+      "1778503455784"
+    ],
+    "title": "TASK MANAGER [Remove completed tasks foldout UI]",
+    "summary": "General improvements for Task Manager",
+    "commitHash": "f33bfa2201866e3d79d4a6a0e9934197e360560f",
+    "commitDate": "2026-05-18T12:30:48.410460",
+    "verifiedNotes": "- Don't move completed tasks into the Completed Tasks foldout. Just show it completed in place. Lets get rid of the COMPLETED TASKS foldout area"
+  },
+  {
     "id": "61147a18-d612-4222-98ed-c6aad249b472",
     "taskIds": [
       "1778869915153"

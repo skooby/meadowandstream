@@ -12,6 +12,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
 import '../../choreography/choreography_engine.dart';
 import '../../state/editor_state_controller.dart';
+import '../../state/global_task_editor_state.dart';
 import '../../state/lyrics_view_controller.dart';
 import 'package:path/path.dart' as p;
 import '../../lyrics/lrc_parser.dart';
@@ -141,6 +142,12 @@ class _VisualEditorScreenState extends State<VisualEditorScreen> {
   }
 
   Future<void> _executeHotReload({bool validateCompilation = false}) async {
+      if (GlobalTaskEditorState.instance.hasUnsavedEdits) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Cannot Hot Reload while you have unsaved edits in the Task Editor. Please finish typing to let it auto-save.'),
+              backgroundColor: Colors.orange));
+          return;
+      }
       await MacroService.instance.executeTrigger('BeforeReload');
       await AutoBackupService.instance.snapshot(reason: 'pre_reload');
       if (!kIsWeb && Platform.isWindows) {
@@ -182,6 +189,12 @@ foreach (\$title in \$titles) {
   }
 
   Future<void> _executeHotRestart({bool validateCompilation = false}) async {
+      if (GlobalTaskEditorState.instance.hasUnsavedEdits) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Cannot Hot Restart while you have unsaved edits in the Task Editor. Please finish typing to let it auto-save.'),
+              backgroundColor: Colors.orange));
+          return;
+      }
       await MacroService.instance.executeTrigger('BeforeReload');
       await AutoBackupService.instance.snapshot(reason: 'pre_restart');
       if (!kIsWeb && Platform.isWindows) {

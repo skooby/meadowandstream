@@ -134,6 +134,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
   // To avoid changing the giant UI code:
   void setStateBuilder(void Function() fn) {
     setState(fn);
+    GlobalTaskEditorState.instance.hasUnsavedEdits = hasUnsavedEdits;
   }
 
   bool _isImageFile(String path) {
@@ -544,6 +545,10 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
 
   void _onAiBridgeTasksChanged() {
     if (existingTask != null && _shadowTask != null) {
+      setStateBuilder(() {
+        isTaskReadOnly = existingTask != null &&
+            AiBridgeService.instance.isTaskReadOnly(existingTask!.id);
+      });
       final matches =
           AiBridgeService.instance.tasks.where((t) => t.id == existingTask!.id);
       if (matches.isNotEmpty) {
@@ -2064,7 +2069,7 @@ verificationCriteriaList[i].isCommitted = false;
                                         color: Colors.yellow,
                                         padding: const EdgeInsets.all(6),
                                         constraints: const BoxConstraints(),
-                                        onPressed: () {
+                                        onPressed: (isTaskReadOnly || AiBridgeService.instance.isThinking) ? null : () {
                                           final sb = StringBuffer();
                                           sb.writeln('# PRIMARY DIRECTIVES');
                                           sb.writeln(AiBridgeService

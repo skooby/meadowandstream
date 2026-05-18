@@ -20,6 +20,8 @@ class TaskEditorRequest {
 class GlobalTaskEditorState {
   static final GlobalTaskEditorState instance = GlobalTaskEditorState._internal();
   
+  bool hasUnsavedEdits = false;
+  
   GlobalTaskEditorState._internal();
 
   final ValueNotifier<TaskEditorRequest?> activeRequest = ValueNotifier(null);

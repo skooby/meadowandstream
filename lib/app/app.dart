@@ -18,6 +18,7 @@ import '../services/ai_bridge_service.dart';
 import '../engine/ui_inspector/element_registry.dart';
 import '../screens/visual_editor/panels/ai_task_manager_panel.dart';
 import '../screens/visual_editor/visual_editor_screen.dart';
+import '../state/global_task_editor_state.dart';
 
 import '../screens/listen/listen_screen.dart';
 import '../screens/listen/collection_detail_screen.dart';
@@ -188,6 +189,7 @@ class _GlobalOverlayInjectorState extends State<_GlobalOverlayInjector> {
   bool _isSafeToReload() {
       if (globalAppNavigatorKey.currentState?.canPop() ?? false) return false;
       if (!AiBridgeService.instance.isWindowFocused) return true; // Safe if window isn't active
+      if (GlobalTaskEditorState.instance.hasUnsavedEdits) return false;
       final focus = FocusManager.instance.primaryFocus;
       if (focus != null && focus.hasFocus) {
           if (focus.context?.widget is EditableText) return false;
@@ -203,13 +205,13 @@ class _GlobalOverlayInjectorState extends State<_GlobalOverlayInjector> {
       
        // Wire up the new automated pipeline
        AiBridgeService.instance.onAutoReloadTriggered = (type) async {
-           if (type == UpdateCoverType.hotRestart || type == UpdateCoverType.rebuild) {
-               int safetyWait = 0;
-               while (!_isSafeToReload() && safetyWait < 10) {
-                   await Future.delayed(const Duration(seconds: 1));
-                   safetyWait++;
-               }
+           int safetyWait = 0;
+           while (!_isSafeToReload() && safetyWait < 300) {
+               await Future.delayed(const Duration(seconds: 1));
+               safetyWait++;
+           }
 
+           if (type == UpdateCoverType.hotRestart || type == UpdateCoverType.rebuild) {
                for (int i = 3; i > 0; i--) {
                    if (mounted) setState(() { _reloadCountdown = i; });
                    await Future.delayed(const Duration(seconds: 1));

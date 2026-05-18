@@ -5233,146 +5233,15 @@
       "parentId": "1778865514716"
     },
     {
-      "id": "1778791865443",
-      "name": "Version Control",
-      "description": "Version Control UI",
-      "summary": "Implement delete functionality for timeline history entries",
-      "notes": "### Update - 2026-05-16 23:27\n### Update - 2026-05-16 23:27\n- Implemented `deleteTimelineCommit` method within `AiBridgeService` to safely filter out designated `TimelineCommit` elements and trigger persistence.\n- Added a delete button (red trash icon) to the trailing `Row` array inside `VersionControlWindow.dart`'s timeline history tab, wired directly to the new deletion pipeline.\n- Ran `dart analyze` validation to ensure structural stability.\n\n---\n\n---\n\n### Update - 2026-05-16 23:22\n### Update - 2026-05-16 23:22\n- Investigated the timeline history text overlap issue.\n- Identified that `VersionControlWindow` was redundantly appending `TimelineCommit.summary` to the title string. Since `AiBridgeService` injects the concatenated task *descriptions* into the `summary` property, this caused massive multi-line text to bleed into the UI.\n- Removed the `[${c.summary}]` string interpolation from the timeline `ListTile` title, restricting it strictly to `c.title` (which natively holds the task name and short summary).\n\n---\n\n---\n\n### Update - 2026-05-16 23:04\n### Update - 2026-05-16 23:03\n- Formatted timeline subtitle to exclusively show the commit date.\n- Swapped `trailing` widget order in `VersionControlWindow.dart` so that the commit hash text is located on the right side of the view in GitHub icon.\n- Modified `VersionControlService.dart` `git log` invocation to use `--date=iso` instead of `--date=short` to pull time signatures along with dates.\n- Created `_formatDateStr` in the `VersionControlWindow` state to parse ISO 8601 strings to `YYYY-MM-DD HH:MM`.\n\n---\n\n---\n\n### Update - 2026-05-16 22:39\n### Update - 2026-05-16 22:38\nResolved a race condition where the AI Bridge's summary generation would fail to populate the UI and get overwritten by an empty string. The issue occurred because the backend status mutation (changing to `inTesting`) tripped the UI's `hasUnsavedEdits` listener, tricking the editor into performing a defensive auto-save that blasted the empty UI state back over the AI's data. I decoupled the `hasUnsavedEdits` status check from backend mutations and implemented a dedicated granular merge block for the summary field to guarantee seamless data absorption.\n\n---\n\n---",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "previewItems": [],
-      "verificationCriteria": [
-        {
-          "description": "Why is the Description showing on the timeline history entry?",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "I investigated the `VersionControlWindow.dart` file and discovered that when mapping over the `TimelineCommit` objects, the UI was manually appending `[${c.summary}]` to the title string. However, `AiBridgeService` populates `c.summary` with the concatenated, long-form `description` of the committed tasks, while `c.title` inherently comes pre-formatted with the task name and its short summary. I updated the `ListTile` title widget in the Timeline History tab to strictly render `c.title` and drop the extraneous `c.summary` appending, preventing the full task description from bleeding into the UI.",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false
-        },
-        {
-          "description": "Lets add the ability to delete an entry in the timeline history",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "I implemented a `deleteTimelineCommit(String commitId)` method in `AiBridgeService` that cleanly removes the targeted `TimelineCommit` from the internal `_timelineHistory` state and immediately triggers a synchronous file persistence. I then appended a trailing red `Icons.delete_outline` IconButton to the `ListTile` rendering logic in the `VersionControlWindow.dart` timeline history tab. Clicking this button now natively invokes the deletion pipeline, resolving the issue.",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false
-        }
-      ],
-      "status": "inProgress",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": "945fb5c63ad4de16a504447dd5d102cdf03488b9",
-      "commitDate": "2026-05-16T23:34:45.257760",
-      "parentId": "1778537568342",
-      "worksheetId": "1778268121185"
-    },
-    {
       "id": "1778869915153",
       "name": "VERSION CONTROL",
       "description": "Version Control System improvements and tasks",
-      "summary": "Fix completion block for tasks without Git diffs",
-      "notes": "### Update - 2026-05-18 12:10\nFixed a bug in `performManualCommitAll` where the commit completion was being blocked if Git reported 'No changes to commit.'. Now, the system correctly processes the task state update to `AiTaskStatus.completed` and logs the commit to the timeline as 'No Git Changes', allowing tasks with no code modifications to be properly cleared from the active queue.\n\n---\n\n### Update - 2026-05-18 12:08\nAdded logic to explicitly set task.status to `AiTaskStatus.completed` inside `performManualCommitAll` so that the UI correctly recognizes the task as committed and removes it from the 'Active Tasks' checklist.\n\n---\n\n### Update - 2026-05-18 12:00\nRelocated the commit execution UI to the global toolbar in the Version Control window. Replaced the single-task manual commit API with `performManualCommitAll` to process all active tasks in a single Git transaction. Verified UI prompts and safety mechanisms remain effective for batch commits.\n\n---\n\n### Update - 2026-05-18 11:47\nRefined the checklist display in the Version Control window. Text color for checklist items is now statically set to `AppColors.textPrimary` to ensure it remains bright white and readable, regardless of its verified status.\n\n---\n\n### Update - 2026-05-18 11:42\nRefactored the manual commit button out of the Task Editor window and integrated it directly into the active tasks view of the Version Control window. Checklist list tiles in the Version Control window now correctly display goal messages as subtitles and use a white strikethrough for verified items.\n\n---\n\n### Update - 2026-05-18 11:20\nTransitioned the system from automatic background commits to a fully manual commit workflow. Removed the `performSandboxCommit` block from `AiBridgeService.updateTask` and introduced a dedicated `performManualCommit` method. Added a 'Commit Task' button in the `GlobalTaskEditorWindow` that enforces pre-commit safety checks: it prevents commits if the AI is actively processing (`isThinking`) or if there are unresolved checklist items (not verified or ignored). Valid commits trigger a dialog to verify/edit the commit name before execution.\n\n---",
+      "summary": "",
+      "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
       "previewItems": [],
-      "verificationCriteria": [
-        {
-          "description": "Don't allow a commit while ai bridge is working on something",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "Added a check for AiBridgeService.instance.isThinking in the manual commit button's onPressed handler to prevent commits while the bridge is active.",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": true
-        },
-        {
-          "description": "Don't allow a commit in a task with open items, unless a checklist item is set to be ignored",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "Added a check in the manual commit button's onPressed handler to ensure all checklist items are either verified or ignored before allowing a commit.",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": true
-        },
-        {
-          "description": "Give a message to resolve open items before committing",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "Implemented ScaffoldMessenger SnackBars to display appropriate warning messages if open checklist items exist or if the AI bridge is currently processing.",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": true
-        },
-        {
-          "description": "Add manual commit button, prompt to verify the Commit Name",
-          "goal": "THis should be on the top toolbar area... and wold commit all tasks as is. ",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "Removed the task-specific commit button and implemented a new 'Commit Tasks' button in the top toolbar of the Version Control Window. Added performManualCommitAll to AiBridgeService to batch commit all active tasks at once, ensuring safety blocks remain active if any open checklist items exist across all tasks.",
-          "requestClarification": false,
-          "tryCount": 3,
-          "attachments": [],
-          "isCommitted": true
-        },
-        {
-          "description": "Show goal messages as subtitles to checklist entries in Version Control",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "Added the vc.goal to the subtitle property of the ListTile inside the Version Control Window's checklist view.",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": true
-        },
-        {
-          "description": "Version Control line strikethrough color should be white",
-          "goal": "Keep text white too... too hard to read",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "Removed the ternary operator for the title color in VersionControlWindow, statically assigning it to AppColors.textPrimary for both verified and unverified items to keep the text bright and readable.",
-          "requestClarification": false,
-          "tryCount": 1,
-          "attachments": [],
-          "isCommitted": true
-        },
-        {
-          "description": "All items are completed... yet it isn't comitting it",
-          "goal": "Still not comitting",
-          "isVerified": true,
-          "status": "verified",
-          "proof": null,
-          "requestClarification": false,
-          "tryCount": 1,
-          "attachments": [],
-          "isCommitted": true
-        }
-      ],
+      "verificationCriteria": [],
       "status": "completed",
       "priority": "none",
       "isFolder": false,
@@ -5561,16 +5430,28 @@
       "worksheetId": "version_control_brainstorm_72812e08-3039-43f6-ac18-a0054b9a3116"
     },
     {
-      "id": "1779063155069",
-      "name": "Task Editor",
-      "description": "Improvements and enhancements",
-      "summary": "",
-      "notes": "",
+      "id": "1778503455784",
+      "name": "TASK MANAGER",
+      "description": "General improvements for Task Manager",
+      "summary": "Remove completed tasks foldout UI",
+      "notes": "### Update - 2026-05-18 12:24\nRemoved the split active/completed widgets logic in `AiTaskManagerPanel`. Completed tasks now render natively in place within their original parent folders in the unified active tasks tree. The 'COMPLETED TASKS' foldout list and its associated UI containers have been fully deleted.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
       "previewItems": [],
-      "verificationCriteria": [],
-      "status": "inTesting",
+      "verificationCriteria": [
+        {
+          "description": "Don't move completed tasks into the Completed Tasks foldout. Just show it completed in place. Lets get rid of the COMPLETED TASKS foldout area",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Removed the split active/completed widgets logic inside AiTaskManagerPanel, routing all tasks to be rendered seamlessly in the original tree. Completed tasks now receive their visual state via the isCompletedSection: child.status == AiTaskStatus.completed argument directly in the unified widget list, and the UI for the separated 'COMPLETED TASKS' foldout list has been entirely removed.",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true
+        }
+      ],
+      "status": "completed",
       "priority": "none",
       "isFolder": false,
       "isWorksheet": false,
@@ -5585,10 +5466,9 @@
       "llmPromptStyleOverride": "Use Default",
       "fileAttachments": [],
       "hyperlinks": [],
-      "commitHash": "6d14e8ff6810671f4821c25ceb61e61d5c65e4d3",
-      "commitDate": "2026-05-18T11:04:08.167102",
-      "parentId": "1778559529935",
-      "worksheetId": "1778268121185"
+      "commitHash": "f33bfa2201866e3d79d4a6a0e9934197e360560f",
+      "commitDate": "2026-05-18T12:30:48.410460",
+      "parentId": "1774913415376"
     }
   ]
 }
