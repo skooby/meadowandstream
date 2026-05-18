@@ -1,0 +1,47 @@
+[
+  {
+    "id": "1775003551385_4",
+    "name": "Enhanced Playback Telemetry Panel",
+    "description": "Inject real-time RAM and decode-latency visualizations directly into the native Profiler screen.",
+    "notes": "Accurately track physical audio buffering metrics to isolate performance bottlenecks occurring exclusively within `player_controller.dart` background loading routines.",
+    "implementationQuestion": "",
+    "subTasks": [],
+    "status": "open",
+    "priority": "none",
+    "isFolder": false,
+    "isNote": false,
+    "isRead": true,
+    "preventDeletion": false,
+    "parentId": "1774984445559"
+  },
+  {
+    "id": "1775003551385_5",
+    "name": "Interactive Lyrics Timeline Editor",
+    "description": "Build out a dedicated `Choreography` visual UI layer allowing users to physically drag-and-drop the timing metadata markers securely.",
+    "notes": "Attach drag handlers directly over the individual lyrical text block lines natively syncing visual coordinate drops with the internal JSON millisecond states securely.",
+    "implementationQuestion": "",
+    "subTasks": [],
+    "status": "open",
+    "priority": "none",
+    "isFolder": false,
+    "isNote": false,
+    "isRead": true,
+    "preventDeletion": false,
+    "parentId": "1775009126174"
+  },
+  {
+    "id": "1775081197385",
+    "name": "Define Generalized Timelines for Albums and Title images",
+    "description": "Timelines  needs to allow for standin images that will be pulled from the title or album images",
+    "notes": "",
+    "implementationQuestion": "",
+    "subTasks": [],
+    "status": "open",
+    "priority": "none",
+    "isFolder": false,
+    "isNote": false,
+    "isRead": false,
+    "preventDeletion": false,
+    "parentId": "1775077401404"
+  }
+]
