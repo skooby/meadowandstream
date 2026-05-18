@@ -1,0 +1,77 @@
+[
+  {
+    "id": "e79b0069-7961-46f5-b2da-72aee429886c",
+    "taskIds": [
+      "1778503455784"
+    ],
+    "title": "TASK MANAGER [Enforce strict priority for active task highlight styling]",
+    "summary": "General improvements for Task Manager",
+    "commitHash": "a5b467f94de6f92adfed8de7f77261130fca2656",
+    "commitDate": "2026-05-17T18:46:31.099086",
+    "verifiedNotes": "- Highlight Active tasks within the TaskManager Task list. Maybe the highlight color\n- Add the highlight color to the theme colors in Config"
+  },
+  {
+    "id": "5ade82a3-41d0-4403-b8ee-1892f8b233cf",
+    "taskIds": [
+      "1779063155069"
+    ],
+    "title": "Task Editor",
+    "summary": "Improvements and enhancements",
+    "commitHash": "9b2f5a5b96acc8da46950b2d8445727be841664a",
+    "commitDate": "2026-05-17T18:23:41.690065",
+    "verifiedNotes": "- Remove the \"View in Timeline\" in Task Editor"
+  },
+  {
+    "id": "cc5b2b36-9193-46d0-a459-afc5068dd4ab",
+    "taskIds": [
+      "a9b67030-21c8-417e-8c3c-ab16392b50b9"
+    ],
+    "title": "1. Timeline Restore Points (Checkpoints) [Hide short commit hash text from checkpoint UI]",
+    "summary": "Implementation checklist for: 1. Timeline Restore Points (Checkpoints)",
+    "commitHash": "4d9a2f6d8f39809660b87f970391d5fdeb5a325b",
+    "commitDate": "2026-05-17T07:34:57.047019",
+    "verifiedNotes": "- Add a 'Create Restore Point' button to the Version Control UI\n- Implement git commit action tagged with [CHECKPOINT]\n- Configure auto-checkpoint capability for high/urgent priority tasks\n- Add a 'Restore to Here' button next to past commits in the Timeline History tab\n- Implement `git reset --hard` functionality under the hood\n- Add safety net logic to automatically commit current uncommitted state to a hidden background branch before hard reset\n- Not seeing a checkpoint in the timeline history, it would also be good to add a note as to what we are about to do. The checkpoint in the timeline history should have a Delete icon, and a restore button icon.\n- Checkpoint should show it as different even collapsible (hide everything before it), and include the label that we set.\n- Checkpoint open in github location says it doesn't exist\n- so the id to the far right serves no purpose either"
+  },
+  {
+    "id": "d11be1bd-3283-4152-93ee-00b0df4cbc6e",
+    "taskIds": [],
+    "title": "Checkpoint",
+    "summary": "Manual Checkpoint: Before moving onto Step 2 of VC",
+    "commitHash": "d2361e33ed32fbf3947a5414299d630c7e95e1e1",
+    "commitDate": "2026-05-17T07:23:50.527865",
+    "verifiedNotes": ""
+  },
+  {
+    "id": "468f68e7-7b38-4ac7-9ecb-5d281f81465d",
+    "taskIds": [
+      "a9b67030-21c8-417e-8c3c-ab16392b50b9"
+    ],
+    "title": "1. Timeline Restore Points (Checkpoints) [Implement comprehensive Timeline Checkpoints and Restore Mechanics]",
+    "summary": "Implementation checklist for: 1. Timeline Restore Points (Checkpoints)",
+    "commitHash": "6328cde2139ad56ec3a053396a80bc21a6bad2ef",
+    "commitDate": "2026-05-17T07:13:42.178446",
+    "verifiedNotes": "- Add a 'Create Restore Point' button to the Version Control UI\n- Implement git commit action tagged with [CHECKPOINT]\n- Configure auto-checkpoint capability for high/urgent priority tasks\n- Add a 'Restore to Here' button next to past commits in the Timeline History tab\n- Implement `git reset --hard` functionality under the hood\n- Add safety net logic to automatically commit current uncommitted state to a hidden background branch before hard reset"
+  },
+  {
+    "id": "e2166af9-36c8-4b07-902a-104f8b939127",
+    "taskIds": [
+      "1778791865443"
+    ],
+    "title": "Version Control [Implement delete functionality for timeline history entries]",
+    "summary": "Version Control UI",
+    "commitHash": "945fb5c63ad4de16a504447dd5d102cdf03488b9",
+    "commitDate": "2026-05-16T23:34:45.257760",
+    "verifiedNotes": "- Why is the Description showing on the timeline history entry?\n- Lets add the ability to delete an entry in the timeline history"
+  },
+  {
+    "id": "6b3b6f97-c81c-4f19-8f05-54f72a3b769d",
+    "taskIds": [
+      "1778791865443"
+    ],
+    "title": "Version Control [Refine VersionControlWindow timeline trailing widgets and timestamp formatting]",
+    "summary": "Version Control UI",
+    "commitHash": "03d1fa627c85ab88a23b0b4b6835f525a6347376",
+    "commitDate": "2026-05-16T23:20:06.980574",
+    "verifiedNotes": "- Timeline history Entries are getting lost... this should be written to on commit... not connected to the tasks.json in any way... Thus we could have multiple commits connected to a task named Version Control"
+  }
+]

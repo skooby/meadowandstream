@@ -50,4 +50,9 @@ app.*.map.json
 *.tmp
 *.scratch.dart
 .env
-.ai_bridge/
+# Ignore everything in the bridge folder by default
+.ai_bridge/*
+
+# BUT explicitly track the fundamental AI state files so they back up to GitHub
+!.ai_bridge/tasks.json
+!.ai_bridge/timeline_history.json

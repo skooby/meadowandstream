@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'system_logs_service.dart';
 import 'sandbox_service.dart';
+import 'ai_bridge_service.dart';
 
 class VersionControlService {
   static final VersionControlService instance = VersionControlService._internal();
@@ -422,6 +423,71 @@ class VersionControlService {
     final resetResult = await Process.run('git', ['reset', '--hard', commitHash], workingDirectory: path, runInShell: true);
     if (resetResult.exitCode != 0) {
       throw Exception('Failed to hard reset:\n${resetResult.stderr}');
+    }
+  }
+
+  Future<void> cleanupTimelineHistory(int keepCount) async {
+    final path = await getLocalRepositoryPath();
+    if (path == null || path.isEmpty) throw Exception('Local repository path not set.');
+
+    final timelineHistory = AiBridgeService.instance.timelineHistory;
+    if (timelineHistory.length <= keepCount) return;
+
+    // timelineHistory is sorted newest to oldest.
+    // The oldest we want to KEEP is at index keepCount - 1.
+    // The base we checkout as orphan is the commit just BEFORE that, which is at index keepCount.
+    final squashBaseCommit = timelineHistory[keepCount].commitHash;
+    final oldHeadResult = await Process.run('git', ['rev-parse', 'HEAD'], workingDirectory: path, runInShell: true);
+    final oldHead = oldHeadResult.stdout.toString().trim();
+
+    final tempBranch = 'cleanup-temp-${DateTime.now().millisecondsSinceEpoch}';
+    final originalBranchResult = await Process.run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], workingDirectory: path, runInShell: true);
+    final originalBranch = originalBranchResult.stdout.toString().trim();
+
+    try {
+      // 1. Create orphan branch at squash base
+      await Process.run('git', ['checkout', '--orphan', tempBranch, squashBaseCommit], workingDirectory: path, runInShell: true);
+
+      // 2. Commit as squashed baseline
+      await Process.run('git', ['commit', '-m', 'Squashed History Baseline'], workingDirectory: path, runInShell: true);
+      final newBaseResult = await Process.run('git', ['rev-parse', 'HEAD'], workingDirectory: path, runInShell: true);
+      final newBase = newBaseResult.stdout.toString().trim();
+
+      // 3. Cherry pick
+      final cherryResult = await Process.run('git', ['cherry-pick', '$squashBaseCommit..$oldHead'], workingDirectory: path, runInShell: true);
+      if (cherryResult.exitCode != 0) {
+        throw Exception('Failed to cherry-pick: ${cherryResult.stderr}');
+      }
+
+      final newHeadResult = await Process.run('git', ['rev-parse', 'HEAD'], workingDirectory: path, runInShell: true);
+      final newHead = newHeadResult.stdout.toString().trim();
+
+      // 4. Map hashes
+      final oldLogResult = await Process.run('git', ['log', '--format=%H', '$squashBaseCommit..$oldHead', '--reverse'], workingDirectory: path, runInShell: true);
+      final newLogResult = await Process.run('git', ['log', '--format=%H', '$newBase..$newHead', '--reverse'], workingDirectory: path, runInShell: true);
+
+      final oldHashes = oldLogResult.stdout.toString().trim().split('\n').where((s) => s.isNotEmpty).toList();
+      final newHashes = newLogResult.stdout.toString().trim().split('\n').where((s) => s.isNotEmpty).toList();
+
+      Map<String, String> hashMap = {};
+      for (int i = 0; i < oldHashes.length && i < newHashes.length; i++) {
+        hashMap[oldHashes[i]] = newHashes[i];
+      }
+
+      // 5. Hard reset original branch
+      await Process.run('git', ['checkout', originalBranch], workingDirectory: path, runInShell: true);
+      await Process.run('git', ['reset', '--hard', newHead], workingDirectory: path, runInShell: true);
+
+      // 6. Delete temp branch
+      await Process.run('git', ['branch', '-D', tempBranch], workingDirectory: path, runInShell: true);
+
+      // 7. Update timeline JSON
+      await AiBridgeService.instance.applyTimelineCleanup(keepCount, hashMap);
+    } catch (e) {
+      await Process.run('git', ['cherry-pick', '--abort'], workingDirectory: path, runInShell: true);
+      await Process.run('git', ['checkout', originalBranch], workingDirectory: path, runInShell: true);
+      await Process.run('git', ['branch', '-D', tempBranch], workingDirectory: path, runInShell: true);
+      throw Exception('Failed timeline cleanup: $e');
     }
   }
 }

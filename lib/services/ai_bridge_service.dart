@@ -368,6 +368,26 @@ class TimelineCommit {
     this.verifiedNotes = '',
   });
 
+  TimelineCommit copyWith({
+    String? id,
+    List<String>? taskIds,
+    String? title,
+    String? summary,
+    String? commitHash,
+    String? commitDate,
+    String? verifiedNotes,
+  }) {
+    return TimelineCommit(
+      id: id ?? this.id,
+      taskIds: taskIds ?? this.taskIds,
+      title: title ?? this.title,
+      summary: summary ?? this.summary,
+      commitHash: commitHash ?? this.commitHash,
+      commitDate: commitDate ?? this.commitDate,
+      verifiedNotes: verifiedNotes ?? this.verifiedNotes,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'taskIds': taskIds,
@@ -681,8 +701,86 @@ wshShell.AppActivate $myPid
     notifyListeners();
   }
 
+  Future<void> _absorbOrphanedFiles(String taskId) async {
+    try {
+      final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
+      if (taskIdx == -1) return;
+      bool changed = false;
+
+      // Absorb Notes
+      final notesFile = File('$_dirPath/latest_notes.json');
+      if (notesFile.existsSync()) {
+        try {
+          final content = notesFile.readAsStringSync();
+          notesFile.deleteSync();
+          final jsonMap = jsonDecode(content);
+          final parsedSummary = jsonMap['summary']?.toString().trim() ?? '';
+          final parsedNotes = jsonMap['notes']?.toString().trim() ?? '';
+          if (parsedSummary.isNotEmpty) {
+            _tasks[taskIdx].summary = parsedSummary;
+            changed = true;
+          }
+          if (parsedNotes.isNotEmpty) {
+            final dateStr = DateTime.now().toLocal().toString().substring(0, 16);
+            final entry = '### Update - $dateStr\n$parsedNotes\n\n---\n\n';
+            if (_tasks[taskIdx].notes.trim().isNotEmpty) {
+              _tasks[taskIdx].notes = entry + _tasks[taskIdx].notes;
+            } else {
+              _tasks[taskIdx].notes = entry.trim();
+            }
+            changed = true;
+          }
+        } catch (_) {}
+      }
+
+      // Absorb Verification
+      final verificationFile = File('$_dirPath/latest_verification.json');
+      if (verificationFile.existsSync()) {
+        try {
+          final content = verificationFile.readAsStringSync();
+          verificationFile.deleteSync();
+          final List<dynamic> jsonList = jsonDecode(content);
+          for (var item in jsonList) {
+            final desc = item['description']?.toString().trim() ?? '';
+            final proof = item['proof']?.toString().trim();
+            if (desc.isNotEmpty) {
+              final vcIdx = _tasks[taskIdx].verificationCriteria.indexWhere((vc) => vc.description == desc);
+              if (vcIdx != -1) {
+                _tasks[taskIdx].verificationCriteria[vcIdx].proof = proof;
+                changed = true;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Absorb Preview
+      final previewFile = File('$_dirPath/latest_preview.json');
+      if (previewFile.existsSync()) {
+        try {
+          final content = previewFile.readAsStringSync();
+          previewFile.deleteSync();
+          final List<dynamic> jsonList = jsonDecode(content);
+          final newItems = jsonList.map((e) => AiPreviewItem.fromJson(e)).toList();
+          final existingApproved = _tasks[taskIdx].previewItems.where((i) => i.isApproved).toList();
+          _tasks[taskIdx].previewItems = existingApproved;
+          _tasks[taskIdx].previewItems.addAll(newItems);
+          changed = true;
+        } catch (_) {}
+      }
+
+      if (changed) {
+        await _save();
+      }
+    } catch (_) {}
+  }
+
   Future<void> forceDispatchCompileError(String errorLog) async {
     try {
+      if (_activeProcessingTaskId != null) {
+        await _absorbOrphanedFiles(_activeProcessingTaskId!);
+      }
+
       if (_compileErrorLoopCount >= 3) {
         _isQueuePaused = true;
         final prefs = await SharedPreferences.getInstance();
@@ -2161,6 +2259,24 @@ wshShell.AppActivate $myPid
       commitHash: commitHash,
       commitDate: DateTime.now().toIso8601String(),
     ));
+    await _save();
+  }
+
+  Future<void> applyTimelineCleanup(int keepCount, Map<String, String> newHashes) async {
+    if (_timelineHistory.length <= keepCount) return;
+
+    // Remove the older checkpoints
+    _timelineHistory.removeRange(keepCount, _timelineHistory.length);
+
+    // Update the commit hashes for the remaining ones
+    for (int i = 0; i < _timelineHistory.length; i++) {
+      final oldHash = _timelineHistory[i].commitHash;
+      if (newHashes.containsKey(oldHash)) {
+        _timelineHistory[i] = _timelineHistory[i].copyWith(
+          commitHash: newHashes[oldHash]!,
+        );
+      }
+    }
     await _save();
   }
 

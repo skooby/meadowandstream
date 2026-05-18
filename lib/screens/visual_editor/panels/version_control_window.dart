@@ -459,6 +459,40 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
       Widget trailingRow = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (i + 1 < commits.length) ...[
+            IconButton(
+              icon: const Icon(Icons.cleaning_services, size: 16, color: Colors.blueAccent),
+              tooltip: 'Squash Older History',
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: AppColors.panelBackground,
+                    title: const Text('Squash Older History', style: TextStyle(color: Colors.white)),
+                    content: Text('This will permanently squash all checkpoints older than this one into a single baseline commit to reduce repository bloat. This cannot be undone. Proceed?', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: AppColors.textMuted))),
+                      TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Squash', style: TextStyle(color: Colors.redAccent))),
+                    ],
+                  ),
+                );
+                if (confirm != true) return;
+                try {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Squashing older history...')));
+                  await VersionControlService.instance.cleanupTimelineHistory(i + 1);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('History squashed successfully!')));
+                    // The setState will happen implicitly if AiBridgeService triggers notifyListeners() and this widget rebuilds.
+                    // But we can also manually trigger a refresh of the commits.
+                    SandboxService.instance.reload(); // Cheap way to trigger global listenable
+                  }
+                } catch (e) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+                }
+              },
+            ),
+            const SizedBox(width: 4),
+          ],
           IconButton(
             icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
             tooltip: 'Delete Timeline Entry',
