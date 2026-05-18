@@ -2292,6 +2292,25 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                   ),
                                                   child: const Text('NOTES', style: TextStyle(fontWeight: FontWeight.bold)),
                                                 ),
+                                                if (_selectedTabIndex == 0 && verificationCriteriaList.isNotEmpty) ...[
+                                                  const Spacer(),
+                                                  TextButton.icon(
+                                                    onPressed: () {
+                                                      setStateBuilder(() {
+                                                        for (var item in verificationCriteriaList) {
+                                                          item.isVerified = true;
+                                                          item.status = AiVerificationStatus.verified;
+                                                        }
+                                                        _executeAutoSave();
+                                                      });
+                                                    },
+                                                    icon: const Icon(Icons.done_all, size: 14),
+                                                    label: const Text('Complete All', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                    style: TextButton.styleFrom(
+                                                      foregroundColor: AppColors.accent,
+                                                    ),
+                                                  ),
+                                                ],
                                               ],
                                             ),
                                             const SizedBox(height: 16),

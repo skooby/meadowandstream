@@ -3670,7 +3670,7 @@
       "priority": "none",
       "isFolder": false,
       "isWorksheet": true,
-      "isWorksheetVisible": false,
+      "isWorksheetVisible": true,
       "isNote": false,
       "isKnowledgeSummary": false,
       "isRead": true,
@@ -5361,67 +5361,6 @@
       "worksheetId": "version_control_brainstorm_72812e08-3039-43f6-ac18-a0054b9a3116"
     },
     {
-      "id": "e56d0d99-beb1-4e55-87dc-b9e5dfdc83f0",
-      "name": "3. Shelving Work (Git Stash)",
-      "description": "Implementation checklist for: 3. Shelving Work (Git Stash)",
-      "summary": "",
-      "notes": "",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "previewItems": [],
-      "verificationCriteria": [
-        {
-          "description": "Add a 'Shelve Current Work' button to the Version Control UI",
-          "goal": "",
-          "isVerified": false,
-          "status": "none",
-          "proof": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": []
-        },
-        {
-          "description": "Implement `git stash` functionality to temporarily wipe uncommitted changes",
-          "goal": "",
-          "isVerified": false,
-          "status": "none",
-          "proof": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": []
-        },
-        {
-          "description": "Add a 'Restore Shelved Work' button and implement `git stash pop`",
-          "goal": "",
-          "isVerified": false,
-          "status": "none",
-          "proof": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": []
-        }
-      ],
-      "status": "open",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": null,
-      "commitDate": null,
-      "parentId": "8a08fbc1-6fbc-4f02-86f6-c936aa8eaec0",
-      "worksheetId": "version_control_brainstorm_72812e08-3039-43f6-ac18-a0054b9a3116"
-    },
-    {
       "id": "f7cb983b-029c-4401-98b3-1e0fa50b0ca8",
       "name": "4. 'Oops' Button (Quick Undo)",
       "description": "Implementation checklist for: 4. 'Oops' Button (Quick Undo)",
@@ -5571,47 +5510,6 @@
       "commitHash": "060fb2c75b293c1eb19962654d59883c7132d2ff",
       "commitDate": "2026-05-18T07:55:10.492416",
       "parentId": "1778268121185"
-    },
-    {
-      "id": "1779063155069",
-      "name": "Task Editor",
-      "description": "Improvements and enhancements",
-      "summary": "Fix task editor Reset button to clear summary",
-      "notes": "### Update - 2026-05-18 07:37\n### Update - 2026-05-18 07:37\n- Updated `global_task_editor_window.dart` to fix the Reset button logic.\n- Injected `summaryController.clear()` directly into the Reset action pipeline to ensure the Summary input field successfully resets along with the rest of the Task Editor state.\n\n---\n\n---",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "previewItems": [],
-      "verificationCriteria": [
-        {
-          "description": "Reset button not clearing SUMMARY!",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "Modified the `onPressed` logic of the Reset button inside `global_task_editor_window.dart` to explicitly include `summaryController.clear();`. Previously, this button was wiping notes and verification criteria, but it completely bypassed the summary state.",
-          "requestClarification": false,
-          "tryCount": 1,
-          "attachments": []
-        }
-      ],
-      "status": "inTesting",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": "060fb2c75b293c1eb19962654d59883c7132d2ff",
-      "commitDate": "2026-05-18T07:55:10.492416",
-      "parentId": "1778559529935",
-      "worksheetId": "1778268121185"
     }
   ]
 }
