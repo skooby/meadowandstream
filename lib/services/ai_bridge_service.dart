@@ -1964,6 +1964,8 @@ wshShell.AppActivate $myPid
       String? notes,
       String? parentId,
       bool clearParentId = false,
+      String? worksheetId,
+      bool clearWorksheetId = false,
       bool? isWorksheet,
       String? implementationQuestion,
       List<AiReviewQuestion>? reviewQuestions,
@@ -2081,6 +2083,12 @@ wshShell.AppActivate $myPid
       } else if (!clearParentId &&
           parentId != null &&
           _tasks[index].parentId != parentId) hasChanges = true;
+          
+      if (clearWorksheetId && _tasks[index].worksheetId != null) {
+        hasChanges = true;
+      } else if (!clearWorksheetId &&
+          worksheetId != null &&
+          _tasks[index].worksheetId != worksheetId) hasChanges = true;
 
       if (hasChanges) {
         bool performSandboxCommit = false;
@@ -2107,10 +2115,12 @@ wshShell.AppActivate $myPid
           _tasks[index].verificationCriteria = verificationCriteria;
 
           bool shouldCommit = didCompleteChecklist ?? (verificationCriteria.isNotEmpty && !newHasUnverified && _tasks[index].status != AiTaskStatus.completed);
+          try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('shouldCommit: $shouldCommit, didCompleteChecklist: $didCompleteChecklist, newHasUnverified: $newHasUnverified, status: ${_tasks[index].status}\n', mode: FileMode.append); } catch (_) {}
 
           if (shouldCommit) {
              bool allSandboxTasksApproved = true;
              final activeTaskIds = SandboxService.instance.sandboxTaskIds;
+             try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('activeTaskIds: $activeTaskIds\n', mode: FileMode.append); } catch (_) {}
              for (final tId in activeTaskIds) {
                 if (tId == _tasks[index].id) continue;
                 try {
@@ -2122,9 +2132,14 @@ wshShell.AppActivate $myPid
                 } catch (_) {}
              }
              
+             try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('allSandboxTasksApproved: $allSandboxTasksApproved\n', mode: FileMode.append); } catch (_) {}
              if (allSandboxTasksApproved) {
                  performSandboxCommit = true;
                  tasksToCommit = List.from(activeTaskIds);
+                 if (!tasksToCommit.contains(_tasks[index].id)) {
+                   tasksToCommit.add(_tasks[index].id);
+                 }
+                 try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('tasksToCommit: $tasksToCommit\n', mode: FileMode.append); } catch (_) {}
              }
           }
         }
@@ -2182,11 +2197,16 @@ wshShell.AppActivate $myPid
         if (clearParentId) {
           _tasks[index].parentId = null;
         } else if (parentId != null) _tasks[index].parentId = parentId;
+        
+        if (clearWorksheetId) {
+          _tasks[index].worksheetId = null;
+        } else if (worksheetId != null) _tasks[index].worksheetId = worksheetId;
 
         await _save();
         _triggerSandboxMergeIfNeeded(oldStatus, _tasks[index]);
         
         if (performSandboxCommit) {
+             try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('performSandboxCommit is TRUE, getting names and descriptions...\n', mode: FileMode.append); } catch (_) {}
              final allNames = tasksToCommit.map((id) {
                try { 
                  final task = _tasks.firstWhere((t) => t.id == id);
@@ -2196,20 +2216,20 @@ wshShell.AppActivate $myPid
              }).where((n) => n.isNotEmpty).join(' | ');
 
              final allDescriptions = tasksToCommit.map((id) {
-               try { return _tasks.firstWhere((t) => t.id == id).description; } catch (_) { return ''; }
+               try { 
+                 return _tasks.firstWhere((t) => t.id == id).description;
+               } catch (_) { return ''; }
              }).where((d) => d.isNotEmpty).join('\n\n');
 
-             final allVerifiedNotes = tasksToCommit.map((id) {
-               try {
-                 return _tasks.firstWhere((t) => t.id == id).verificationCriteria
-                    .where((c) => c.status == AiVerificationStatus.verified)
-                    .map((c) => '- ${c.description}')
-                    .join('\n');
+             final verifiedNotes = tasksToCommit.map((id) {
+               try { 
+                 return _tasks.firstWhere((t) => t.id == id).verificationCriteria.where((vc) => vc.status == AiVerificationStatus.verified).map((vc) => '- ${vc.description}').join('\n');
                } catch (_) { return ''; }
-             }).where((n) => n.isNotEmpty).join('\n');
+             }).where((n) => n.isNotEmpty).join('\n\n');
 
-             final finalVerifiedNotes = allVerifiedNotes.isEmpty ? 'No items verified.' : allVerifiedNotes;
+             final finalVerifiedNotes = verifiedNotes.isEmpty ? 'No verification notes.' : verifiedNotes;
 
+             try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('calling commitTimelineTasks for: $allNames\n', mode: FileMode.append); } catch (_) {}
              try {
                  final hash = await VersionControlService.instance.commitTimelineTasks(
                     tasksToCommit,
@@ -2219,8 +2239,10 @@ wshShell.AppActivate $myPid
                     finalVerifiedNotes,
                  ).catchError((e) {
                     if (kDebugMode) print('Auto-commit failed: $e');
+                    try { File('.ai_bridge/bridge_error.txt').writeAsStringSync('Auto-commit failed: $e\n'); } catch (_) {}
                     return '';
                  });
+                 try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('commitTimelineTasks returned hash: $hash\n', mode: FileMode.append); } catch (_) {}
                  if (hash.isNotEmpty && !hash.startsWith('Local repository path')) {
                     final actualHash = (hash == 'No changes to commit.' || hash == 'Committed successfully.') ? 'No Git Changes' : hash;
                     final commitDateStr = DateTime.now().toIso8601String();

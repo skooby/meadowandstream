@@ -136,6 +136,10 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
   void setStateBuilder(void Function() fn) {
     setState(fn);
     GlobalTaskEditorState.instance.hasUnsavedEdits = hasUnsavedEdits;
+    GlobalTaskEditorState.instance.unsavedReason = unsavedReason ?? '';
+    try {
+      File('.ai_bridge/bridge_debug.txt').writeAsStringSync('unsavedReason: ${unsavedReason ?? 'null'}');
+    } catch (_) {}
   }
 
   bool _isImageFile(String path) {
@@ -150,7 +154,13 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
   final FocusNode _notesFocusNode = FocusNode();
 
   void _onFocusChanged() {
-    // Intentionally empty: focus loss no longer auto-saves.
+    // When focus leaves a text field, immediately flush any pending debounced save.
+    // This ensures _shadowTask is updated before the bridge cooldown expires and fires a reload.
+    final anyFocused = _nameFocusNode.hasFocus || _descFocusNode.hasFocus ||
+        _summaryFocusNode.hasFocus || _notesFocusNode.hasFocus;
+    if (!anyFocused && hasUnsavedEdits) {
+      _executeAutoSave(instant: true);
+    }
   }
 
   @override
@@ -168,10 +178,10 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     _notesFocusNode.addListener(_onFocusChanged);
 
     // Update UI on text changed to reflect Save button state
-    nameController.addListener(_performAutoSave);
-    descController.addListener(_performAutoSave);
-    summaryController.addListener(_performAutoSave);
-    notesController.addListener(_performAutoSave);
+    nameController.addListener(_executeAutoSave);
+    descController.addListener(_executeAutoSave);
+    summaryController.addListener(_executeAutoSave);
+    notesController.addListener(_executeAutoSave);
 
     descUndo = UndoHistoryController();
     summaryUndo = UndoHistoryController();
@@ -188,10 +198,14 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     }
 
     AiBridgeService.instance.addListener(_onAiBridgeTasksChanged);
+    // Register the flush callback so the reload pipeline can force-save before reloading
+    GlobalTaskEditorState.instance.flushPendingSave = () => _executeAutoSave(instant: true);
   }
 
   @override
   void dispose() {
+    GlobalTaskEditorState.instance.hasUnsavedEdits = false;
+    GlobalTaskEditorState.instance.flushPendingSave = null;
     VisualEditorScreen.currentWorkspace.removeListener(_loadPreferences);
     VisualEditorScreen.configRefreshNotifier.removeListener(_loadPreferences);
     GlobalTaskEditorState.instance.activeRequest
@@ -201,10 +215,10 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     _descFocusNode.removeListener(_onFocusChanged);
     _notesFocusNode.removeListener(_onFocusChanged);
 
-    nameController.removeListener(_performAutoSave);
-    descController.removeListener(_performAutoSave);
-    summaryController.removeListener(_performAutoSave);
-    notesController.removeListener(_performAutoSave);
+    nameController.removeListener(_executeAutoSave);
+    descController.removeListener(_executeAutoSave);
+    summaryController.removeListener(_executeAutoSave);
+    notesController.removeListener(_executeAutoSave);
 
     _nameFocusNode.dispose();
     _descFocusNode.dispose();
@@ -273,85 +287,62 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     }
   }
 
-  bool get hasUnsavedEdits {
+  String? get unsavedReason {
     if (existingTask == null || _shadowTask == null) {
-      return nameController.text.trim().isNotEmpty ||
-          descController.text.trim().isNotEmpty ||
-          notesController.text.trim().isNotEmpty ||
-          verificationCriteriaList.isNotEmpty;
+      if (nameController.text.trim().isNotEmpty) return 'nameController';
+      if (descController.text.trim().isNotEmpty) return 'descController';
+      if (notesController.text.trim().isNotEmpty) return 'notesController';
+      if (verificationCriteriaList.isNotEmpty) return 'verificationCriteriaList';
+      return null;
     }
 
-    bool reviewQuestionsChanged = false;
-    if (reviewQuestionsList.length != _shadowTask!.reviewQuestions.length) {
-      reviewQuestionsChanged = true;
-    } else {
-      for (int i = 0; i < reviewQuestionsList.length; i++) {
-        if (reviewQuestionsList[i].selectedOption !=
-            _shadowTask!.reviewQuestions[i].selectedOption) {
-          reviewQuestionsChanged = true;
-          break;
-        }
-      }
+    if (reviewQuestionsList.length != _shadowTask!.reviewQuestions.length) return 'reviewQuestionsList length';
+    for (int i = 0; i < reviewQuestionsList.length; i++) {
+      if (reviewQuestionsList[i].selectedOption != _shadowTask!.reviewQuestions[i].selectedOption) return 'reviewQuestionsList[$i]';
     }
 
-    bool verificationCriteriaChanged = false;
-    if (verificationCriteriaList.length !=
-        _shadowTask!.verificationCriteria.length) {
-      verificationCriteriaChanged = true;
-    } else {
-      for (int i = 0; i < verificationCriteriaList.length; i++) {
-        if (verificationCriteriaList[i].description !=
-                _shadowTask!.verificationCriteria[i].description ||
-            verificationCriteriaList[i].goal !=
-                _shadowTask!.verificationCriteria[i].goal ||
-            verificationCriteriaList[i].status !=
-                _shadowTask!.verificationCriteria[i].status ||
-            verificationCriteriaList[i].isVerified !=
-                _shadowTask!.verificationCriteria[i].isVerified ||
-            verificationCriteriaList[i].proof !=
-                _shadowTask!.verificationCriteria[i].proof ||
-            verificationCriteriaList[i].requestClarification !=
-                _shadowTask!.verificationCriteria[i].requestClarification ||
-            verificationCriteriaList[i].tryCount !=
-                _shadowTask!.verificationCriteria[i].tryCount) {
-          verificationCriteriaChanged = true;
-          break;
-        }
-      }
+    if (verificationCriteriaList.length != _shadowTask!.verificationCriteria.length) return 'verificationCriteriaList length';
+    for (int i = 0; i < verificationCriteriaList.length; i++) {
+        if (verificationCriteriaList[i].description != _shadowTask!.verificationCriteria[i].description) return 'verificationCriteriaList[$i].description';
+        if (verificationCriteriaList[i].goal != _shadowTask!.verificationCriteria[i].goal) return 'verificationCriteriaList[$i].goal';
+        if (verificationCriteriaList[i].status != _shadowTask!.verificationCriteria[i].status) return 'verificationCriteriaList[$i].status';
+        if (verificationCriteriaList[i].isVerified != _shadowTask!.verificationCriteria[i].isVerified) return 'verificationCriteriaList[$i].isVerified';
+        if (verificationCriteriaList[i].proof != _shadowTask!.verificationCriteria[i].proof) return 'verificationCriteriaList[$i].proof';
+        if (verificationCriteriaList[i].requestClarification != _shadowTask!.verificationCriteria[i].requestClarification) return 'verificationCriteriaList[$i].requestClarification';
+        if (verificationCriteriaList[i].tryCount != _shadowTask!.verificationCriteria[i].tryCount) return 'verificationCriteriaList[$i].tryCount';
     }
 
-    return nameController.text.replaceAll('\r', '').trim() !=
-            (_shadowTask!.name.replaceAll('\r', '').trim()) ||
-        descController.text.replaceAll('\r', '').trim() !=
-            (_shadowTask!.description.replaceAll('\r', '').trim()) ||
-        summaryController.text.replaceAll('\r', '').trim() !=
-            (_shadowTask!.summary.replaceAll('\r', '').trim()) ||
-        notesController.text.replaceAll('\r', '').trim() !=
-            (_shadowTask!.notes.replaceAll('\r', '').trim()) ||
-        isWorksheet != _shadowTask!.isWorksheet ||
-        isFolder != _shadowTask!.isFolder ||
-        isNote != _shadowTask!.isNote ||
-        isKnowledgeSummary != _shadowTask!.isKnowledgeSummary ||
-        activeParentId != _shadowTask!.parentId ||
-        worksheetId != _shadowTask!.worksheetId ||
-        reviewQuestionsChanged ||
-        verificationCriteriaChanged ||
-        originalHighlightColor != customHighlightColor ||
-        originalIconBackgroundColor != customIconBackgroundColor ||
-        originalIconColor != customIconColor ||
-        originalToolbarIconColor != customToolbarIconColor ||
-        originalIconCode != customIconCode ||
-        _shadowTask!.preventDeletion != preventDeletion ||
-        _shadowTask!.applyLocksToChildren != applyLocksToChildren ||
-        _shadowTask!.isReadOnly != isReadOnly ||
-        _shadowTask!.isIgnored != isIgnored ||
-        _shadowTask!.llmPromptStyleOverride != llmPromptStyleOverride ||
-        originalStatus != _shadowTask!.status ||
-        fileAttachments.join(',') != _shadowTask!.fileAttachments.join(',') ||
-        hyperlinks.join(',') != _shadowTask!.hyperlinks.join(',');
+    if (nameController.text.replaceAll('\r', '').trim() != _shadowTask!.name.replaceAll('\r', '').trim()) return 'name';
+    if (descController.text.replaceAll('\r', '').trim() != _shadowTask!.description.replaceAll('\r', '').trim()) return 'description';
+    if (summaryController.text.replaceAll('\r', '').trim() != _shadowTask!.summary.replaceAll('\r', '').trim()) return 'summary';
+    if (notesController.text.replaceAll('\r', '').trim() != _shadowTask!.notes.replaceAll('\r', '').trim()) return 'notes';
+    if (isWorksheet != _shadowTask!.isWorksheet) return 'isWorksheet';
+    if (isFolder != _shadowTask!.isFolder) return 'isFolder';
+    if (isNote != _shadowTask!.isNote) return 'isNote';
+    if (isKnowledgeSummary != _shadowTask!.isKnowledgeSummary) return 'isKnowledgeSummary';
+    if (activeParentId != _shadowTask!.parentId) return 'parentId';
+    if (worksheetId != _shadowTask!.worksheetId) return 'worksheetId';
+    if (originalHighlightColor != customHighlightColor) return 'highlightColor';
+    if (originalIconBackgroundColor != customIconBackgroundColor) return 'iconBackgroundColor';
+    if (originalIconColor != customIconColor) return 'iconColor';
+    if (originalToolbarIconColor != customToolbarIconColor) return 'toolbarIconColor';
+    if (originalIconCode != customIconCode) return 'iconCodePoint';
+    if (_shadowTask!.preventDeletion != preventDeletion) return 'preventDeletion';
+    if (_shadowTask!.applyLocksToChildren != applyLocksToChildren) return 'applyLocksToChildren';
+    if (_shadowTask!.isReadOnly != isReadOnly) return 'isReadOnly';
+    if (_shadowTask!.isIgnored != isIgnored) return 'isIgnored';
+    if (_shadowTask!.llmPromptStyleOverride != llmPromptStyleOverride) return 'llmPromptStyleOverride';
+    if (originalStatus != _shadowTask!.status) return 'status';
+    if (fileAttachments.join(',') != _shadowTask!.fileAttachments.join(',')) return 'fileAttachments';
+    if (hyperlinks.join(',') != _shadowTask!.hyperlinks.join(',')) return 'hyperlinks';
+    
+    return null;
   }
+  
+  bool get hasUnsavedEdits => unsavedReason != null;
 
   Future<void> _executeAutoSaveInternal({bool isClosing = false}) async {
+    try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('[SAVE-1] started. vcList=${verificationCriteriaList.length} shadow=${_shadowTask?.verificationCriteria.length ?? -1} reason=${unsavedReason ?? 'null'}'); } catch(_) {}
     if (existingTask == null) {
       if (!hasUnsavedEdits) return; // Don't create empty task
       if (isFolder || isWorksheet || isNote || isKnowledgeSummary) {
@@ -447,6 +438,10 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     existingTask!.isIgnored = isIgnored;
     existingTask!.llmPromptStyleOverride = llmPromptStyleOverride;
 
+    // Rebuild shadow BEFORE the async call so _onAiBridgeTasksChanged sees a clean state
+    _shadowTask = AiTask.fromJson(existingTask!.toJson());
+    try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('[SAVE-2] shadow rebuilt early. vcList=${verificationCriteriaList.length} shadow=${_shadowTask?.verificationCriteria.length ?? -1} reason=${unsavedReason ?? 'null'}'); } catch(_) {}
+
     originalStatus = newStatus;
     originalHighlightColor = customHighlightColor;
     originalIconBackgroundColor = customIconBackgroundColor;
@@ -505,25 +500,37 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
         clearIcon: customIconCode == null,
         parentId: activeParentId,
         clearParentId: activeParentId == null,
+        worksheetId: worksheetId,
+        clearWorksheetId: worksheetId == null,
         fileAttachments: List.from(fileAttachments),
         hyperlinks: List.from(hyperlinks),
         isFolder: isFolder,
         isNote: isNote,
         isKnowledgeSummary: isKnowledgeSummary);
 
+    try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('[SAVE-3] after updateTaskDetails. vcList=${verificationCriteriaList.length} shadow=${_shadowTask?.verificationCriteria.length ?? -1} reason=${unsavedReason ?? 'null'}'); } catch(_) {}
+
     if (existingTask!.id == 'unassigned_ws' ||
         AiBridgeService.instance.tasks.any((t) => t.id == existingTask!.id)) {
-      AiBridgeService.instance.saveTasks();
+      await AiBridgeService.instance.saveTasks();
     }
 
     _shadowTask = AiTask.fromJson(existingTask!.toJson());
 
+    try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('[SAVE-4] shadow rebuilt post-save. vcList=${verificationCriteriaList.length} shadow=${_shadowTask?.verificationCriteria.length ?? -1} reason=${unsavedReason ?? 'null'}'); } catch(_) {}
+
     if (mounted) {
       try {
-        setStateBuilder(() {});
+        // Force-clear dirty state after a successful save, regardless of any listener
+        // re-entrancy that may have temporarily flipped unsavedReason back to non-null.
+        GlobalTaskEditorState.instance.hasUnsavedEdits = false;
+        GlobalTaskEditorState.instance.unsavedReason = '';
+        setState(() {});
+        try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('[SAVE-5] done. reason=${unsavedReason ?? 'null'} globalDirty=${GlobalTaskEditorState.instance.hasUnsavedEdits}'); } catch(_) {}
       } catch (_) {}
     }
   }
+
 
   void _onRequestChanged() {
     final req = GlobalTaskEditorState.instance.activeRequest.value;
@@ -565,13 +572,17 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
             _shadowTask!.notes = updatedTask.notes;
             existingTask!.notes = updatedTask.notes;
           } else if (notesController.text.replaceAll('\r', '').trim() == normalizedOld) {
-            notesController.text = updatedTask.notes;
+            // Update shadow BEFORE controller so listener fires against up-to-date shadow
             existingTask!.notes = updatedTask.notes;
             _shadowTask!.notes = updatedTask.notes;
+            notesController.text = updatedTask.notes;
             didGranularMerge = true;
           } else {
             String oldNotes = _shadowTask!.notes.replaceAll('\r', '');
             String newNotes = updatedTask.notes.replaceAll('\r', '');
+            // Update shadow BEFORE controller so listener fires against up-to-date shadow
+            existingTask!.notes = updatedTask.notes;
+            _shadowTask!.notes = updatedTask.notes;
             if (newNotes.startsWith(oldNotes)) {
               notesController.text = notesController.text + newNotes.substring(oldNotes.length);
             } else if (newNotes.endsWith(oldNotes)) {
@@ -581,33 +592,34 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
             } else {
               notesController.text = newNotes + '\n\n' + notesController.text;
             }
-            existingTask!.notes = updatedTask.notes;
-            _shadowTask!.notes = updatedTask.notes;
             didGranularMerge = true;
           }
         }
         if (descController.text.replaceAll('\r', '').trim() ==
                 _shadowTask!.description.replaceAll('\r', '').trim() &&
             updatedTask.description != _shadowTask!.description) {
-          descController.text = updatedTask.description;
+          // Update shadow BEFORE controller so listener fires against up-to-date shadow
           existingTask!.description = updatedTask.description;
           _shadowTask!.description = updatedTask.description;
+          descController.text = updatedTask.description;
           didGranularMerge = true;
         }
         if (summaryController.text.replaceAll('\r', '').trim() ==
                 _shadowTask!.summary.replaceAll('\r', '').trim() &&
             updatedTask.summary != _shadowTask!.summary) {
-          summaryController.text = updatedTask.summary;
+          // Update shadow BEFORE controller so listener fires against up-to-date shadow
           existingTask!.summary = updatedTask.summary;
           _shadowTask!.summary = updatedTask.summary;
+          summaryController.text = updatedTask.summary;
           didGranularMerge = true;
         }
         if (nameController.text.replaceAll('\r', '').trim() ==
                 _shadowTask!.name.replaceAll('\r', '').trim() &&
             updatedTask.name != _shadowTask!.name) {
-          nameController.text = updatedTask.name;
+          // Update shadow BEFORE controller so listener fires against up-to-date shadow
           existingTask!.name = updatedTask.name;
           _shadowTask!.name = updatedTask.name;
+          nameController.text = updatedTask.name;
           didGranularMerge = true;
         }
         if (existingTask!.status == originalStatus &&
@@ -1273,7 +1285,7 @@ verificationCriteriaList[i].isCommitted = false;
 verificationCriteriaList[i].isCommitted = false;
                                           });
                                         }
-                                        _performAutoSave();
+                                        _executeAutoSave();
                                       },
                                     ),
                                   ),
@@ -1384,7 +1396,7 @@ verificationCriteriaList[i].isCommitted = false;
 verificationCriteriaList[i].isCommitted = false;
                                                 });
                                               }
-                                              _performAutoSave();
+                                              _executeAutoSave();
                                             },
                                           ),
                                         ),
@@ -1684,8 +1696,8 @@ verificationCriteriaList[i].isCommitted = false;
                                 text: newSubTaskController.text.trim()));
                             _verificationGoalControllers.add(TextEditingController());
                             newSubTaskController.clear();
-                            _executeAutoSave();
                           });
+                          _executeAutoSave(instant: true);
                         }
                         return KeyEventResult.handled;
                       }
@@ -1729,8 +1741,8 @@ verificationCriteriaList[i].isCommitted = false;
                             text: newSubTaskController.text.trim()));
                         _verificationGoalControllers.add(TextEditingController());
                         newSubTaskController.clear();
-                        _executeAutoSave();
                       });
+                      _executeAutoSave(instant: true);
                     }
                   },
                 ),
@@ -2865,7 +2877,7 @@ verificationCriteriaList[i].isCommitted = false;
                                                                     .add(linkCtrl
                                                                         .text);
                                                             });
-                                                            _performAutoSave();
+                                                            _executeAutoSave();
                                                           }
                                                           Navigator.pop(ctx);
                                                         },

@@ -1,5 +1,16 @@
 [
   {
+    "id": "5601111e-7f59-49e7-84a9-a090ea07a4af",
+    "taskIds": [
+      "1779063155069"
+    ],
+    "title": "Task Editor [Verify hot reload loop resolution]",
+    "summary": "Improvements and enhancements",
+    "commitHash": "28cc31b56fe76d22289e87e5da127262eef3f751",
+    "commitDate": "2026-05-18T15:13:32.608720",
+    "verifiedNotes": "- Lets test editing while ai is busy and it waiting for us to finish the current input before performing a hot restart/reload\n- Getting a lot of these errors, \n\"Unable to parse JSON message:\r\nThe document is empty.\"\n- Lets show an icon in the bottom left corner when we are editing an input field. This is for debug purposes to make sure this state is correct."
+  },
+  {
     "id": "8370f1f9-96c3-4db2-a690-7b9340ee3228",
     "taskIds": [
       "1779063155069"

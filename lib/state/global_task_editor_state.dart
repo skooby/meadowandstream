@@ -21,6 +21,11 @@ class GlobalTaskEditorState {
   static final GlobalTaskEditorState instance = GlobalTaskEditorState._internal();
   
   bool hasUnsavedEdits = false;
+  String unsavedReason = '';
+
+  /// Registered by the editor widget. When called, immediately flushes any
+  /// pending debounced save and waits for the I/O to complete.
+  Future<void> Function()? flushPendingSave;
   
   GlobalTaskEditorState._internal();
 

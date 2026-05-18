@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cyclop/cyclop.dart';
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import '../../constants.dart';
@@ -227,16 +228,25 @@ class _GlobalOverlayInjectorState extends State<_GlobalOverlayInjector> {
 
   bool _isSafeToReload() {
       if (GlobalTaskEditorState.instance.hasUnsavedEdits) {
-          isTextInputFocusedNotifier.value = 'BLOCKED: hasUnsavedEdits is true';
+          final msg = 'BLOCKED: Dirty: ${GlobalTaskEditorState.instance.unsavedReason}';
+          isTextInputFocusedNotifier.value = msg;
+          try { File('.ai_bridge/reload_block_reason.txt').writeAsStringSync(msg); } catch (_) {}
           return false;
       }
+      // Block if ANY text input is currently focused — wait for them to click away.
       if (isTextInputFocused().startsWith('YES')) {
-          if (DateTime.now().difference(_lastKeystrokeTime).inMilliseconds < 1500) {
-              isTextInputFocusedNotifier.value = 'BLOCKED: Still typing';
-              return false; // Still typing!
-          }
+          isTextInputFocusedNotifier.value = 'BLOCKED: Text field is focused';
+          try { File('.ai_bridge/reload_block_reason.txt').writeAsStringSync('BLOCKED: Text field is focused'); } catch (_) {}
+          return false;
+      }
+      // Block for 1500ms after the last keystroke, even if focus was just released.
+      if (DateTime.now().difference(_lastKeystrokeTime).inMilliseconds < 1500) {
+          isTextInputFocusedNotifier.value = 'BLOCKED: Cooldown after typing';
+          try { File('.ai_bridge/reload_block_reason.txt').writeAsStringSync('BLOCKED: Cooldown after typing'); } catch (_) {}
+          return false;
       }
       isTextInputFocusedNotifier.value = 'SAFE TO RELOAD';
+      try { File('.ai_bridge/reload_block_reason.txt').writeAsStringSync('SAFE TO RELOAD'); } catch (_) {}
       return true;
   }
 
@@ -255,10 +265,30 @@ class _GlobalOverlayInjectorState extends State<_GlobalOverlayInjector> {
       
        // Wire up the new automated pipeline
        AiBridgeService.instance.onAutoReloadTriggered = (type) async {
-           int safetyWait = 0;
-           while (!_isSafeToReload() && safetyWait < 300) {
-               await Future.delayed(const Duration(seconds: 1));
-               safetyWait++;
+           // Step 1: Flush any pending debounced save so data is persisted.
+           final flush = GlobalTaskEditorState.instance.flushPendingSave;
+           if (flush != null) {
+               try { await flush(); } catch (_) {}
+           }
+
+           // Step 2: If a text field is still focused, wait for focus to leave
+           // using an event-driven listener (no polling loop).
+           if (isTextInputFocused().startsWith('YES')) {
+               final completer = Completer<void>();
+               void focusListener() {
+                   if (!isTextInputFocused().startsWith('YES')) {
+                       completer.complete();
+                   }
+               }
+               FocusManager.instance.addListener(focusListener);
+               // Safety timeout: give up after 60s regardless
+               await completer.future.timeout(
+                   const Duration(seconds: 60),
+                   onTimeout: () {},
+               );
+               FocusManager.instance.removeListener(focusListener);
+               // Brief buffer after focus leaves for any final keystrokes to settle
+               await Future.delayed(const Duration(milliseconds: 500));
            }
 
            if (type == UpdateCoverType.hotRestart || type == UpdateCoverType.rebuild) {
