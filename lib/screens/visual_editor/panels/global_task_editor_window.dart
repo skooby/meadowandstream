@@ -66,9 +66,6 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
   double _height = 600;
   double _bgOpacity = 0.4;
   Offset _offset = const Offset(200, 100);
-  
-  bool _showRedCheckmark = false;
-  Timer? _checkmarkTimer;
 
   AiTask? existingTask;
   AiTask? _shadowTask;
@@ -189,17 +186,6 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     }
 
     AiBridgeService.instance.addListener(_onAiBridgeTasksChanged);
-    
-    AiBridgeService.instance.onChecklistCommitted = () {
-      if (mounted) {
-        _showRedCheckmark = true;
-        _checkmarkTimer?.cancel();
-        _checkmarkTimer = Timer(const Duration(seconds: 2), () {
-          if (mounted) setStateBuilder(() => _showRedCheckmark = false);
-        });
-        setStateBuilder(() {});
-      }
-    };
   }
 
   @override
@@ -1158,10 +1144,13 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                       ? Colors.grey.withOpacity(0.5)
                                       : AppColors.controlBorder),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Stack(
+                      clipBehavior: Clip.none,
                       children: [
-                        Row(
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             SizedBox(
@@ -1611,7 +1600,39 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                             ],
                       ],
                     ),
-                  ),
+                    if (verificationCriteriaList[i].status == AiVerificationStatus.verified)
+                      Positioned(
+                        bottom: -4,
+                        right: -4,
+                        child: IgnorePointer(
+                          child: TweenAnimationBuilder<double>(
+                            tween: Tween<double>(begin: 0.0, end: 1.0),
+                            duration: const Duration(milliseconds: 500),
+                            curve: Curves.elasticOut,
+                            builder: (context, val, child) {
+                              return Transform.scale(
+                                scale: val,
+                                child: child,
+                              );
+                            },
+                            child: Icon(
+                              Icons.check_circle_outline,
+                              color: Colors.red.withOpacity(0.8),
+                              size: 48,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black.withOpacity(0.5),
+                                  blurRadius: 4,
+                                  offset: const Offset(1, 1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
                 ],
               ),
             ),
@@ -3209,36 +3230,6 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                     ),
                   ],
                 ),
-                if (_showRedCheckmark)
-                  Positioned(
-                    bottom: 20,
-                    right: 20,
-                    child: IgnorePointer(
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween<double>(begin: 0.0, end: 1.0),
-                        duration: const Duration(milliseconds: 500),
-                        curve: Curves.elasticOut,
-                        builder: (context, val, child) {
-                          return Transform.scale(
-                            scale: val,
-                            child: child,
-                          );
-                        },
-                        child: Icon(
-                          Icons.check_circle_outline,
-                          color: Colors.red.withOpacity(0.8),
-                          size: 100,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black.withOpacity(0.5),
-                              blurRadius: 10,
-                              offset: const Offset(2, 2),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
                 rz(
                     t: 0,
                     b: 0,
