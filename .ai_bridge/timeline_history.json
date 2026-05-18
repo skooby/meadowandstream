@@ -1,5 +1,16 @@
 [
   {
+    "id": "675a829b-b1cf-4026-b40e-b49ef94755d2",
+    "taskIds": [
+      "1779063155069"
+    ],
+    "title": "Task Editor [Add Complete All button to Task Editor checklist]",
+    "summary": "Improvements and enhancements",
+    "commitHash": "0c4b6767134c52cf411b168a6e501286fac3c224",
+    "commitDate": "2026-05-18T09:56:38.830106",
+    "verifiedNotes": "- Add a Complete all, which will set each checklist item as completed"
+  },
+  {
     "id": "2e41660d-cc83-45cc-940b-67128442cba5",
     "taskIds": [
       "1778869915153",

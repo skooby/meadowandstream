@@ -1187,6 +1187,15 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                       verificationCriteriaList[i].proof = null;
                                     }
                                     _executeAutoSave();
+                                    
+                                    if (verificationCriteriaList[i].status == AiVerificationStatus.verified) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Checklist item completed'),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
                                   });
                                 },
                                 child: Icon(
@@ -2302,6 +2311,13 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                           item.status = AiVerificationStatus.verified;
                                                         }
                                                         _executeAutoSave();
+                                                        
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          const SnackBar(
+                                                            content: Text('All checklist items completed'),
+                                                            duration: Duration(seconds: 2),
+                                                          ),
+                                                        );
                                                       });
                                                     },
                                                     icon: const Icon(Icons.done_all, size: 14),
