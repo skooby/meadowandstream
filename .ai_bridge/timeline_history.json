@@ -1,5 +1,17 @@
 [
   {
+    "id": "f3e1fabf-d23d-4dbb-b7e4-d185fc92f812",
+    "taskIds": [
+      "1779167205871",
+      "1778503455784"
+    ],
+    "title": "Fix compile errors | TASK MANAGER [Fix: Task editor bottom toolbar separators]",
+    "summary": "The recent Hot Reload/Restart resulted in compilation errors. Fix them immediately.\n\nGeneral improvements for Task Manager",
+    "commitHash": "6da4b04ecda1eba4cceeb6598a1fa58e62d48f0d",
+    "commitDate": "2026-05-19T04:44:07.066741",
+    "verifiedNotes": "- Feels like summary is getting rewritten as we mark checklist items as complete. The summary should summarize all items within the task editor. This is for sure happening. summary should not \n- Remove the double separator in the bottom area the one after duplicate task"
+  },
+  {
     "id": "3e731434-bb2e-4e6a-b3ec-9b258efd1f28",
     "taskIds": [
       "1778503455784"
