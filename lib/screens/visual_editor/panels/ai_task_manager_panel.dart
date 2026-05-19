@@ -2704,19 +2704,19 @@ showColorPickerWindow(context);
         task.previewItems = [];
         AiBridgeService.instance.notifyListeners();
       }
-      instructions = '\${AiBridgeService.instance.previewModeInstructions}\\n\\n\$instructions';
+      instructions = '${AiBridgeService.instance.previewModeInstructions}\n\n$instructions';
       if (AiBridgeService.instance.isIqMode) {
-        instructions = 'IQ MODE ACTIVE: Categorize each preview item as RISKY, FEEDBACK, or SAFE using the strictly added `category` field in your JSON output.\\n\$instructions';
+        instructions = 'IQ MODE ACTIVE: Categorize each preview item as RISKY, FEEDBACK, or SAFE using the strictly added `category` field in your JSON output.\n$instructions';
       }
     } else if (bypassPreview) {
-      String previewInstructions = '\${AiBridgeService.instance.previewApprovedInstructions}\\n';
+      String previewInstructions = '${AiBridgeService.instance.previewApprovedInstructions}\n';
       for (var item in task.previewItems) {
-         previewInstructions += '- \${item.description}\\n';
+         previewInstructions += '- ${item.description}\n';
          if (item.comment.isNotEmpty) {
-            previewInstructions += '  User Comment: \${item.comment}\\n';
+            previewInstructions += '  User Comment: ${item.comment}\n';
          }
       }
-      instructions = '\$previewInstructions\\n\$instructions';
+      instructions = '$previewInstructions\n$instructions';
       
       if (!copyOnly) {
         // Clear the preview items now that they've been consumed and approved, 

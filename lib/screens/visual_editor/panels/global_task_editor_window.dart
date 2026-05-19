@@ -29,6 +29,7 @@ import 'attachment_viewer_window.dart';
 import '../../../services/version_control_service.dart';
 import 'version_control_window.dart';
 import '../../../services/sandbox_service.dart';
+import '../../../services/local_ai_service.dart';
 
 final ValueNotifier<bool> showTaskEditorNotifier = ValueNotifier(false);
 
@@ -2239,6 +2240,32 @@ verificationCriteriaList[i].isCommitted = false;
                                                   children: [
                                                     IconButton(
                                                       icon: const Icon(
+                                                          Icons.auto_awesome,
+                                                          size: 16),
+                                                      onPressed: () async {
+                                                        if (descController.text.isEmpty) return;
+                                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reviewing prompt...')));
+                                                        final result = await LocalAiService.instance.reviewPrompt(descController.text);
+                                                        if (result != null && context.mounted) {
+                                                          setStateBuilder(() {
+                                                            notesController.text = result + '\n\n' + notesController.text;
+                                                            _selectedTabIndex = 1;
+                                                          });
+                                                          _executeAutoSave();
+                                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Prompt Review added to Notes!')));
+                                                        } else if (context.mounted) {
+                                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: ${LocalAiService.instance.lastError}')));
+                                                        }
+                                                      },
+                                                      color: Colors.amberAccent,
+                                                      padding: EdgeInsets.zero,
+                                                      constraints:
+                                                          const BoxConstraints(),
+                                                      tooltip: 'Review Prompt with AI',
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    IconButton(
+                                                      icon: const Icon(
                                                           Icons.undo,
                                                           size: 16),
                                                       onPressed: value.canUndo
@@ -2339,6 +2366,32 @@ verificationCriteriaList[i].isCommitted = false;
                                                   mainAxisSize:
                                                       MainAxisSize.min,
                                                   children: [
+                                                    IconButton(
+                                                      icon: const Icon(
+                                                          Icons.auto_awesome,
+                                                          size: 16),
+                                                      onPressed: () async {
+                                                        if (notesController.text.isEmpty && descController.text.isEmpty) return;
+                                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generating summary...')));
+                                                        final input = 'Description:\n${descController.text}\n\nNotes:\n${notesController.text}';
+                                                        final result = await LocalAiService.instance.summarizeTask(input);
+                                                        if (result != null && context.mounted) {
+                                                          setStateBuilder(() {
+                                                            summaryController.text = result;
+                                                          });
+                                                          _executeAutoSave();
+                                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Summary generated!')));
+                                                        } else if (context.mounted) {
+                                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: ${LocalAiService.instance.lastError}')));
+                                                        }
+                                                      },
+                                                      color: Colors.amberAccent,
+                                                      padding: EdgeInsets.zero,
+                                                      constraints:
+                                                          const BoxConstraints(),
+                                                      tooltip: 'Generate Summary with AI',
+                                                    ),
+                                                    const SizedBox(width: 8),
                                                     IconButton(
                                                       icon: const Icon(
                                                           Icons.undo,

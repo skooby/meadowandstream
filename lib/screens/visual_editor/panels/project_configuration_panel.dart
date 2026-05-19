@@ -284,6 +284,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   int _queueClearCompletedMinutes = -1;
   String? _agentRules;
   String? _versionControlRepoUrl;
+  String? _ollamaBaseUrl;
+  String? _ollamaModel;
+  int _ollamaTimeoutMs = 120000;
 
   bool _isSyncing = false;
   int _syncTotal = 0;
@@ -393,6 +396,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _queueClearCompletedMinutes = prefs.getInt('queueClearCompletedMinutes') ?? -1;
       _agentRules = prefs.getString('project_agent_rules');
       _versionControlRepoUrl = prefs.getString('project_version_control_repo_url');
+      _ollamaBaseUrl = prefs.getString('ollamaBaseUrl');
+      _ollamaModel = prefs.getString('ollamaModel');
+      _ollamaTimeoutMs = prefs.getInt('ollamaTimeoutMs') ?? 120000;
 
       final availStr = prefs.getString('ve_windowAvailability');
       if (availStr != null) {
@@ -653,6 +659,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       final newOpenAIApiKey = values.containsKey('openAiApiKey') ? values['openAiApiKey'] as String? : _openAiApiKey;
       final newGithubToken = values.containsKey('githubToken') ? values['githubToken'] as String? : _githubToken;
       final newVersionControlRepoUrl = values.containsKey('versionControlRepoUrl') ? values['versionControlRepoUrl'] as String? : _versionControlRepoUrl;
+      final newOllamaBaseUrl = values.containsKey('ollamaBaseUrl') ? values['ollamaBaseUrl'] as String? : _ollamaBaseUrl;
+      final newOllamaModel = values.containsKey('ollamaModel') ? values['ollamaModel'] as String? : _ollamaModel;
+      final newOllamaTimeoutMs = int.tryParse((values['ollamaTimeoutMs'] ?? _ollamaTimeoutMs).toString()) ?? _ollamaTimeoutMs;
       
       final desktopLight = prefs.getInt('ve_desktop_light');
       final desktopDark = prefs.getInt('ve_desktop_dark');
@@ -725,6 +734,18 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       } else {
          await prefs.remove('project_version_control_repo_url');
       }
+
+      if (newOllamaBaseUrl != null && newOllamaBaseUrl.trim().isNotEmpty) {
+         await prefs.setString('ollamaBaseUrl', newOllamaBaseUrl.trim());
+      } else {
+         await prefs.remove('ollamaBaseUrl');
+      }
+      if (newOllamaModel != null && newOllamaModel.trim().isNotEmpty) {
+         await prefs.setString('ollamaModel', newOllamaModel.trim());
+      } else {
+         await prefs.remove('ollamaModel');
+      }
+      await prefs.setInt('ollamaTimeoutMs', newOllamaTimeoutMs);
 
       if (newBackupDir != null && newBackupDir.trim().isNotEmpty) {
          await prefs.setString('project_backup_directory_path', newBackupDir.trim());
@@ -813,6 +834,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             _queueClearCompletedMinutes = newClearCompleted;
             _agentRules = newAgentRules;
             _versionControlRepoUrl = newVersionControlRepoUrl;
+            _ollamaBaseUrl = newOllamaBaseUrl;
+            _ollamaModel = newOllamaModel;
+            _ollamaTimeoutMs = newOllamaTimeoutMs;
             // _albumFolderIds, _tagsFolderId, _languagesFolderId remain synchronously updated.
          });
          
@@ -1215,6 +1239,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                 'textOutlineWidth': _textOutlineWidth.toString(),
                 'queueClearCompletedMinutes': _queueClearCompletedMinutes.toString(),
                 'versionControlRepoUrl': _versionControlRepoUrl ?? '',
+                'ollamaBaseUrl': _ollamaBaseUrl ?? 'http://localhost:11434',
+                'ollamaModel': _ollamaModel ?? 'qwen2.5:3b',
+                'ollamaTimeoutMs': _ollamaTimeoutMs.toString(),
                 'agentRules': _agentRules ?? 'Role: Senior Systems Architect.\nCommunication Style: Minimalist. No greetings, no "I hope this helps," no conversational filler. Output only technical plans, code, or critical status alerts.\nOperational Protocol:\nAlways prioritize Planning Mode before Acting.\nUse the /terminal to verify assumptions; do not guess file structures.\nIf a task is ambiguous, list 3 specific questions and stop.\n\nThe "Focus & Drift" Monitor:\nBefore every task, state the current objective in one sentence.\nIf the current task deviates from the PROJECT_SUMMARY.md goals, flag a "Context Drift Alert" and request realignment.\nError Reduction: Run a "Red Team" check on every code block for null pointers and race conditions before presenting.\n\nThe "State Persistence" Workflow:\nCreate a workflow /sync that:\nScans the last 10 interactions.\nUpdates PROJECT_SUMMARY.md with:\n[Current Architecture]\n[Resolved Blockers]\n[Pending Critical Tasks].\nUpdates BRIDGE_LOGS.md with any API or connectivity changes.\nDeletes outdated \'TODO\' comments in the codebase.\n\nThe "New Chat" Handover:\nGenerate a Handover Manifest. Summarize the current technical state, the specific logic of the AI Bridge we just built, and the exact next step. Format this so I can paste it into a fresh chat to give the new agent 100% context instantly.\n\nAutomated Summary Maintenance:\nUpon completion of any file write or terminal command, automatically append a 1-sentence summary of the change to the CHANGELOG.md and verify it against the PROJECT_SUMMARY.md for consistency.',
               },
               child: Column(
@@ -1234,6 +1261,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                           _buildTabBtn(7, 'Window\nWorkspaces'),
                           _buildTabBtn(8, 'Agentic\nMastery'),
                           _buildTabBtn(9, 'Version\nControl'),
+                          _buildTabBtn(10, 'AI\nAssistant'),
                         ],
                       )
                     ),
@@ -2324,6 +2352,39 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                     style: TextStyle(color: AppColors.panelTextSecondary.withValues(alpha: 0.6), fontSize: AppUIConfig.rootFontSize * 0.9)),
                                 ],
                               )
+                            ),
+                          ],
+                        ),
+                        ListView(key: const PageStorageKey('config_tab_10'),
+                          padding: const EdgeInsets.only(right: 16),
+                          children: [
+                            const SizedBox(height: 16),
+                            Text('LOCAL AI CONFIGURATION', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Ollama API Base URL (e.g. http://localhost:11434)', Icons.router, FormBuilderTextField(
+                              name: 'ollamaBaseUrl',
+                              style: TextStyle(color: AppColors.panelTextPrimary),
+                              decoration: _inputDecoration(),
+                            )),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Model Name (e.g. qwen2.5:3b)', Icons.memory, FormBuilderTextField(
+                              name: 'ollamaModel',
+                              style: TextStyle(color: AppColors.panelTextPrimary),
+                              decoration: _inputDecoration(),
+                            )),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Fallback Timeout (ms)', Icons.timer, FormBuilderTextField(
+                              name: 'ollamaTimeoutMs',
+                              keyboardType: TextInputType.number,
+                              style: TextStyle(color: AppColors.panelTextPrimary),
+                              decoration: _inputDecoration(),
+                            )),
+                            Padding(
+                              padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                              child: Text(
+                                'Configure connection details for the Local AI Assistant. The LocalAiService binds natively to this Ollama instance.',
+                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+                              ),
                             ),
                           ],
                         ),
