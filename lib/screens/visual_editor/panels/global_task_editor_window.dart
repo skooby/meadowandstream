@@ -2124,15 +2124,13 @@ verificationCriteriaList[i].isCommitted = false;
                                         color: Colors.yellow,
                                         padding: const EdgeInsets.all(6),
                                         constraints: const BoxConstraints(),
-                                        onPressed: (isTaskReadOnly || AiBridgeService.instance.isThinking) ? null : () {
+                                        onPressed: (isTaskReadOnly || AiBridgeService.instance.isThinking) ? null : () async {
+                                          await AiBridgeService.instance.compilePrimaryDirectivesFile();
                                           final sb = StringBuffer();
                                           sb.writeln('# PRIMARY DIRECTIVES');
-                                          sb.writeln(AiBridgeService
-                                              .instance.instructions
-                                              .trim());
-                                          sb.writeln('');
-                                          sb.writeln(AiBridgeService
-                                              .instance.systemHooksInstructions);
+                                          sb.writeln('> [!IMPORTANT]');
+                                          sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n');
+                                          
                                           sb.writeln('\n# TASKS TO ADDRESS');
                                           sb.writeln('Task: ${existingTask!.name}');
                                           if (existingTask!.description.isNotEmpty) {

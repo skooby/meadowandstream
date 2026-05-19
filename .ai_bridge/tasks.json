@@ -1,4 +1,5 @@
 {
+  "primaryDirectives": "# Global Rules\n- Never modify the database schema without asking.\n- Always run `dart analyze` after making changes.",
   "instructions": "Process bridge current_task.json",
   "quickInstructions": "Execute instructions directly against the active task.",
   "previewModeInstructions": "PREVIEW MODE INITIATED: Do NOT execute code mutations. You must explicitly review what will be changed.\nList exactly what will be changed, warnings, conflicts, and any questions you have. Store these itemized results strictly as a JSON array of objects inside a `<preview>` tag so they appear in the Preview Dialog natively.\nFormat the JSON strictly as: `<preview>[{\"description\": \"...\", \"isApproved\": false, \"comment\": \"\"}]</preview>`.\nCRITICAL RULE: Do NOT write a `latest_notes.json` file during preview phase. The preview items MUST ONLY exist in the JSON array inside the `<preview>` tag. Keep notes extremely brief or empty during this phase.",
@@ -922,80 +923,6 @@
       "iconBackgroundColor": 4278190080,
       "iconColor": 4294967295,
       "iconCodePoint": 58475
-    },
-    {
-      "id": "1775069020512",
-      "name": "Implement Primary Directives Injection",
-      "description": "Implement the hybrid approach for communicating Primary Directives to the AI. Create a dedicated directives file and update the bridge to inject it into every task.",
-      "summary": "",
-      "notes": "",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "previewItems": [],
-      "verificationCriteria": [
-        {
-          "description": "Expand the Prompt Helper UI to include a 'Primary Directives' settings panel. The application should automatically generate, maintain, and overwrite the `.ai_bridge/primary_directives.md` file whenever these user-defined settings are modified.",
-          "goal": "",
-          "isVerified": false,
-          "status": "none",
-          "proof": null,
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false
-        },
-        {
-          "description": "Modify `AiBridgeService` to asynchronously read the contents of `.ai_bridge/primary_directives.md` as part of the payload construction phase. If the file doesn't exist, ensure it falls back gracefully or creates a default version automatically.",
-          "goal": "",
-          "isVerified": false,
-          "status": "none",
-          "proof": null,
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false
-        },
-        {
-          "description": "Update the payload generation logic to embed the contents of `primary_directives.md` directly into the system instructions. Ensure it uses a strong marker like `> [!IMPORTANT]` so the AI gives it maximum weight before proceeding with execution.",
-          "goal": "",
-          "isVerified": false,
-          "status": "none",
-          "proof": null,
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false
-        },
-        {
-          "description": "Perform an end-to-end test. Enqueue a dummy task into the AI Bridge, execute it, and review the prompt logs to verify that the Primary Directives were successfully injected into the system prompt and that the AI acknowledged them before starting the task.",
-          "goal": "",
-          "isVerified": false,
-          "status": "none",
-          "proof": null,
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false
-        }
-      ],
-      "status": "inProgress",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": null,
-      "commitDate": null,
-      "parentId": "1775069020511"
     },
     {
       "id": "1775570218868",

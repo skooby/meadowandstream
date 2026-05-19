@@ -270,13 +270,17 @@ class _UnitTestingWindowState extends State<UnitTestingWindow> {
                       backgroundColor: AppColors.panelBackground,
                       shape: RoundedRectangleBorder(side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5)), borderRadius: BorderRadius.circular(4))
                     ),
-                    onPressed: () {
+                    onPressed: () async {
                         try {
                            final bridge = AiBridgeService.instance;
                            
                            // Atari 2600 mode: Just construct the literal string exactly as it looks natively
+                           await bridge.compilePrimaryDirectivesFile();
                            final StringBuffer sb = StringBuffer();
                            sb.writeln('# PRIMARY DIRECTIVES');
+                           sb.writeln('> [!IMPORTANT]');
+                           sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n');
+                           
                            sb.writeln('SAFETY ABORT PROTOCOL: Regardless of whether you are in LIVE or PREVIEW mode, if a task is not clear, potentially harmful, extensive, or requires system-wide core changes, DO NOT execute code. Instead, generate a `.ai_bridge/latest_preview.json` containing your questions or concerns to be resolved (use the description field), and write `PREVIEW` to `.ai_bridge/agent_status.txt`. This will dynamically switch the app to preview mode and pause for human review.');
                            
                            if (bridge.isPreviewMode) {

@@ -1035,6 +1035,9 @@ wshShell.AppActivate $myPid
     _isUndoRedoing = false;
   }
 
+  String _primaryDirectives = '';
+  String get primaryDirectives => _primaryDirectives;
+
   String _instructions = 'Process bridge current_task.json';
   String get instructions => _instructions;
 
@@ -1061,7 +1064,65 @@ wshShell.AppActivate $myPid
   String _missingFilesInstructions = '# SYSTEM ALERT: MISSING REQUIRED OUTPUT FILES\n\nYou wrote IDLE, but the following required output files were NOT found on disk:\n{missingList}\n\nThe app processes and DELETES these files immediately upon IDLE. They must be written BEFORE you write IDLE to agent_status.txt.\n\nPlease write the missing files immediately to their correct paths, then write IDLE to `.ai_bridge/agent_status.txt` again. Do not re-do any code work.';
   String get missingFilesInstructions => _missingFilesInstructions;
 
+  Future<void> compilePrimaryDirectivesFile() async {
+    try {
+      final dir = Directory(_dirPath);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final file = File('$_dirPath/primary_directives.md');
+      final sb = StringBuffer();
+      
+      if (_primaryDirectives.isNotEmpty) {
+        sb.writeln('# GLOBAL CONSTRAINTS');
+        sb.writeln(_primaryDirectives);
+        sb.writeln('');
+      }
+      
+      if (_instructions.isNotEmpty) {
+        sb.writeln('# MASTER DIRECTIVES');
+        sb.writeln(_instructions);
+        sb.writeln('');
+      }
+
+      if (_quickInstructions.isNotEmpty) {
+        sb.writeln('# QUICK COMMAND DIRECTIVES');
+        sb.writeln(_quickInstructions);
+        sb.writeln('');
+      }
+
+      if (_previewModeInstructions.isNotEmpty) {
+        sb.writeln('# PREVIEW MODE DIRECTIVES');
+        sb.writeln(_previewModeInstructions);
+        sb.writeln('');
+      }
+
+      if (_previewApprovedInstructions.isNotEmpty) {
+        sb.writeln('# PREVIEW APPROVED DIRECTIVES');
+        sb.writeln(_previewApprovedInstructions);
+        sb.writeln('');
+      }
+
+      if (_previewRejectedInstructions.isNotEmpty) {
+        sb.writeln('# PREVIEW REJECTED DIRECTIVES');
+        sb.writeln(_previewRejectedInstructions);
+        sb.writeln('');
+      }
+      
+      if (_systemHooksInstructions.isNotEmpty) {
+        if (!_systemHooksInstructions.startsWith('#')) {
+          sb.writeln('# SYSTEM ARCHITECTURE DIRECTIVES');
+        }
+        sb.writeln(_systemHooksInstructions);
+        sb.writeln('');
+      }
+      
+      await file.writeAsString(sb.toString(), flush: true);
+    } catch (_) {}
+  }
+
   Future<void> updateInstructions(
+      String primary,
       String text,
       String quickText,
       String previewMode,
@@ -1069,6 +1130,7 @@ wshShell.AppActivate $myPid
       String previewRejected,
       String systemHooks,
       String missingFiles) async {
+    _primaryDirectives = primary;
     _instructions = text;
     _quickInstructions = quickText;
     _previewModeInstructions = previewMode;
@@ -1078,6 +1140,7 @@ wshShell.AppActivate $myPid
     _missingFilesInstructions = missingFiles;
     notifyListeners();
     await _save();
+    await compilePrimaryDirectivesFile();
   }
 
   Future<void> init() async {
@@ -1659,6 +1722,7 @@ wshShell.AppActivate $myPid
         if (jsonTop != null) {
           List<dynamic> jsonList;
           if (jsonTop is Map<String, dynamic>) {
+            _primaryDirectives = jsonTop['primaryDirectives'] as String? ?? '';
             _instructions = jsonTop['instructions'] as String? ?? '';
             _quickInstructions =
                 jsonTop['quickInstructions'] as String? ?? _quickInstructions;
@@ -1928,6 +1992,7 @@ wshShell.AppActivate $myPid
       }
 
       final Map<String, dynamic> outPayload = {
+        'primaryDirectives': _primaryDirectives,
         'instructions': _instructions.isNotEmpty
             ? _instructions
             : 'AI Rule: Never mark tasks as complete automatically. Set them to IN TESTING or explicitly ask the user to review them before closure.',

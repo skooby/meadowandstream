@@ -136,6 +136,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   final ScrollController _activeScrollController = ScrollController();
   final ScrollController _completedScrollController = ScrollController();
   final ScrollController _queueScrollController = ScrollController();
+  final TextEditingController _primaryDirectivesController = TextEditingController();
   final TextEditingController _instController = TextEditingController();
   final TextEditingController _quickInstController = TextEditingController();
   final TextEditingController _previewModeInstController = TextEditingController();
@@ -201,6 +202,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   void initState() {
     super.initState();
     _loadState();
+    _primaryDirectivesController.text = AiBridgeService.instance.primaryDirectives;
     _instController.text = AiBridgeService.instance.instructions;
     _quickInstController.text = AiBridgeService.instance.quickInstructions;
     _previewModeInstController.text = AiBridgeService.instance.previewModeInstructions;
@@ -267,6 +269,12 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   }
 
   void _syncInstructions() {
+    if (_primaryDirectivesController.text != AiBridgeService.instance.primaryDirectives) {
+      if (!_primaryDirectivesController.value.selection.isValid ||
+          _primaryDirectivesController.text.isEmpty) {
+        _primaryDirectivesController.text = AiBridgeService.instance.primaryDirectives;
+      }
+    }
     if (_instController.text != AiBridgeService.instance.instructions) {
       if (!_instController.value.selection.isValid ||
           _instController.text.isEmpty) {
@@ -318,6 +326,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     AiBridgeService.instance.removeListener(_syncInstructions);
     AiBridgeService.instance.removeListener(_syncUnassignedState);
     GlobalTaskEditorState.instance.activeRequest.removeListener(_onActiveTaskChanged);
+    _primaryDirectivesController.dispose();
     _instController.dispose();
     _quickInstController.dispose();
     _previewModeInstController.dispose();
@@ -2289,12 +2298,20 @@ showColorPickerWindow(context);
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               buildRule(
+                                                'Primary Directives Helper:',
+                                                _primaryDirectivesController,
+                                                'Global constraints and absolute directives...',
+                                                (val) => AiBridgeService.instance.updateInstructions(val, _instController.text, _quickInstController.text, _previewModeInstController.text, _previewApprovedInstController.text, _previewRejectedInstController.text, _systemHooksInstController.text, _missingFilesInstController.text),
+                                                AppColors.error,
+                                              ),
+                                              buildRule(
                                                 'Master Directives Helper:',
                                                 _instController,
                                                 'Rules strictly attached to the top of all prompts...',
                                                 (val) => AiBridgeService
                                                     .instance
                                                     .updateInstructions(
+                                                        _primaryDirectivesController.text,
                                                         val,
                                                         _quickInstController.text,
                                                         _previewModeInstController.text,
@@ -2311,6 +2328,7 @@ showColorPickerWindow(context);
                                                 (val) => AiBridgeService
                                                     .instance
                                                     .updateInstructions(
+                                                        _primaryDirectivesController.text,
                                                         _instController.text,
                                                         val,
                                                         _previewModeInstController.text,
@@ -2327,6 +2345,7 @@ showColorPickerWindow(context);
                                                 (val) => AiBridgeService
                                                     .instance
                                                     .updateInstructions(
+                                                        _primaryDirectivesController.text,
                                                         _instController.text,
                                                         _quickInstController.text,
                                                         val,
@@ -2343,6 +2362,7 @@ showColorPickerWindow(context);
                                                 (val) => AiBridgeService
                                                     .instance
                                                     .updateInstructions(
+                                                        _primaryDirectivesController.text,
                                                         _instController.text,
                                                         _quickInstController.text,
                                                         _previewModeInstController.text,
@@ -2359,6 +2379,7 @@ showColorPickerWindow(context);
                                                 (val) => AiBridgeService
                                                     .instance
                                                     .updateInstructions(
+                                                        _primaryDirectivesController.text,
                                                         _instController.text,
                                                         _quickInstController.text,
                                                         _previewModeInstController.text,
@@ -2375,6 +2396,7 @@ showColorPickerWindow(context);
                                                 (val) => AiBridgeService
                                                     .instance
                                                     .updateInstructions(
+                                                        _primaryDirectivesController.text,
                                                         _instController.text,
                                                         _quickInstController.text,
                                                         _previewModeInstController.text,
@@ -2727,14 +2749,12 @@ showColorPickerWindow(context);
        }
     } catch (_) {}
     
+    await AiBridgeService.instance.compilePrimaryDirectivesFile();
+
     sb.writeln('# PRIMARY DIRECTIVES');
-    
-    // Master Directives Helper
-    final masterDirectives = AiBridgeService.instance.instructions.trim();
-    if (masterDirectives.isNotEmpty) {
-      sb.writeln(masterDirectives);
-    }
-    
+    sb.writeln('> [!IMPORTANT]');
+    sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n');
+
     if (replyTypeDirective.isNotEmpty) sb.writeln(replyTypeDirective);
     
     // Mode-specific Directives
@@ -2742,8 +2762,6 @@ showColorPickerWindow(context);
       sb.writeln(instructions);
     }
     
-    sb.writeln('');
-    sb.writeln(AiBridgeService.instance.systemHooksInstructions);
     sb.writeln('\n# TASKS TO ADDRESS');
     sb.writeln('Task: ${task.name}');
 

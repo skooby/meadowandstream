@@ -274,7 +274,11 @@ class _AttachmentViewerWindowState extends State<AttachmentViewerWindow> {
     final fType  = isImg ? 'image file' : 'file (extension: $ext)';
     final outPath = _analysisPath(path);
 
+    await AiBridgeService.instance.compilePrimaryDirectivesFile();
+
     final prompt = '# PRIMARY DIRECTIVES\n'
+        '> [!IMPORTANT]\n'
+        'CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n\n'
         'Voice: Direct / Robotic\n'
         'Complexity: Verbose\n\n'
         'You are performing a one-shot analysis of an attachment file. '
