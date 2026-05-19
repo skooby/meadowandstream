@@ -1,5 +1,16 @@
 [
   {
+    "id": "863782fa-ffe6-49b5-9791-2dabd1d30913",
+    "taskIds": [
+      "1800000000002"
+    ],
+    "title": "STEP 2 - Download Local Model",
+    "summary": "",
+    "commitHash": "7818f45a933eb74bcd83beee5eaf9d66f9585b47",
+    "commitDate": "2026-05-19T06:33:37.981878",
+    "verifiedNotes": "- Install lightweight orchestration model: `ollama pull qwen2.5:3b`.\n- Optional alternative: `ollama pull gemma3:4b`.\n- Verify model works: `ollama run qwen2.5:3b`.\n- Test prompt: 'Summarize the purpose of a prompt review assistant.'"
+  },
+  {
     "id": "578de15d-e6fc-4711-8866-0b76317a6e23",
     "taskIds": [
       "1800000000001"
