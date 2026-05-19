@@ -1315,22 +1315,7 @@ Expanded(
                           const SizedBox(width: 12),
                           Container(width: 1, height: 24 * _uiScale, color: Colors.white12),
                           const SizedBox(width: 12),
-                          ValueListenableBuilder<String>(
-                            valueListenable: isTextInputFocusedNotifier,
-                            builder: (context, focusStatus, child) {
-                               return Padding(
-                                 padding: const EdgeInsets.only(right: 8),
-                                 child: Row(
-                                   mainAxisSize: MainAxisSize.min,
-                                   children: [
-                                     Text('Focus: $focusStatus', style: const TextStyle(color: Colors.redAccent, fontSize: 10)),
-                                     const SizedBox(width: 4),
-                                     Icon(Icons.edit_note, color: focusStatus.startsWith('YES') ? Colors.redAccent : Colors.white24, size: 22),
-                                   ],
-                                 ),
-                               );
-                            }
-                          ),
+
                           IconButton(
                              onPressed: _executeHotReload,
                             icon: Icon(AppUIConfig.reloadIconCodePoint != null ? IconData(AppUIConfig.reloadIconCodePoint!, fontFamily: 'MaterialIcons') : Icons.refresh,

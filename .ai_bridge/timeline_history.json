@@ -1,5 +1,17 @@
 [
   {
+    "id": "eead0c19-fc4b-404a-93a2-0d78e554087e",
+    "taskIds": [
+      "1779156022892",
+      "1779154106804"
+    ],
+    "title": "Fix compile errors | Spell Checker [Implement right-click spell check suggestions via context menu]",
+    "summary": "The recent Hot Reload/Restart resulted in compilation errors. Fix them immediately.\n\nLets add a simple spell checker",
+    "commitHash": "d486a6b4a2bc7d0b139b4ff2ed830095aad16dd8",
+    "commitDate": "2026-05-18T20:04:27.855020",
+    "verifiedNotes": "- https://pub.dev/packages/simple_spell_checker\n- Show in input fields only while editing\n- Not working for Add new task input field\n- Can we add right mouse click suggestions"
+  },
+  {
     "id": "b7391f08-9b1e-40cc-b413-fc8657990e91",
     "taskIds": [
       "1779154106804"

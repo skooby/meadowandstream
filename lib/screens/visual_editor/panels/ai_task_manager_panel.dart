@@ -1005,7 +1005,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                 decoration: isCompleted
                                     ? TextDecoration.lineThrough
                                     : null,
-                                decorationColor: AppColors.panelTextPrimary,
+                                decorationColor: Colors.white,
+                                decorationThickness: 2.0,
                               ),
                             ),
 
