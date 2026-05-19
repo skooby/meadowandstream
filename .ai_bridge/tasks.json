@@ -3697,7 +3697,7 @@
       "priority": "none",
       "isFolder": false,
       "isWorksheet": true,
-      "isWorksheetVisible": false,
+      "isWorksheetVisible": true,
       "isNote": false,
       "isKnowledgeSummary": false,
       "isRead": true,
@@ -5341,6 +5341,48 @@
       "commitHash": "f33bfa2201866e3d79d4a6a0e9934197e360560f",
       "commitDate": "2026-05-18T12:30:48.410460",
       "parentId": "1774913415376"
+    },
+    {
+      "id": "1779063155069",
+      "name": "Task Editor",
+      "description": "Improvements and enhancements",
+      "summary": "",
+      "notes": "",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "previewItems": [],
+      "verificationCriteria": [
+        {
+          "description": "Fix auto submit when all tasks in checklist are completed",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": null,
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true
+        }
+      ],
+      "status": "completed",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": "4f2d1a8b63c0904f73882b7016fc6f0895a435e3",
+      "commitDate": "2026-05-18T18:48:52.199387",
+      "parentId": "1778559529935",
+      "worksheetId": "1778268121185"
     }
   ]
 }
