@@ -1,5 +1,17 @@
 [
   {
+    "id": "40c5ae1c-9508-44d2-b6fe-8f2af6731c0c",
+    "taskIds": [
+      "1778559578740",
+      "1800000000012"
+    ],
+    "title": "PREVIEW MODE | STEP 5 - Add Request Timeouts & Fallbacks",
+    "summary": "Enhancements for preview mode\n\nEnsure robustness for LocalAiService.",
+    "commitHash": "7e4addf2ce1eeae169214838231ece1c125e1639",
+    "commitDate": "2026-05-19T15:07:08.616639",
+    "verifiedNotes": "- Modify the preview mode tasks to be more directly tied to the task in the task list, which is the current task. Lets have it add new tasks in the task editor instead of this current mechanism.\n- Test preview stuff\n- Do stuff\n\n- Implement retry mechanism in LocalAiService for failed HTTP requests.\n- Implement cloud API fallback routing if local Ollama instance is completely unreachable.\n- If service not found, can we start up a new service?"
+  },
+  {
     "id": "0c3fd50d-0a17-4520-a358-e4af38d28a9d",
     "taskIds": [
       "1800000000011"
