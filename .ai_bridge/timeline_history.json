@@ -1,5 +1,14 @@
 [
   {
+    "id": "e32c0171-7e34-4110-9df9-6dfe1d3be78e",
+    "taskIds": [],
+    "title": "Checkpoint",
+    "summary": "Manual Checkpoint: After the nightware of locked waiting cycles",
+    "commitHash": "2232dce2a9c2b479090fe4a986fc1168c7c292e5",
+    "commitDate": "2026-05-18T18:53:49.798124",
+    "verifiedNotes": ""
+  },
+  {
     "id": "90987e4d-c84a-49f5-9099-1d350173f7b7",
     "taskIds": [
       "1779063155069"
@@ -75,15 +84,6 @@
     "commitHash": "6d14e8ff6810671f4821c25ceb61e61d5c65e4d3",
     "commitDate": "2026-05-18T11:04:08.167102",
     "verifiedNotes": "- Checking committed flag"
-  },
-  {
-    "id": "b0b0980b-0cab-48c1-9f8e-2887025d305f",
-    "taskIds": [],
-    "title": "",
-    "summary": "",
-    "commitHash": "58f5323871c4c8a3058705f723ab8355333c88af",
-    "commitDate": "2026-05-18T11:01:05.830941",
-    "verifiedNotes": "No items verified."
   },
   {
     "id": "f46482c5-3a35-4a64-9f30-eb6c3ae144f7",

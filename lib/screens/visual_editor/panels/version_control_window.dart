@@ -429,24 +429,40 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                                 itemCount: activeTasks.length,
                                 itemBuilder: (ctx, i) {
                                   final t = activeTasks[i];
+                                  final isEvenTask = (i % 2 == 0);
                                   List<Widget> taskChildren = [];
                                   if (t.verificationCriteria.isEmpty) {
                                     taskChildren.add(
-                                      ListTile(
-                                        dense: true,
-                                        leading: const Icon(Icons.info_outline, color: Colors.blueAccent, size: 16),
-                                        title: Text(
-                                          t.description.isNotEmpty ? t.description : 'Pending implementation',
-                                          style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize),
-                                        ),
+                                      InkWell(
                                         onTap: () {
                                           GlobalTaskEditorState.instance.requestEdit(existingTask: t);
                                           showTaskEditorWindow(context);
                                         },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          child: Row(
+                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                            children: [
+                                              const Icon(Icons.info_outline, color: Colors.blueAccent, size: 14),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  t.description.isNotEmpty ? t.description : 'Pending implementation',
+                                                  style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       )
                                     );
                                   } else {
+                                    int vcIndex = 0;
                                     taskChildren.addAll(t.verificationCriteria.map((vc) {
+                                      final isEvenVc = (vcIndex++ % 2 == 0);
+                                      final vcBg = isEvenVc
+                                          ? Colors.white.withValues(alpha: 0.02)
+                                          : Colors.white.withValues(alpha: 0.05);
                                       IconData iconData = Icons.radio_button_unchecked;
                                       Color iconColor = AppColors.textMuted;
                                       
@@ -461,44 +477,70 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                                         iconColor = Colors.redAccent;
                                       }
                                       
-                                      return ListTile(
-                                        dense: true,
-                                        leading: Icon(iconData, color: iconColor, size: 16),
-                                        title: Text(
-                                          vc.description,
-                                          style: TextStyle(
-                                            color: AppColors.textPrimary, 
-                                            fontSize: AppUIConfig.smallFontSize,
-                                            decoration: vc.isVerified ? TextDecoration.lineThrough : null,
-                                            decorationColor: Colors.white,
+                                      return Container(
+                                        color: vcBg,
+                                        child: InkWell(
+                                          onTap: () {
+                                            GlobalTaskEditorState.instance.requestEdit(existingTask: t);
+                                            showTaskEditorWindow(context);
+                                          },
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                              children: [
+                                                Icon(iconData, color: iconColor, size: 14),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Text(
+                                                        vc.description,
+                                                        style: TextStyle(
+                                                          color: AppColors.textPrimary,
+                                                          fontSize: AppUIConfig.smallFontSize,
+                                                          decoration: vc.isVerified ? TextDecoration.lineThrough : null,
+                                                          decorationColor: Colors.white,
+                                                        ),
+                                                      ),
+                                                      if (vc.goal.isNotEmpty)
+                                                        Text(
+                                                          vc.goal,
+                                                          style: TextStyle(
+                                                            color: AppColors.textSecondary,
+                                                            fontSize: AppUIConfig.smallFontSize * 0.85,
+                                                            fontStyle: FontStyle.italic,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                        subtitle: vc.goal.isNotEmpty
-                                            ? Text(
-                                                vc.goal,
-                                                style: TextStyle(
-                                                  color: AppColors.textSecondary,
-                                                  fontSize: AppUIConfig.smallFontSize - 1,
-                                                  fontStyle: FontStyle.italic,
-                                                ),
-                                              )
-                                            : null,
-                                        onTap: () {
-                                          GlobalTaskEditorState.instance.requestEdit(existingTask: t);
-                                          showTaskEditorWindow(context);
-                                        },
                                       );
                                     }));
                                   }
 
-
-
-                                  return ExpansionTile(
-                                    key: PageStorageKey<String>('active_task_${t.id}'),
-                                    initiallyExpanded: true,
-                                    title: Text(t.name, style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold)),
-                                    subtitle: t.summary.isNotEmpty ? Text(t.summary, style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize, fontStyle: FontStyle.italic)) : null,
-                                    children: taskChildren,
+                                  return Container(
+                                    color: isEvenTask
+                                        ? Colors.white.withValues(alpha: 0.01)
+                                        : Colors.white.withValues(alpha: 0.03),
+                                    child: Theme(
+                                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                                      child: ExpansionTile(
+                                        key: PageStorageKey<String>('active_task_${t.id}'),
+                                        initiallyExpanded: true,
+                                        tilePadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                        title: Text(t.name, style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize, fontWeight: FontWeight.bold)),
+                                        subtitle: t.summary.isNotEmpty ? Text(t.summary, style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize * 0.85, fontStyle: FontStyle.italic)) : null,
+                                        children: taskChildren,
+                                      ),
+                                    ),
                                   );
                                 }
                               ),
@@ -532,13 +574,16 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
       final c = commits[i];
       _timelineKeys[c.id] ??= GlobalKey();
 
+      // Consolidated trailing icons — no SizedBox spacers between them
       Widget trailingRow = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (i + 1 < commits.length) ...[
             IconButton(
-              icon: const Icon(Icons.cleaning_services, size: 16, color: Colors.blueAccent),
+              icon: const Icon(Icons.cleaning_services, size: 14, color: Colors.blueAccent),
               tooltip: 'Squash Older History',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
               onPressed: () async {
                 final confirm = await showDialog<bool>(
                   context: context,
@@ -558,9 +603,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                   await VersionControlService.instance.cleanupTimelineHistory(i + 1);
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('History squashed successfully!')));
-                    // The setState will happen implicitly if AiBridgeService triggers notifyListeners() and this widget rebuilds.
-                    // But we can also manually trigger a refresh of the commits.
-                    SandboxService.instance.reload(); // Cheap way to trigger global listenable
+                    SandboxService.instance.reload();
                   }
                 } catch (e, st) {
                   debugPrint('Squash Error: $e\n$st');
@@ -581,7 +624,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                               ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.copy, color: Colors.white, size: 20),
+                              icon: const Icon(Icons.copy, color: Colors.white, size: 18),
                               tooltip: 'Copy Error Log',
                               onPressed: () {
                                 Clipboard.setData(ClipboardData(text: 'Squash Error:\n$e\n$st'));
@@ -597,19 +640,21 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                 }
               },
             ),
-            const SizedBox(width: 4),
           ],
           IconButton(
-            icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
+            icon: const Icon(Icons.delete_outline, size: 14, color: Colors.red),
             tooltip: 'Delete Timeline Entry',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
             onPressed: () {
               AiBridgeService.instance.deleteTimelineCommit(c.id);
             },
           ),
-          const SizedBox(width: 4),
           IconButton(
-            icon: const Icon(Icons.restore, size: 16, color: Colors.orange),
+            icon: const Icon(Icons.restore, size: 14, color: Colors.orange),
             tooltip: 'Restore to Here',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
             onPressed: () async {
               try {
                 await VersionControlService.instance.restoreToCommit(c.commitHash);
@@ -623,29 +668,26 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
               }
             },
           ),
-          const SizedBox(width: 4),
           if (c.title != 'Checkpoint') ...[
             IconButton(
-              icon: const Icon(Icons.open_in_browser, size: 16, color: Colors.blueAccent),
+              icon: const Icon(Icons.open_in_browser, size: 14, color: Colors.blueAccent),
               tooltip: 'Open in GitHub',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
               onPressed: () async {
                 await VersionControlService.instance.openGithubCommit(c.commitHash);
               },
-            ),
-            const SizedBox(width: 4),
-            Text(
-              c.commitHash.length > 7 ? c.commitHash.substring(0, 7) : c.commitHash,
-              style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize * 0.9, fontFamily: 'monospace'),
             ),
           ],
         ],
       );
 
       if (c.title == 'Checkpoint') {
+        // Restore Point — title at rootFontSize (20% bigger than smallFontSize which is rootFontSize*0.8)
         result.add(
           Container(
             key: _timelineKeys[c.id],
-            margin: const EdgeInsets.only(top: 8, bottom: 4),
+            margin: const EdgeInsets.only(top: 3, bottom: 1),
             decoration: BoxDecoration(
                border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.3)),
                borderRadius: BorderRadius.circular(4),
@@ -656,21 +698,23 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
               child: ExpansionTile(
                 initiallyExpanded: true,
                 controlAffinity: ListTileControlAffinity.leading,
+                tilePadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                 title: Row(
                   children: [
-                    const Icon(Icons.flag, color: Colors.orangeAccent, size: 16),
-                    const SizedBox(width: 8),
+                    const Icon(Icons.flag, color: Colors.orangeAccent, size: 13),
+                    const SizedBox(width: 5),
                     Expanded(
                       child: Text(
                         c.summary,
-                        style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold),
+                        // rootFontSize is 20% larger than smallFontSize (rootFontSize*0.8)
+                        style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: AppUIConfig.rootFontSize),
                       ),
                     ),
                   ],
                 ),
                 subtitle: Text(
                    _formatDateStr(c.commitDate),
-                   style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize),
+                   style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize * 0.85),
                 ),
                 trailing: trailingRow,
                 children: _buildTimelineNodes(context, commits.sublist(i + 1)),
@@ -680,6 +724,22 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
         );
         break; // Rest of the commits are children of this checkpoint
       } else {
+        // Standard commit rows — alternating row colors, hash left of timestamp in subtitle
+        final isEvenRow = (i % 2 == 0);
+        final rowBg = isEvenRow
+            ? Colors.white.withValues(alpha: 0.02)
+            : Colors.white.withValues(alpha: 0.05);
+
+        final shortHash = c.commitHash.length > 7
+            ? c.commitHash.substring(0, 7)
+            : c.commitHash;
+        final isRealHash = c.commitHash.isNotEmpty &&
+            c.commitHash != 'No Git Changes' &&
+            !c.commitHash.startsWith('No changes');
+        final subtitleText = isRealHash
+            ? '$shortHash  ·  ${_formatDateStr(c.commitDate)}'
+            : _formatDateStr(c.commitDate);
+
         result.add(
           ValueListenableBuilder<String?>(
             valueListenable: VersionControlWindow.highlightedTaskId,
@@ -687,18 +747,8 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
               final isHighlighted = highlightedId != null && c.taskIds.contains(highlightedId);
               return Container(
                 key: _timelineKeys[c.id],
-                color: isHighlighted ? Colors.green.withValues(alpha: 0.2) : Colors.transparent,
-                child: ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.commit, color: Colors.green, size: 16),
-                  title: Text(c.title, style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize)),
-                  subtitle: Text(
-                    _formatDateStr(c.commitDate),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize),
-                  ),
-                  trailing: trailingRow,
+                color: isHighlighted ? Colors.green.withValues(alpha: 0.2) : rowBg,
+                child: InkWell(
                   onTap: () {
                     if (c.taskIds.isNotEmpty) {
                       try {
@@ -708,6 +758,41 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                       } catch (_) {}
                     }
                   },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.commit, color: Colors.green, size: 14),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                c.title,
+                                style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize),
+                              ),
+                              Text(
+                                subtitleText,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: AppUIConfig.smallFontSize * 0.85,
+                                  fontFamily: isRealHash ? 'monospace' : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        trailingRow,
+                      ],
+                    ),
+                  ),
                 ),
               );
             }
@@ -718,3 +803,4 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
     return result;
   }
 }
+
