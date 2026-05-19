@@ -251,9 +251,14 @@ class _GlobalOverlayInjectorState extends State<_GlobalOverlayInjector> {
   }
 
   void _onFocusChanged() {
-    isTextInputFocusedNotifier.value = isTextInputFocused();
+    final status = isTextInputFocused();
+    isTextInputFocusedNotifier.value = status;
+    if (!status.startsWith('YES')) {
+      try { File('.ai_bridge/reload_block_reason.txt').writeAsStringSync('SAFE TO RELOAD'); } catch (_) {}
+    } else {
+      try { File('.ai_bridge/reload_block_reason.txt').writeAsStringSync('BLOCKED: Text field is focused'); } catch (_) {}
+    }
   }
-
   @override
   void initState() {
     super.initState();

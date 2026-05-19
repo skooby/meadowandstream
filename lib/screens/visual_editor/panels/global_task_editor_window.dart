@@ -438,16 +438,9 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     existingTask!.isIgnored = isIgnored;
     existingTask!.llmPromptStyleOverride = llmPromptStyleOverride;
 
-    // Rebuild shadow BEFORE the async call so _onAiBridgeTasksChanged sees a clean state
-    _shadowTask = AiTask.fromJson(existingTask!.toJson());
-    try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('[SAVE-2] shadow rebuilt early. vcList=${verificationCriteriaList.length} shadow=${_shadowTask?.verificationCriteria.length ?? -1} reason=${unsavedReason ?? 'null'}'); } catch(_) {}
-
-    originalStatus = newStatus;
-    originalHighlightColor = customHighlightColor;
-    originalIconBackgroundColor = customIconBackgroundColor;
-    originalIconColor = customIconColor;
-    originalToolbarIconColor = customToolbarIconColor;
-    originalIconCode = customIconCode;
+    // Compute didCompleteChecklist BEFORE rebuilding shadow so we compare
+    // the OLD shadow state (pre-edit) against the NEW verificationCriteriaList.
+    // Previously this ran after the shadow was rebuilt, making old == new always.
     bool? didCompleteChecklist;
     if (_shadowTask != null && verificationCriteriaList.isNotEmpty) {
       bool oldHasUnverified = _shadowTask!.verificationCriteria.any((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored);
@@ -458,7 +451,17 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
         didCompleteChecklist = false;
       }
     }
-    
+
+    // Rebuild shadow BEFORE the async call so _onAiBridgeTasksChanged sees a clean state
+    _shadowTask = AiTask.fromJson(existingTask!.toJson());
+    try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('[SAVE-2] shadow rebuilt early. vcList=${verificationCriteriaList.length} shadow=${_shadowTask?.verificationCriteria.length ?? -1} reason=${unsavedReason ?? 'null'}'); } catch(_) {}
+
+    originalStatus = newStatus;
+    originalHighlightColor = customHighlightColor;
+    originalIconBackgroundColor = customIconBackgroundColor;
+    originalIconColor = customIconColor;
+    originalToolbarIconColor = customToolbarIconColor;
+    originalIconCode = customIconCode;
 
     await AiBridgeService.instance.updateTaskDetails(existingTask!.id,
         nameController.text.trim(), descController.text.trim(),

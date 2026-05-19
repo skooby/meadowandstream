@@ -2115,12 +2115,12 @@ wshShell.AppActivate $myPid
           _tasks[index].verificationCriteria = verificationCriteria;
 
           bool shouldCommit = didCompleteChecklist ?? (verificationCriteria.isNotEmpty && !newHasUnverified && _tasks[index].status != AiTaskStatus.completed);
-          try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('shouldCommit: $shouldCommit, didCompleteChecklist: $didCompleteChecklist, newHasUnverified: $newHasUnverified, status: ${_tasks[index].status}\n', mode: FileMode.append); } catch (_) {}
+          try { File('.ai_bridge/bridge_commit_debug.txt').writeAsStringSync('shouldCommit: $shouldCommit, didCompleteChecklist: $didCompleteChecklist, newHasUnverified: $newHasUnverified, status: ${_tasks[index].status}\n', mode: FileMode.append); } catch (_) {}
 
           if (shouldCommit) {
              bool allSandboxTasksApproved = true;
              final activeTaskIds = SandboxService.instance.sandboxTaskIds;
-             try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('activeTaskIds: $activeTaskIds\n', mode: FileMode.append); } catch (_) {}
+             try { File('.ai_bridge/bridge_commit_debug.txt').writeAsStringSync('activeTaskIds: $activeTaskIds\n', mode: FileMode.append); } catch (_) {}
              for (final tId in activeTaskIds) {
                 if (tId == _tasks[index].id) continue;
                 try {
@@ -2132,14 +2132,14 @@ wshShell.AppActivate $myPid
                 } catch (_) {}
              }
              
-             try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('allSandboxTasksApproved: $allSandboxTasksApproved\n', mode: FileMode.append); } catch (_) {}
+             try { File('.ai_bridge/bridge_commit_debug.txt').writeAsStringSync('allSandboxTasksApproved: $allSandboxTasksApproved\n', mode: FileMode.append); } catch (_) {}
              if (allSandboxTasksApproved) {
                  performSandboxCommit = true;
                  tasksToCommit = List.from(activeTaskIds);
                  if (!tasksToCommit.contains(_tasks[index].id)) {
                    tasksToCommit.add(_tasks[index].id);
                  }
-                 try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('tasksToCommit: $tasksToCommit\n', mode: FileMode.append); } catch (_) {}
+                 try { File('.ai_bridge/bridge_commit_debug.txt').writeAsStringSync('tasksToCommit: $tasksToCommit\n', mode: FileMode.append); } catch (_) {}
              }
           }
         }
@@ -2206,7 +2206,7 @@ wshShell.AppActivate $myPid
         _triggerSandboxMergeIfNeeded(oldStatus, _tasks[index]);
         
         if (performSandboxCommit) {
-             try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('performSandboxCommit is TRUE, getting names and descriptions...\n', mode: FileMode.append); } catch (_) {}
+             try { File('.ai_bridge/bridge_commit_debug.txt').writeAsStringSync('performSandboxCommit is TRUE, getting names and descriptions...\n', mode: FileMode.append); } catch (_) {}
              final allNames = tasksToCommit.map((id) {
                try { 
                  final task = _tasks.firstWhere((t) => t.id == id);
@@ -2229,7 +2229,7 @@ wshShell.AppActivate $myPid
 
              final finalVerifiedNotes = verifiedNotes.isEmpty ? 'No verification notes.' : verifiedNotes;
 
-             try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('calling commitTimelineTasks for: $allNames\n', mode: FileMode.append); } catch (_) {}
+             try { File('.ai_bridge/bridge_commit_debug.txt').writeAsStringSync('calling commitTimelineTasks for: $allNames\n', mode: FileMode.append); } catch (_) {}
              try {
                  final hash = await VersionControlService.instance.commitTimelineTasks(
                     tasksToCommit,
@@ -2242,7 +2242,7 @@ wshShell.AppActivate $myPid
                     try { File('.ai_bridge/bridge_error.txt').writeAsStringSync('Auto-commit failed: $e\n'); } catch (_) {}
                     return '';
                  });
-                 try { File('.ai_bridge/bridge_debug.txt').writeAsStringSync('commitTimelineTasks returned hash: $hash\n', mode: FileMode.append); } catch (_) {}
+                 try { File('.ai_bridge/bridge_commit_debug.txt').writeAsStringSync('commitTimelineTasks returned hash: $hash\n', mode: FileMode.append); } catch (_) {}
                  if (hash.isNotEmpty && !hash.startsWith('Local repository path')) {
                     final actualHash = (hash == 'No changes to commit.' || hash == 'Committed successfully.') ? 'No Git Changes' : hash;
                     final commitDateStr = DateTime.now().toIso8601String();
