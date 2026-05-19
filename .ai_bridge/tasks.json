@@ -16,7 +16,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -37,6 +36,397 @@
       "commitDate": null
     },
     {
+      "id": "1779224338773",
+      "name": "Antigravity SDK Migration",
+      "description": "Transition from VBScript/File-based AI bridge to native Antigravity SDK.",
+      "summary": "",
+      "notes": "",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [],
+      "status": "open",
+      "priority": "high",
+      "isFolder": true,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": false,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": null,
+      "commitDate": null
+    },
+    {
+      "id": "1779224338774",
+      "name": "1. Remove Legacy Automation Scripts",
+      "description": "Delete paste.vbs, clipboard injection logic, and agent_status.txt polling.",
+      "summary": "",
+      "notes": "",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Delete `.ai_bridge/paste.vbs` from the filesystem.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Remove the `Clipboard.setData` and `wscript` shell execution blocks from `AiBridgeService._sendToAiAgent`.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Remove file watcher dependencies on `agent_status.txt` for idle state polling.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        }
+      ],
+      "status": "open",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": null,
+      "commitDate": null,
+      "parentId": "1779224338773"
+    },
+    {
+      "id": "1779224338775",
+      "name": "2. Integrate Core SDK Client",
+      "description": "Initialize the Antigravity SDK client in AiBridgeService and replace wscript SendKeys with native API calls.",
+      "summary": "",
+      "notes": "",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Add the `antigravity_sdk` dependency to `pubspec.yaml`.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Initialize `AntigravityClient` within the `AiBridgeService` constructor.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Replace `_sendToAiAgent` logic with `AntigravityClient.sendPrompt(...)` API call.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        }
+      ],
+      "status": "open",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": false,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": null,
+      "commitDate": null,
+      "parentId": "1779224338773"
+    },
+    {
+      "id": "1779224338776",
+      "name": "3. Migrate Context & Artifacts",
+      "description": "Stop dumping current_task.json to disk. Pass task models natively through the SDK and subscribe to artifact update streams.",
+      "summary": "",
+      "notes": "",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Remove file I/O operations for `current_task.json`.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Pass `AiTask` context directly into the SDK using typed arguments.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Subscribe to `AntigravityClient.onArtifactUpdate` stream to natively update task UI notes and verification statuses.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        }
+      ],
+      "status": "open",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": false,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": null,
+      "commitDate": null,
+      "parentId": "1779224338773"
+    },
+    {
+      "id": "1779224338777",
+      "name": "4. Wire Task Queue to Native Subagents",
+      "description": "Convert linear pending queue to use Antigravity invokeSubagent, allowing concurrent UI unblocking execution.",
+      "summary": "",
+      "notes": "",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Deprecate the linear `_pendingPrompts` queue in favor of concurrent `AntigravityClient.invokeSubagent` calls.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Update the `AiCopilotPanel` UI to display statuses of multiple concurrent agents instead of a single blocking global status.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Ensure hot reloading triggers do not break active websocket subagent connections.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        }
+      ],
+      "status": "open",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": false,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": null,
+      "commitDate": null,
+      "parentId": "1779224338773"
+    },
+    {
+      "id": "preview_test_task_1779215486583",
+      "name": "Preview Test Task",
+      "description": "Generated to demonstrate preview items",
+      "summary": "",
+      "notes": "",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Test Preview Item 1: Confirm the orange flashing border distinguishes preview items from regular testing tasks.",
+          "goal": "Test visual distinction.",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": true
+        },
+        {
+          "description": "Test Preview Item 2: Verify the new black 'TO TASK' button appearance and placement.",
+          "goal": "Ensure the button is clearly legible and properly aligned.",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": true
+        }
+      ],
+      "status": "open",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": null,
+      "commitDate": null
+    },
+    {
+      "id": "preview_test_task_1779213195208",
+      "name": "Preview Test Task",
+      "description": "Generated to demonstrate preview items",
+      "summary": "",
+      "notes": "",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Test Preview Item 1: This is a sample item generated to test the preview integration in the Task Editor.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Test Preview Item 2: This item demonstrates how multiple preview objects are rendered in the new UI workflow.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        }
+      ],
+      "status": "open",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": null,
+      "commitDate": null
+    },
+    {
       "id": "1778542776249_1",
       "name": "Bridge Hardening: Extractor Pattern",
       "description": "Create hardening tasks",
@@ -44,7 +434,6 @@
       "notes": "### Update - 2026-05-11 18:04\nBypassed the hook restriction via a custom Dart script to safely inject the 4 progressive Bridge Hardening tasks directly into the tasks.json file, complete with nested verification checklists.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Update LLM prompt to output <bridge_notes>, <preview>, etc. tags instead of file writing commands.",
@@ -55,7 +444,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Implement parser in AiBridgeService to extract these XML tags from the conversation stream.",
@@ -66,7 +456,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Wire parsed tag data directly into application state (tasks/notes) without relying on disk files.",
@@ -77,7 +468,32 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Test Preview Item 1: This is a sample item generated to test the preview integration in the Task Editor.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
+        },
+        {
+          "description": "Test Preview Item 2: This item demonstrates how multiple preview objects are rendered in the new UI workflow.",
+          "goal": "",
+          "isVerified": false,
+          "status": "pendingReview",
+          "proof": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -106,7 +522,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Remove the manual `dart analyze` directive from the AI instructions.",
@@ -117,7 +532,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Spawn a background `Process.run('dart', ['analyze'])` when the AI completes its turn.",
@@ -128,7 +544,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "If errors are detected, automatically generate a new prompt with the errors and push it to the queue.",
@@ -139,7 +556,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -168,7 +586,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Wrap jsonDecode calls in AiBridgeService with try/catch blocks.",
@@ -179,7 +596,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Implement fallback string decoding logic (try UTF-8, fallback to UTF-16LE).",
@@ -190,7 +608,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Show visible UI alerts for JSON parsing failures.",
@@ -201,7 +620,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -230,7 +650,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Monitor the .pb token generation stream directly.",
@@ -241,7 +660,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Calculate a 10-second idle timeout after the last token is generated.",
@@ -252,7 +672,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Trigger the IDLE or PREVIEW state transition natively upon timeout.",
@@ -263,7 +684,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -292,7 +714,6 @@
       "notes": "Already 100% complete! The `ChoreographyConfig` evaluation runtime (inside `choreography_engine.dart`) explicitly checks `layer.platform` against `targetPlatform` dynamically inside the player rendering logic. The visual editor natively maps device toggles down binding seamlessly into `LyricsViewController` pushing `_simulatedPlatform` natively replacing the obsolete `.xrc` format permanently.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -321,7 +742,6 @@
       "notes": "Done via previous system migrations! `Orientation` matching operates flawlessly inside `ChoreographyConfig.evaluate` intercepting `Orientation.landscape` vs `Orientation.portrait` at runtime structurally bypassing hidden timeline nodes.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -350,7 +770,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -379,7 +798,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -408,7 +826,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -437,7 +854,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -466,7 +882,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -495,7 +910,6 @@
       "notes": "Done! UserPreferences Drift database instantiated mapping securely securely cross application variables natively synchronously.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -524,7 +938,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -552,7 +965,6 @@
       "notes": "Dynamically throttle uniform updates and framerate on `MOBILE` vs `DESKTOP` to ensure battery-friendly native performance during heavy `.frag` processing cascades.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -581,7 +993,6 @@
       "notes": "Utilize Flutter's native Hero tags bridging the AppScaffold MiniPlayer directly into the expanded album art layout natively avoiding standard route popping.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -610,7 +1021,6 @@
       "notes": "Establish continuous polling / realtime websockets for the user's `Favorites` and `RecentPlay` tracking endpoints to bypass silent de-sync states.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -639,7 +1049,6 @@
       "notes": "Accurately track physical audio buffering metrics to isolate performance bottlenecks occurring exclusively within `player_controller.dart` background loading routines.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -668,7 +1077,6 @@
       "notes": "Provide interactive UI toggles mapping to a job that natively evaluates and selectively deletes orphan `.mp3` payloads locally down to a user-defined physical byte threshold natively.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -697,7 +1105,6 @@
       "notes": "Take the local string-list mappings representing `ListenScreen` tile sorting rules and push them continuously natively to support global cross-device configuration synchronization securely.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -726,7 +1133,6 @@
       "notes": "Physically construct and cache the output payloads natively to a dedicated `logs.bin` file formatted correctly to allow seamless native sharing securely via standard OS intents.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -755,7 +1161,6 @@
       "notes": "Inject a library that parses exactly how Windows evaluates physical Context Menus natively rendering completely outside the application viewport where possible securely.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -784,7 +1189,6 @@
       "notes": "Structure out the UI rendering bounds securely required to allow dynamic visualization controls passing parameter flags perfectly down into the raw audio processing bindings natively.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -813,7 +1217,6 @@
       "notes": "Attach drag handlers directly over the individual lyrical text block lines natively syncing visual coordinate drops with the internal JSON millisecond states securely.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -842,7 +1245,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -871,7 +1273,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -900,7 +1301,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -932,7 +1332,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -962,7 +1361,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -992,7 +1390,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1021,7 +1418,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1050,7 +1446,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1078,7 +1473,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1107,7 +1501,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1136,7 +1529,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1165,7 +1557,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1194,7 +1585,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1223,7 +1613,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1252,7 +1641,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1281,7 +1669,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1310,7 +1697,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1338,7 +1724,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1367,7 +1752,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1396,7 +1780,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "high",
@@ -1425,7 +1808,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "medium",
@@ -1454,7 +1836,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1483,7 +1864,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "high",
@@ -1512,7 +1892,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1541,7 +1920,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1570,7 +1948,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1599,7 +1976,6 @@
       "notes": "--- Bridge Notes ---\nDone! Created the Cheers schema inside cheers_table.dart containing id (UUID), userId, targetId, amount, and timestamp. Hooked it up to AppDatabase alongside a new CheersDao structure and verified \build_runner completed the schema generation seamlessly.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -1628,7 +2004,6 @@
       "notes": "--- Bridge Notes ---\nDone! Explicitly defined supabase_cheers_v56.sql which provisions the schema native on the public server side, implements completely open read-only access RLS policies, bounds row insertion security directly to \u0007uth.uid(), and exports the native RPC \u0007dd_cheer block to rapidly execute native cheer ingestion securely.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -1657,7 +2032,6 @@
       "notes": "--- Bridge Notes ---\nDone! In cheers_dao I wired up OfflineSyncService.instance.queueMutation to map insertCheer cleanly into the background continuous process queue. Over in OfflineSyncService, I built out explicit conditional logic looking for the new RPC operation type that fires payloads perfectly across SupabaseService.instance.client.rpc(item.targetTable) to merge everything.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -1686,7 +2060,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "high",
@@ -1715,7 +2088,6 @@
       "notes": "Opened Cheer detail presents emotionally rich layout: Sender identity, Intent badge, Large lyric/song card, Personal note.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1744,7 +2116,6 @@
       "notes": "Display sent Cheer entries. Filterable and utility focused.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1773,7 +2144,6 @@
       "notes": "Weekly Top Cheerleaders, Most Impactful, Your Stats.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1802,7 +2172,6 @@
       "notes": "Gentle positive animations. Graceful text for no inbox, no drafts, no leaderboards.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1831,7 +2200,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1860,7 +2228,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1889,7 +2256,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1918,7 +2284,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1947,7 +2312,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -1976,7 +2340,6 @@
       "notes": "--- Bridge Notes ---\nDone! Natively ingested the `I18nDao` architecture and extrapolated a robust 4-step execution pipeline safely mapped into the AI Task Bridge! Specifically isolated the `I18nController` provider wrapper, mapped UI Language Selectors to the `Languages` table, structured hardcoded string migrations natively, and queued explicit sync pipelines!",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -2005,7 +2368,6 @@
       "notes": "Maintain internal cache locally for fast string retrieval and broadcast explicitly when the active language tag changes.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2034,7 +2396,6 @@
       "notes": "Allows the user to explicitly override the system default safely with any synced app language map.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2063,7 +2424,6 @@
       "notes": "Ensure automatic structural insertion into the `Strings` schema when encountering new unmapped keys on launch.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2092,7 +2452,6 @@
       "notes": "Ensure live Language additions directly to the `Languages` table broadcast smoothly up to the server ecosystem without locking up devices.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2121,7 +2480,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2150,7 +2508,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2179,7 +2536,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2208,7 +2564,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2237,7 +2592,6 @@
       "notes": "Knowledge document successfully generated with timestamp tracking applied.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2268,7 +2622,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2297,7 +2650,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2326,7 +2678,6 @@
       "notes": "",
       "implementationQuestion": "Strictly enforce Active Configured Statuses validation. Format via detailed markdown for knowledge retention. We must store the filename simultaneously inside the local system and the database. Critically: Embed strict timestamp injection mechanics within the context headers so the system can natively calculate timeline staleness and refresh priority.",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -2358,7 +2709,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2387,7 +2737,6 @@
       "notes": "Injected LLM Language Context Override state mappings inherently strictly native inside the Folders scope bridging metadata. Constructed a parent-tree recursive scanning mechanism (getLlmPromptStyleOverride(String? pId)) evaluating deeply nested folder contextual overrides seamlessly prioritizing manual LLM configuration styles per module over the fallback system-wide configuration cog. Rendered DropDown selection widgets and safely populated Voice/Complexity Response Override dynamically across all AI Prompt evaluation iterations correctly.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2416,7 +2765,6 @@
       "notes": "Successfully appended explicit Audio Separation cli flags and engineered metadata uploading mechanics looping through Supabase storage artifacts generation synchronization natively.\nAnchored dynamic overlay widget capturing transcriptionStatus stream natively rendering above Timeline visual canvas.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -2445,7 +2793,6 @@
       "notes": "Fully implemented floating generic window extracting audio path and metadata parsing statically injecting artifacts internally back towards the timeline config.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -2474,7 +2821,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2503,7 +2849,6 @@
       "notes": "Implementation Notes:\\n- Re-architected raw `TextField` instances dedicated to `description` and `notes` properties intrinsically from restricted single-line elements into robust, natively scalable multi-line layouts.\\n- Bound `descCtrl` dynamic bounds natively to `minLines: 4` and `maxLines: 12` utilizing a completely transparent internal scroll-aware behavior when populated efficiently.\\n- Encompassed `notesCtrl` boundaries safely scaling across `minLines: 3` and `maxLines: 8`.\\n- Fully discarded the primitive basic underlines explicitly adopting professional `OutlineInputBorder` boxes equipped natively to handle focused contextual color borders natively mapping text logic expansively.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -2532,7 +2877,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inReview",
       "priority": "none",
@@ -2561,7 +2905,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2589,7 +2932,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2618,7 +2960,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inReview",
       "priority": "none",
@@ -2647,7 +2988,6 @@
       "notes": "Successfully located `c:\\Development\\Music\\Project\\lib\\screens\\visual_editor\\panels\\test_bed_window.dart` and replaced the target text string with \"GEMINI IS GETTING BETTER?\". \nRan `dart analyze` to confirm no new syntax errors were introduced. Setting system state to IDLE to unblock the queue.",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inReview",
       "priority": "none",
@@ -2676,7 +3016,6 @@
       "notes": "## Implementation Notes\n- Updated `AiQueueWindow` list UI logic in `lib/screens/visual_editor/panels/ai_queue_window.dart`.\n- Added `decorationColor: Colors.redAccent` and `decorationThickness: 2.0` conditionally for `isCompleted` tasks within the `TextStyle` of the item title `Text` widget to render the strikethrough as a thick red line.\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -2705,7 +3044,6 @@
       "notes": "## Implementation Notes\n- Searched `AiBridgeService` for hot reload trigger mechanisms.\n- Injected `await MacroService.instance.executeTrigger('BeforeReload');` immediately prior to dispatching hot reload cover displays in both the internal queue processing watcher and `triggerPendingUpdate()` pipelines.\n- Guaranteed macro intercepts will sequentially complete before Flutter recompiles any application code on screen.\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -2734,7 +3072,6 @@
       "notes": "- Fixed accidental copy/paste in constants.dart.\n- Removed uppercase transformation for macro and folder names in macro list.\n- Replaced Card wrapper with transparent Container for macro items to remove border.\n- Increased drag feedback bounding box width to 450 to eliminate RenderFlex overflow during drags.\r\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -2763,7 +3100,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2792,7 +3128,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2821,7 +3156,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inReview",
       "priority": "none",
@@ -2850,7 +3184,6 @@
       "notes": "- Implemented folder rename functionality in Macro Manager.\n- Added _editFolderName method to launch a rename dialog.\n- Added an Edit IconButton next to the Delete Folder button in the macro tree.\r\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -2879,7 +3212,6 @@
       "notes": "# Implementation Notes: MACRO COMMANDS (3 of 3)\n- Added `AppendClipboard`, `SetClipboard`, and `NextClipboard` to the `knownCommands` list in `MacroService`'s transpiler to ensure they are parsed properly.\n- Added PowerShell functions and variables in the `psHeader` section of the transpiler to support these commands natively in Windows.\n  - `$global:MacroClipboardQueue`: An array to hold clipboard strings.\n  - `$global:MacroClipboardIndex`: An index pointer for the queue.\n  - `AppendClipboard`: Takes a string and appends it to the queue.\n  - `SetClipboard`: Sets the clipboard to the item at index 0 of the queue.\n  - `NextClipboard`: Increments the index (wrapping around if needed) and sets the clipboard to the item at the new index.\n- Executed `flutter analyze` internally to confirm flawless compilation of `macro_service.dart`. No errors were found.\n- Transitioning agent status to IDLE.\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -2908,7 +3240,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inReview",
       "priority": "none",
@@ -2937,7 +3268,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2966,7 +3296,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -2995,7 +3324,6 @@
       "notes": "# PREVIEW MODE\n\n\n# PREVIEW MODE\n\n\n# PREVIEW MODE\n\n\n# Implementation Notes: Queue Title Formatting\n- Addressed user feedback regarding queued task titles.\n- Modified `_buildQueueItem` in `ai_task_manager_panel.dart` to enforce `.toUpperCase()` explicitly on `taskList.first.name` when derived from matched tasks.\n- Validated logic with `dart analyze` (0 errors).\n\nSystem resetting back to IDLE.\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -3024,7 +3352,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3053,7 +3380,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3082,7 +3408,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3111,7 +3436,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3140,7 +3464,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3170,7 +3493,6 @@
       "notes": "Replaced 'Verification Criteria' with 'Task Checklist' as requested. \n1. The UI labels in \\global_task_editor_window.dart\\ have been renamed.\n2. The UI section has been moved to be immediately above the Notes section.\n3. The visual icons for status have been replaced with \\Checkbox\\es so the user can easily toggle the completion status.\n4. The AI Bridge prompt generation logic (both in the editor window and \\AiTaskManagerPanel\\) has been updated to filter the checklist and send ONLY unchecked items under the 'Tasks:' label.\r\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -3199,7 +3521,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3228,7 +3549,6 @@
       "notes": "### Step-by-Step Implementation Guide\n\n1. **Update AiTaskManagerPanel UI:**\n   - Locate the `lib/screens/visual_editor/panels/ai_task_manager_panel.dart` file.\n   - For the AI response rendering area, wrap the content in a `Container` with a subtle elevation or an inset shadow effect using `BoxDecoration`.\n   \n2. **Apply Theme Enhancements:**\n   - Adjust the `borderSubtle` color in the theme configuration to provide higher contrast exclusively for the boundaries separating system messages from the task list.\n   - Consider reducing the opacity of system logs to `0.7` to de-emphasize them, drawing the user's eye naturally toward the AI task proposals.\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -3257,7 +3577,6 @@
       "notes": "### Step-by-Step Implementation Guide\n\n1. **Identify the Active Task State:**\n   - In `AiBridgeService`, expose the `activeProcessingTaskId` getter to the UI listeners.\n\n2. **Update Task Tile UI:**\n   - In the `AiTaskManagerPanel` (or wherever task list items are rendered), check if the `task.id == AiBridgeService.instance.activeProcessingTaskId`.\n   \n3. **Implement Visual Indicator:**\n   - If true, wrap the task icon or the trailing widget in an `AnimatedOpacity` or `TweenAnimationBuilder` to create a gentle pulsing effect (e.g., opacity fading between 0.5 and 1.0).\n   - Alternatively, add a small \"Processing...\" chip using the theme's accent color next to the task name to make the system state explicitly visible.\n\nCode execution complete.\n- Added a `_FlashingIcon` widget with `Icons.autorenew` wrapping the leading area of the task row in `AiTaskManagerPanel`.\n- Conditioned the flashing icon on `AiBridgeService.instance.activeTaskIds.contains(task.id)`.\n- Verified compilation integrity (0 errors, only pre-existing info/lints).\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -3286,7 +3605,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3314,7 +3632,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3343,7 +3660,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3371,7 +3687,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inProgress",
       "priority": "none",
@@ -3400,7 +3715,6 @@
       "notes": "Successfully intercepted and clarified the task.\n\nVerified that the icon picker tabs are aligned to the left. The \tabAlignment: TabAlignment.start property was added to the TabBar widget in global_icon_picker_window.dart to remove the strange center-alignment gap.\n\nMoved the color block (preview, background, icon, text color) next to the Send to AI Bridge button in the UI. Also modified the PRIMARY DIRECTIVES (system hooks) to explicitly require clarification if instructions are unclear before proceeding.\r\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Modify our PRIMARY DIRECTIVES so that it detects if instructions are not clear that it will require clarification before proceeding",
@@ -3411,7 +3725,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -3441,7 +3756,6 @@
       "notes": "Updated the 'Send to AI Bridge' icon button in the global task editor. It is now wrapped in a Container with a circular white border (1.5px width) and its size has been increased from 16 to 20. The color is dynamically matched to the bridge icon color using AppUIConfig.bridgeIconColor.\r\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -3474,7 +3788,6 @@
       "notes": "- **Architectural Change (Verification Logic):** Added `AiVerificationCriteria` model to tasks. This enforces explicit accountability checks within the AI queue.\n- **System Hook Injection:** Modified `AiBridgeService`'s native system hooks. If a task contains `Verification Criteria`, the AI is strictly bound by instruction 7 to generate a `.ai_bridge/latest_verification.json` containing `isVerified: true` and explicit textual proofs mapping to each criterion.\n- **Prompt Synchronization:** `AiTaskManagerPanel` now dynamically injects pending verification constraints straight into the active prompt payload before transmission.\n- **UI Extension:** Developed `_buildVerificationCriteriaSection()` in the `GlobalTaskEditorWindow` layout natively linking the user to these metrics. It exposes inputs to create criteria constraints on any task and presents the agent's proofs inline, color-coded based on its verified state.\n- **Queue Synchronization:** Created native file parsing logic to intercept `latest_verification.json`, inject the agent's proofs directly into the UI state, and mutate the active task array safely before deleting the payload.\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -3503,7 +3816,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3531,7 +3843,6 @@
       "notes": "Fixed the DropdownButton crash caused by missing or deleted 'inbox' worksheet definitions.\n1. Updated global_task_editor_window.dart to validate that the assigned worksheetId actually exists in the current AiBridgeService worksheets pool.\n2. If the active worksheet doesn't exist, it falls back to the first available worksheet to ensure structural integrity and prevent the 'Multiple DropdownMenuItem' assertion error.\r\n",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Have all current tasks assigned to a default worksheet.",
@@ -3542,7 +3853,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "need to be able to set and change the icon for a worksheet in a config box lets reuse the TASK EDITOR dialog for this... more like the folder, maybe we could have worksheet an option under the task types.",
@@ -3553,7 +3865,8 @@
           "requestClarification": true,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Can't move folders/tasks to worksheets",
@@ -3564,7 +3877,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inProgress",
@@ -3594,7 +3908,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3623,7 +3936,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3652,7 +3964,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3683,7 +3994,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Add a task shen a compile error intercept is detected, have the task be, \"Fix compile errors\"",
@@ -3694,7 +4004,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inProgress",
@@ -3724,7 +4035,6 @@
       "notes": "### Update - 2026-05-11 11:04\nImplemented persistent, draggable floating tools gallery with auto-expansion. Wrapped the tools gallery row in a ValueListenableBuilder listening to VisualEditorScreen.currentWorkspace to dynamically populate icons based on workspace availability. Added all legacy and newly introduced tool buttons to the floating widget. Resolved showControlTypesEditorWindow compilation error by defining missing show/hide methods in control_types_editor_panel.dart.\n\n---\n\n### Update - 2026-05-11 10:43\nSuccessfully recovered file state and transformed the slideout Tools Gallery into a persistent, draggable frameless toolbar within the Visual Editor layout. The UI now utilizes a floating Positioned widget with a drag indicator instead of a collapsed top-bar toggle. Ensured complete compatibility with newly added panels like Task Editor and Notes Editor. Validated codebase integrity with dart analyze yielding zero errors.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Change the tool gallery slideout into a horizontal toolbar in a movable window without a titlebar have it always expanded... no need for the collapse, we will do that differenly next.",
@@ -3735,7 +4045,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Gallery toolbar window needs to auto expand and show icons  assigned to the current workspace and those that are available to all workspaces according to the Config > Window Workspaces",
@@ -3746,7 +4057,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -3776,7 +4088,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3805,7 +4116,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -3835,7 +4145,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inTesting",
       "priority": "none",
@@ -3865,7 +4174,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -3894,7 +4202,6 @@
       "notes": "### Update - 2026-05-11 22:17\nAI Bridge workflow test passed. File-based delivery working correctly.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Testing AI BRidge Workflow",
@@ -3905,7 +4212,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -3935,7 +4243,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Test that UTF-8, UTF-16LE, and null-stripped ASCII formats can be decoded correctly by mocking the AiBridgeService._startWatching local .pb parsing algorithm.",
@@ -3946,7 +4253,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -3976,7 +4284,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Verify that the regex extraction logic for <bridge_notes>, <preview>, and <verification> accurately isolates payloads even when surrounded by massive malformed chat logs.",
@@ -3987,7 +4294,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "open",
@@ -4017,7 +4325,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Test the state-transition block. Mock Process.run('dart', ['analyze']) to ensure that simulated error strings correctly short-circuit the IDLE transition and invoke forceDispatchCompileError.",
@@ -4028,7 +4335,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "open",
@@ -4058,7 +4366,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -4087,7 +4394,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -4110,36 +4416,6 @@
       "worksheetId": "1778268121185"
     },
     {
-      "id": "1778559578740",
-      "name": "UI",
-      "description": "",
-      "summary": "",
-      "notes": "",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "previewItems": [],
-      "verificationCriteria": [],
-      "status": "inTesting",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": null,
-      "commitDate": null,
-      "parentId": "1778559529935",
-      "worksheetId": "1778268121185"
-    },
-    {
       "id": "1778586858750",
       "name": "GENERAL",
       "description": "",
@@ -4147,7 +4423,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -4177,7 +4452,6 @@
       "notes": "### Update - 2026-05-12 06:10\nRoot cause identified and fixed. The log message 'Unable to parse JSON message: The document is empty.' was generated by Dart's internal JSON parsing subsystem when `jsonDecode()` was called on blank or non-JSON lines inside the `overview.txt` scan loop in `ai_bridge_service.dart`. The fix adds a guard (`line.isEmpty || !line.startsWith('{') â†’ continue`) before the `jsonDecode` call, so only valid JSON-like lines are ever parsed. The `catch(_){}` block was already there but could not suppress the low-level platform diagnostic that fires before Dart's exception handler.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Why does this happen in the log, 'Unable to parse JSON message:The document is empty.'",
@@ -4188,7 +4462,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inProgress",
@@ -4219,7 +4494,6 @@
       "notes": "### Update - 2026-05-12 15:28\nRemoved blocking `windowManager.isFocused()` call from `AiBridgeService.triggerPendingUpdate` which could hang the bridge event loop when the window is inactive. Additionally updated the `_isSafeToReload` logic in `app.dart` to safely bypass the `EditableText` focus block if the app window is not actively focused. This allows hot restarts and reloads to seamlessly trigger while the user is actively working in their IDE without requiring them to click back to the app.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Reload/Restart not geting triggered unless I click away and click back to app. I ",
@@ -4230,7 +4504,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inProgress",
@@ -4261,7 +4536,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -4291,7 +4565,6 @@
       "notes": "### Update - 2026-05-14 14:40\nDivided the attachment viewer main title bar dimensions by the current UI scale factor. This counteracts the Transform.scale wrapper and ensures the header height and title font size match global AppUIConfig exact pixel values when floating.\n\n---\n\n### Update - 2026-05-14 14:32\nApplied `AppUIConfig.titleBarHeight` to both the Analysis dialog header and the file count header inside the attachment viewer. Also verified that `AppUIConfig.windowTitleFontSize` and `AppUIConfig.configIconColor` are used throughout to enforce global theme adherence.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Still not correct... height of the header is wrong... title size is WRONG! Attachment tool window is not using theme settings properly",
@@ -4302,7 +4575,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Attachment tool window is not using theme settings properly: Title font size, header height",
@@ -4313,7 +4587,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -4344,7 +4619,6 @@
       "notes": "### Update - 2026-05-12 15:13\nUpdated `global_task_editor_window.dart` to properly inherit `worksheetId` from the pre-selected parent task. If the parent is a worksheet itself, the new child inherits the parent's `id` as its `worksheetId`. If the parent is a standard folder or task, it inherits the parent's `worksheetId`. This ensures newly created child tasks and folders are automatically placed into the correct worksheet context.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "have adding a child folder automaticaly know to put it in the current worksheet and as a child to the parent where we clicked on the add folder or task",
@@ -4355,7 +4629,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -4386,7 +4661,6 @@
       "notes": "### Update - 2026-05-13 06:17\nAdded one-shot AI analysis system to the AttachmentViewerWindow. Clicking 'Analyze' on any non-URL attachment dispatches a prompt to the AI Bridge queue instructing the agent to open the file with view_file, produce a comprehensive markdown analysis, and write it to '<attachmentPath>.analysis.md'. The analysis sidecar is only generated once; subsequent clicks open the cached result in a scrollable Markdown dialog instead of re-queuing. A 3-second Timer.periodic polls for sidecar file existence and updates a _hasAnalysis map, causing the command button to swap from 'Analyze' (grey) to 'View Analysis' (cyanAccent) automatically. A microscope badge icon appears in the file list row for any entry with an existing analysis. The dialog provides Refresh (delete sidecar + re-queue) and Open-in-Explorer shortcuts.\n\n---\n\n### Update - 2026-05-12 19:31\nRedesigned AttachmentViewerWindow as a list+detail-pane tool similar to the color picker pattern. AttachmentViewerRequest in GlobalPickerState now carries: contextLabel (task/checklist name), attachments (mutable list), onAdd(path), onRemove(index), onSave callbacks. The window shows: context header with '+' add button, scrollable list of all attachments (thumbnails for images), a detail pane with full preview + commands (Open, Paste Replace, Remove) + notes area. Both call sites in global_task_editor_window.dart and ai_task_manager_panel.dart updated to the new list-based API.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Lets add an analyze button to the attachment. Which will send via the AI Bridge for it to review and return this analysis. Store this analysis in the separate file. Have this analysis be linked in the attachment list. Thus we only have to analize the file once by the AI not each time we use it.",
@@ -4397,7 +4671,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Connect a resource to an Agent, which would help direct the type of analysis required",
@@ -4408,7 +4683,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inProgress",
@@ -4439,7 +4715,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -4469,7 +4744,6 @@
       "notes": "### Update - 2026-05-13 10:46\nFixed the Agents edit button. The _showNodeEditor state was correctly being set, but the _buildNodeEditor() widget was entirely missing from the AgentsPanel build layout. Wrapped the list view in a Stack and conditionally appended the editor overlay. Verified all 0 compile errors.\n\n---\n\n### Update - 2026-05-13 10:31\nVerified all 5 criteria for the Color and Icon Selection migration task. The changes were implemented earlier but were pending verification criteria completion in latest_verification.json. All code has already been written, properly compiled, and verified dynamically.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "inProgress",
       "priority": "none",
@@ -4499,7 +4773,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Add a section for integration with GitHub",
@@ -4510,7 +4783,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inProgress",
@@ -4541,7 +4815,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Support for connecting to GitHub services, including credentials and urls",
@@ -4552,7 +4825,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inProgress",
@@ -4583,7 +4857,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Not coming to front or ordering properly when clicking on",
@@ -4594,7 +4867,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inProgress",
@@ -4625,7 +4899,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -4654,7 +4927,6 @@
       "notes": "### Update - 2026-05-13 21:12\nConnection test 2.0 executed. Pipeline round-trip confirmed â€” task received, processed, IDLE dispatched.\n\n---\n\n### Update - 2026-05-13 21:01\nConnection test passed. All three hot reload fixes verified structurally in place: force bypass on IDLE, 10-second safety timeout on _isSafeToReload loop, and timer-based fallback trigger.\n\n---\n\n### Update - 2026-05-13 20:11\nThe hot reload was being suppressed by a race condition between the IDLE handler and the Antigravity IO absorber timer. triggerPendingUpdate() required isThinking==false, but _isAntigravityBusy stayed true for 5+ seconds after the agent's last write. The previous fix (re-triggering from the timer) was insufficient because _processQueue() could dispatch the next task before the timer fired, re-enabling isThinking. The definitive fix adds a 'force' parameter to triggerPendingUpdate() â€” when IDLE is explicitly written, we KNOW the agent is done, so we bypass the isThinking gate entirely. Also added a 10-second timeout to the _isSafeToReload() loop in app.dart to prevent infinite blocking when an EditableText has focus during hotRestart/rebuild.\n\n---\n\n### Update - 2026-05-13 19:38\nPatched the AI Bridge state machine to ensure hot reloads are immediately dispatched when the 5-second IO absorber timeout elapses. Previously, the pending update was quietly suppressed if the agent dispatched its IDLE token before the IO absorber finalized, stranding the UI update until the app window lost and regained focus.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Now this is spinning without refreshing... Flow not working well, if focus is on App... It isn't sending hot reload/refresh unless I click away and then back",
@@ -4665,7 +4937,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Testing connection 2.0",
@@ -4676,7 +4949,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -4706,7 +4980,6 @@
       "notes": "### Update - 2026-05-14 06:55\nAdded the Notes Editor and Control Types editor to the Custom Tool Windows default configurations in `constants.dart`. Removed the redundant `theme_selector` alias from the Tools Toolbar in `visual_editor_screen.dart`.\n\n---\n\n### Update - 2026-05-14 06:40\nReordered the Workspace Binding options so that 'Hide' is presented as the very first option. Verified that the existing interaction logic correctly handles toggling: if 'Hide' or 'All' are active and another item is selected, the overriding state is removed, leaving just the specific selection.\n\n---\n\n### Update - 2026-05-14 06:35\nRefined the Custom Tool Windows Workspace Binding UI. Removed visual checkmarks from the `FormBuilderFilterChips`, renamed 'All Workspaces' to 'All', and added a smart `onChanged` interceptor. The `onChanged` interceptor enforces mutual exclusivity so that selecting 'Hide' or 'All' automatically deselects all other specific workspace bindings, preventing logic conflicts.\n\n---\n\n### Update - 2026-05-14 06:28\nAdded 'All Workspaces' and 'Hide' options to the Workspace Binding UI inside the Custom Tool Windows editor. The core availability checker `_isWindowAvailable()` in `visual_editor_screen.dart` was updated to support 'all' and 'none' keys, seamlessly connecting the Editor bindings to the active Tools toolbar logic.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Add a Hide option in the Edit Tool Window in the Workspace Binding, Also add an entry for All. And connect this to our Tools toolbar window",
@@ -4717,7 +4990,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Add Notes Editor to our Custom Tools Windows in COnfig",
@@ -4728,7 +5002,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Add Control Types Editor",
@@ -4739,7 +5014,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Remove Theme_selector from Tools Toolbar",
@@ -4750,7 +5026,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inProgress",
@@ -4781,7 +5058,6 @@
       "notes": "### Update - 2026-05-14 13:06\nFixed compile error detection in AI Bridge Service\n\n---\n\n### Update - 2026-05-14 12:28\nUpdated the `forceDispatchCompileError` method in `ai_bridge_service.dart`. Instead of reusing an existing \"Fix compile errors\" task and potentially cluttering the queue or keeping old state, the service now calls `_tasks.removeWhere((t) => t.name.toLowerCase() == 'fix compile errors');` to delete all previous instances before generating a fresh task at the top of the queue.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "If a compile error is detected... delete all other tasks for Fix Compile Errors before creating a new one from scratch",
@@ -4792,7 +5068,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "compile error not getting detected!",
@@ -4803,7 +5080,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -4833,7 +5111,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -4861,7 +5138,6 @@
       "notes": "### Update - 2026-05-15 11:27\nAdded stashChanges, checkoutBranch, and getCurrentBranch to VersionControlService.\nIntercepted GlobalTaskEditorState activeRequest change in AiTaskManagerPanel.\nAdded _handleTaskSandboxTransition to stash local changes and branch off 'main' into 'task_sandbox_[id]'.\nTriggered AiBridgeService.instance.notifyListeners() to force the IDE to refresh the file tree.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Create native Git service methods for `stash`, `checkout -b`, and standard navigation.",
@@ -4872,7 +5148,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Intercept the 'Active Task' state change in AiTaskManagerPanel.",
@@ -4883,7 +5160,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Automatically stash current changes and switch to the task-specific branch (sandbox).",
@@ -4894,7 +5172,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Ensure the IDE cleanly swaps out the file tree visually when the branch changes.",
@@ -4905,7 +5184,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -4935,7 +5215,6 @@
       "notes": "### Update - 2026-05-15 11:37\nAdded commitAndMergeSandbox in VersionControlService which automates branching logic (checking out sandbox, adding files, committing with note payload as message, checking out main, merging, and pushing). Intercepted task state changes in AiBridgeService to trigger this flow gracefully on completion.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Intercept the 'Mark as Completed' event for tasks.",
@@ -4946,7 +5225,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Compile task name, description, and AI notes into a formatted commit message.",
@@ -4957,7 +5237,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Execute `git add .` and `git commit -m` on the sandbox branch.",
@@ -4968,7 +5249,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Switch to main branch, execute `git merge`, and run `git push` in the background.",
@@ -4979,7 +5261,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Handle any potential merge conflicts silently or prompt the user gracefully.",
@@ -4990,7 +5273,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -5020,7 +5304,6 @@
       "notes": "### Update - 2026-05-15 11:41\nRefactored VersionControlWindow to display a dual-pane Dashboard. Replaced the old terminal placeholder with a robust view that taps into AiBridgeService to actively map 'in progress/testing' tasks to 'ACTIVE SANDBOXES' and completed tasks to a chronological 'TIMELINE HISTORY'.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Replace the existing VersionControlWindow layout with a Dashboard view.",
@@ -5031,7 +5314,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Create a list component for 'Active Sandboxes' (tasks in progress).",
@@ -5042,7 +5326,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Create a chronological list component for 'Timeline History' (completed tasks).",
@@ -5053,7 +5338,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Parse the Git log or Tasks JSON to populate the Timeline History accurately.",
@@ -5064,7 +5350,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -5094,7 +5381,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Add a new 'Changes/History' tab to GlobalTaskEditorWindow.",
@@ -5105,7 +5391,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Execute a `git diff` comparing the sandbox branch to the main branch.",
@@ -5116,7 +5403,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Parse the diff output and display the list of changed files.",
@@ -5127,7 +5415,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Allow clicking a changed file to view the specific code diff natively.",
@@ -5138,7 +5427,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inTesting",
@@ -5168,7 +5458,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Add click handlers to the Timeline History items in VersionControlWindow.",
@@ -5179,7 +5468,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Route clicks on history items to open the corresponding GlobalTaskEditorWindow.",
@@ -5190,7 +5480,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Add a 'View in Timeline' button to the Task Editor header.",
@@ -5201,7 +5492,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Ensure the timeline correctly scrolls to and highlights the selected task.",
@@ -5212,7 +5504,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "inProgress",
@@ -5242,7 +5535,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "completed",
       "priority": "none",
@@ -5271,7 +5563,6 @@
       "notes": "### Update - 2026-05-18 20:00\nAdded a built-in contextMenuBuilder to SpellCheckTextEditingController to natively support right-click suggestions. It parses the word at the current text cursor selection offset, compares it to the dictionary, and if missing, runs a fast heuristic Levenshtein algorithm over the dictionary keys to find the 4 closest matching terms. These terms are inserted directly into the AdaptiveTextSelectionToolbar. Hooked this up to all text fields in the Global Task Editor using the spell checker.\n\n---\n\n### Update - 2026-05-18 19:47\nFixed an issue where the spell checker was not appearing on the 'Add new task...' field. The TextField was wrapped in a Focus widget that intercepted focus state. Added an `onFocusChange` callback to the wrapper Focus widget to correctly toggle the controller's `isEditing` state. Also updated `anyFocused` to include `newSubTaskFocus`, fixing an edge case where typing in this field could trigger a spurious auto-save and disrupt focus.\n\n---\n\n### Update - 2026-05-18 19:38\nUpgraded 'newSubTaskController' to use the new SpellCheckTextEditingController implementation. Attached its respective 'newSubTaskFocus' node to the unified _onFocusChanged listener in global_task_editor_window.dart, which correctly toggles the spell-checking overlay whenever the new subtask input is focused or defocused.\n\n---\n\n### Update - 2026-05-18 19:34\nIntegrated simple_spell_checker into the app by creating a custom SpellCheckTextEditingController. This custom controller overrides buildTextSpan to inject custom TextSpans with wavy red underlines for misspelled words, integrating flawlessly with standard TextFields. Modified global_task_editor_window.dart to use this new controller for the task name, description, summary, notes, and checklist item fields. Implemented FocusNode listeners to toggle an 'isEditing' state flag in the controller, ensuring spell-check lines only appear when a field is focused.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "https://pub.dev/packages/simple_spell_checker",
@@ -5282,7 +5573,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Show in input fields only while editing",
@@ -5293,7 +5585,8 @@
           "requestClarification": false,
           "tryCount": 1,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Not working for Add new task input field",
@@ -5304,7 +5597,8 @@
           "requestClarification": false,
           "tryCount": 1,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Can we add right mouse click suggestions",
@@ -5315,7 +5609,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         }
       ],
       "status": "completed",
@@ -5346,7 +5641,6 @@
       "notes": "### Update - 2026-05-18 23:12\nRemoved all remaining vertical separator Containers in the bottom toolbar of global_task_editor_window.dart. Previously, when the task had no file attachments or hyperlinks, the subsequent separators in the rendering array collapsed next to the 'Duplicate Task' button, causing the separator to still appear. All trailing separators in this row have now been removed for a clean UI.\n\n---\n\n### Update - 2026-05-18 23:06\nFixed an issue where the task's main summary was being overwritten by the AI bridge's commit messages whenever checklist items were marked complete. Commit messages are now appended to the task's notes instead of overwriting the summary. Also removed the double vertical separator appearing after the 'Duplicate Task' button when no attachments are present.\n\n---\n\n### Update - 2026-05-18 22:56\nIncreased the decorationThickness of the crossed-out line for completed tasks in the Task Manager to 2.0. This makes the white strikethrough line significantly more visible and prevents it from appearing dim or alpha-blended against the text.\n\n---\n\n### Update - 2026-05-18 22:53\nRemoved the text input focus status indicator from the top toolbar of the Visual Editor Screen. Updated the task manager panel to use white for the strikethrough color of completed tasks.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Feels like summary is getting rewritten as we mark checklist items as complete. The summary should summarize all items within the task editor. This is for sure happening. summary should not ",
@@ -5357,7 +5651,8 @@
           "requestClarification": false,
           "tryCount": 1,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Remove the double separator in the bottom area the one after duplicate task",
@@ -5368,7 +5663,8 @@
           "requestClarification": false,
           "tryCount": 1,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         }
       ],
       "status": "completed",
@@ -5398,7 +5694,6 @@
       "notes": "  error - lib\\screens\\visual_editor\\panels\\ai_task_manager_panel.dart:205:30 - The method 'getPrimaryDirectivesAsync' isn't defined for the type 'AiBridgeService'. Try correcting the name to the name of an existing method, or defining a method named 'getPrimaryDirectivesAsync'. - undefined_method",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "completed",
       "priority": "none",
@@ -5426,7 +5721,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "completed",
       "priority": "none",
@@ -5455,7 +5749,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [],
       "status": "open",
       "priority": "none",
@@ -5483,7 +5776,6 @@
       "notes": "### Update - 2026-05-19 06:32\n**Downloaded and Verified Local Orchestration Model**\n\nSuccessfully downloaded and ran the lightweight orchestration model `qwen2.5:3b` via Ollama. Verified the model is responsive by executing the test prompt ('Summarize the purpose of a prompt review assistant.'), which returned a robust and structured summary successfully via the local API endpoint.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Install lightweight orchestration model: `ollama pull qwen2.5:3b`.",
@@ -5494,7 +5786,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Optional alternative: `ollama pull gemma3:4b`.",
@@ -5505,7 +5798,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Verify model works: `ollama run qwen2.5:3b`.",
@@ -5516,7 +5810,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Test prompt: 'Summarize the purpose of a prompt review assistant.'",
@@ -5527,7 +5822,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         }
       ],
       "status": "completed",
@@ -5557,7 +5853,6 @@
       "notes": "### Update - 2026-05-19 06:36\n**Verified Local Ollama API Integration**\n\nVerified that the local Ollama API is accessible at http://localhost:11434. Successfully sent a POST request to `/api/chat` using the `qwen2.5:3b` model and confirmed it returns a valid JSON response containing the generated assistant message.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Verify Ollama API is accessible at Default endpoint: http://localhost:11434.",
@@ -5568,7 +5863,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Test endpoint POST http://localhost:11434/api/chat with valid JSON body containing model and messages.",
@@ -5579,7 +5875,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Confirm valid JSON response.",
@@ -5590,7 +5887,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         }
       ],
       "status": "completed",
@@ -5620,7 +5918,6 @@
       "notes": "### Update - 2026-05-19 06:16\n**Fix Uncheck All state reset**\n\nFixed the 'Uncheck All' logic in global_task_editor_window.dart so that it properly reverts criteria status to AiVerificationStatus.none, nullifies the proof, and clears isCommitted, effectively unchecking them in the UI instead of shifting them to the orange pendingReview state.\n\n---\n\n### Update - 2026-05-19 06:13\n**Refactor Complete All to Icon and Add Uncheck All Button**\n\nUpdated the global task editor window to replace the 'Complete All' text button with a streamlined 'Complete All' icon button (using Icons.done_all). Also introduced an 'Uncheck All' icon button (using Icons.deselect) alongside it to provide quick checklist toggling capabilities.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Change the Complete All to be an icon",
@@ -5631,7 +5928,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Add a Uncheck all icon next to the Complete All icon",
@@ -5642,7 +5940,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Uncheck all ... should uncheck items in the checklist",
@@ -5653,7 +5952,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         }
       ],
       "status": "completed",
@@ -5684,7 +5984,6 @@
       "notes": "### Update - 2026-05-19 06:28\n**Verified Ollama Service is Running**\n\nVerified that the Ollama processes (`ollama` and `ollama app`) are actively running in the background on the host Windows machine.\n\n---\n\n### Update - 2026-05-19 06:22\n**Ollama Installation (Pending Manual Download)**\n\nDetected OS as Windows. I attempted to install Ollama via `winget`, but the executable is approximately 2.0 GB and was taking an extended period of time to download in the background. To prevent invisible bandwidth consumption and background hanging, I have aborted the automated download.\n\nPlease download and install Ollama manually from https://ollama.com, then verify the Ollama service is running in your system tray.\n\n---",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Detect operating system.",
@@ -5695,7 +5994,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Install Ollama from https://ollama.com.",
@@ -5706,7 +6006,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Windows: Ensure Ollama service is running.",
@@ -5717,7 +6018,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         },
         {
           "description": "Mac/Linux: Run `ollama --version`.",
@@ -5728,7 +6030,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": true
+          "isCommitted": true,
+          "isPreview": false
         }
       ],
       "status": "completed",
@@ -5751,58 +6054,6 @@
       "parentId": "1800000000000"
     },
     {
-      "id": "1800000000012",
-      "name": "STEP 5 - Add Request Timeouts & Fallbacks",
-      "description": "Ensure robustness for LocalAiService.",
-      "summary": "",
-      "notes": "",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "previewItems": [],
-      "verificationCriteria": [
-        {
-          "description": "Implement retry mechanism in LocalAiService for failed HTTP requests.",
-          "goal": "",
-          "isVerified": false,
-          "status": "pendingReview",
-          "proof": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false
-        },
-        {
-          "description": "Implement cloud API fallback routing if local Ollama instance is completely unreachable.",
-          "goal": "",
-          "isVerified": false,
-          "status": "pendingReview",
-          "proof": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false
-        }
-      ],
-      "status": "open",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": false,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": null,
-      "commitDate": null,
-      "parentId": "1800000000000"
-    },
-    {
       "id": "1800000000013",
       "name": "STEP 6 - Add Optional Embeddings Support",
       "description": "Vector database capabilities.",
@@ -5810,7 +6061,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Install nomic-embed-text locally.",
@@ -5821,7 +6071,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Add generateEmbeddings() method to LocalAiService.",
@@ -5832,7 +6083,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
       "status": "open",
@@ -5842,7 +6094,7 @@
       "isWorksheetVisible": true,
       "isNote": false,
       "isKnowledgeSummary": false,
-      "isRead": false,
+      "isRead": true,
       "preventDeletion": false,
       "applyLocksToChildren": false,
       "isReadOnly": false,
@@ -5862,7 +6114,6 @@
       "notes": "",
       "implementationQuestion": "",
       "reviewQuestions": [],
-      "previewItems": [],
       "verificationCriteria": [
         {
           "description": "Run an end-to-end UI test of the Task Summarizer.",
@@ -5873,7 +6124,8 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         },
         {
           "description": "Ensure UI performance is maintained without main-thread blocking.",
@@ -5884,9 +6136,103 @@
           "requestClarification": false,
           "tryCount": 0,
           "attachments": [],
-          "isCommitted": false
+          "isCommitted": false,
+          "isPreview": false
         }
       ],
+      "status": "open",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": null,
+      "commitDate": null,
+      "parentId": "1800000000000"
+    },
+    {
+      "id": "1800000000011",
+      "name": "STEP 4 - Hook UI to AI Utility Pipelines",
+      "description": "Wire the native LocalAiService into the Global Task Editor UI.",
+      "summary": "Hook UI areas to AI Assistant",
+      "notes": "### Update - 2026-05-19 10:30\n**Verified UI to AI Utility pipelines.**\n\nVerified that all AI Assistant Configuration Tab changes have been preserved. The LocalAiService and ProjectConfigurationPanel are fully updated to load and persist dynamic settings via SharedPreferences.\n\n---\n\n### Update - 2026-05-19 10:29\n**Hooked UI to AI Utility Pipelines by establishing the AI Assistant Configuration Tab and making local AI parameters dynamic via SharedPreferences.**\n\nCompleted implementation of the AI Assistant Configuration Tab. Refactored LocalAiService to remove hardcoded Ollama connection details, transitioning them to mutable variables mapped directly to SharedPreferences. Upgraded API calls to utilize the newly configurable timeout setting instead of the fixed 120-second default. Updated ProjectConfigurationPanel by extending its state logic to ingest, extract, and persist `ollamaBaseUrl`, `ollamaModel`, and `ollamaTimeoutMs`. Created the 10th Configuration Tab containing standard FormBuilderTextField elements mapped to these configuration keys.\n\n---\n\n### Update - 2026-05-19 09:53\n**Hook UI to AI Utility Pipelines**\n\nAdded the 'Prompt Review' and 'Task Summarizer' actions into `global_task_editor_window.dart`. The UI controls are connected to `LocalAiService.instance`, executing API requests deterministically over HTTP and safely managing state during load phases.\n\n---\n\n### Update - 2026-05-19 07:10\n**Hook UI to AI Utility Pipelines**\n\nAdded the 'Prompt Review' and 'Task Summarizer' actions into `global_task_editor_window.dart`. The UI controls are connected to `LocalAiService.instance`, executing API requests deterministically over HTTP and safely managing state during load phases.\n\n---\n\n### Update - 2026-05-19 07:02\n**Injected New Flutter UI/UX Tasks for AI Integration**\n\nI wrote a Dart script (`.ai_scratch/inject_tasks.dart`) to gracefully delete the obsolete Antigravity tasks (Steps 4 through 10) and inject four brand new replacement tasks directly into your Global Task Editor:\n\n1. **STEP 4 - Hook UI to AI Utility Pipelines**: Building the buttons for Prompt Review and Task Summarizer.\n2. **STEP 5 - Add Request Timeouts & Fallbacks**: Hardening the `LocalAiService` with retry and cloud fallback routing.\n3. **STEP 6 - Add Optional Embeddings Support**: Setting up `nomic-embed-text` for vector operations.\n4. **STEP 7 - Final Validation**: Running end-to-end UI and performance tests.\n\nThese new tasks have been perfectly formatted to match your task system schema.\n\n---",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Verify 'Prompt Review' button/action is added to Global Task Editor and successfully triggers LocalAiService.",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Added an IconButton with the Icons.auto_awesome to the DESCRIPTION toolbar that securely calls LocalAiService.instance.reviewPrompt() and propagates its asynchronous results into the task notes text block.",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        },
+        {
+          "description": "Verify 'Task Summarizer' button/action is added to Global Task Editor and successfully injects summary.",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Added an IconButton with the Icons.auto_awesome to the SUMMARY toolbar that securely passes both the active description and active notes text as context to LocalAiService.instance.summarizeTask(), inserting the resulting text into the summary controller.",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        },
+        {
+          "description": "Add a Config tab for AI Assistant. We will add some connection and configuration options there.",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Verified Tab 10 exists in ProjectConfigurationPanel and properties bind natively to SharedPreferences.",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        }
+      ],
+      "status": "completed",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": "033ad697916a6a3a9272c858d0b034fc4bf5fc7c",
+      "commitDate": "2026-05-19T10:36:13.803097",
+      "parentId": "1800000000000"
+    },
+    {
+      "id": "67583a3b-e869-4458-a6ef-ce9a7db703ba",
+      "name": "[SAFE] Verify Sub-task Creation",
+      "description": "This is a test sub-task generated via the newly implemented native preview mechanism to ensure successful parsing and hierarchical ingestion.",
+      "summary": "",
+      "notes": "Verify that this appears as a child of the active task in the UI.",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [],
       "status": "open",
       "priority": "none",
       "isFolder": false,
@@ -5904,7 +6250,35 @@
       "hyperlinks": [],
       "commitHash": null,
       "commitDate": null,
-      "parentId": "1800000000000"
+      "parentId": "1778559578740"
+    },
+    {
+      "id": "a7400c83-a707-4b2a-b159-ece63364fb55",
+      "name": "[FEEDBACK] Verify Status Assignment",
+      "description": "A secondary sub-task to confirm that multiple items are handled correctly.",
+      "summary": "",
+      "notes": "Check that the `status` of this task defaults correctly to `pendingReview`.",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [],
+      "status": "open",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": false,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": null,
+      "commitDate": null,
+      "parentId": "1778559578740"
     }
   ]
 }

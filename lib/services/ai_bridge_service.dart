@@ -51,32 +51,6 @@ class AiReviewQuestion {
       );
 }
 
-class AiPreviewItem {
-  String description;
-  bool isApproved;
-  String comment;
-  String? category;
-
-  AiPreviewItem(
-      {required this.description,
-      this.isApproved = false,
-      this.comment = '',
-      this.category});
-
-  Map<String, dynamic> toJson() => {
-        'description': description,
-        'isApproved': isApproved,
-        'comment': comment,
-        'category': category,
-      };
-
-  factory AiPreviewItem.fromJson(Map<String, dynamic> json) => AiPreviewItem(
-        description: json['description'] ?? '',
-        isApproved: json['isApproved'] ?? false,
-        comment: json['comment'] ?? '',
-        category: json['category'],
-      );
-}
 
 enum AiVerificationStatus { none, pendingReview, verified, ignored }
 
@@ -90,6 +64,7 @@ class AiVerificationCriteria {
   int tryCount;
   List<String> attachments;
   bool isCommitted;
+  bool isPreview;
 
   AiVerificationCriteria({
     required this.description,
@@ -100,6 +75,7 @@ class AiVerificationCriteria {
     this.requestClarification = false,
     this.tryCount = 0,
     this.isCommitted = false,
+    this.isPreview = false,
     List<String>? attachments,
   }) : attachments = attachments ?? [];
 
@@ -114,6 +90,7 @@ class AiVerificationCriteria {
         'tryCount': tryCount,
         'attachments': attachments,
         'isCommitted': isCommitted,
+        'isPreview': isPreview,
       };
 
   factory AiVerificationCriteria.fromJson(Map<String, dynamic> json) {
@@ -136,6 +113,7 @@ class AiVerificationCriteria {
       requestClarification: json['requestClarification'] ?? false,
       tryCount: json['tryCount'] ?? 0,
       isCommitted: json['isCommitted'] ?? false,
+      isPreview: json['isPreview'] ?? false,
       attachments: json['attachments'] != null
           ? List<String>.from(json['attachments'])
           : [],
@@ -183,7 +161,6 @@ class AiTask {
   String notes;
   String implementationQuestion;
   List<AiReviewQuestion> reviewQuestions;
-  List<AiPreviewItem> previewItems;
   List<AiVerificationCriteria> verificationCriteria;
   AiTaskStatus status;
   AiTaskPriority priority;
@@ -219,7 +196,6 @@ class AiTask {
     this.notes = '',
     this.implementationQuestion = '',
     List<AiReviewQuestion>? reviewQuestions,
-    List<AiPreviewItem>? previewItems,
     List<AiVerificationCriteria>? verificationCriteria,
     this.status = AiTaskStatus.open,
     this.priority = AiTaskPriority.none,
@@ -247,7 +223,6 @@ class AiTask {
     List<String>? fileAttachments,
     List<String>? hyperlinks,
   })  : reviewQuestions = reviewQuestions ?? [],
-        previewItems = previewItems ?? [],
         verificationCriteria = verificationCriteria ?? [],
         fileAttachments = fileAttachments ?? [],
         hyperlinks = hyperlinks ?? [];
@@ -261,7 +236,6 @@ class AiTask {
       'notes': notes,
       'implementationQuestion': implementationQuestion,
       'reviewQuestions': reviewQuestions.map((e) => e.toJson()).toList(),
-      'previewItems': previewItems.map((e) => e.toJson()).toList(),
       'verificationCriteria':
           verificationCriteria.map((e) => e.toJson()).toList(),
       'status': status.name,
@@ -305,10 +279,6 @@ class AiTask {
       implementationQuestion: json['implementationQuestion'] ?? '',
       reviewQuestions: (json['reviewQuestions'] as List<dynamic>?)
               ?.map((e) => AiReviewQuestion.fromJson(e))
-              .toList() ??
-          [],
-      previewItems: (json['previewItems'] as List<dynamic>?)
-              ?.map((e) => AiPreviewItem.fromJson(e))
               .toList() ??
           [],
       verificationCriteria: (json['verificationCriteria'] as List<dynamic>?)
@@ -769,10 +739,14 @@ wshShell.AppActivate $myPid
           final content = previewFile.readAsStringSync();
           previewFile.deleteSync();
           final List<dynamic> jsonList = jsonDecode(content);
-          final newItems = jsonList.map((e) => AiPreviewItem.fromJson(e)).toList();
-          final existingApproved = _tasks[taskIdx].previewItems.where((i) => i.isApproved).toList();
-          _tasks[taskIdx].previewItems = existingApproved;
-          _tasks[taskIdx].previewItems.addAll(newItems);
+          final newItems = jsonList.map((e) => AiVerificationCriteria(
+            description: e['description']?.toString() ?? 'Preview item',
+            goal: e['goal']?.toString() ?? '',
+            status: AiVerificationStatus.pendingReview,
+            isVerified: false,
+            isPreview: true,
+          )).toList();
+          _tasks[taskIdx].verificationCriteria.addAll(newItems);
           changed = true;
         } catch (_) {}
       }
@@ -1046,7 +1020,7 @@ wshShell.AppActivate $myPid
   String get quickInstructions => _quickInstructions;
 
   String _previewModeInstructions =
-      'PREVIEW MODE INITIATED: Do NOT execute code mutations. You must explicitly review what will be changed.\nList exactly what will be changed, warnings, conflicts, and any questions you have. Store these itemized results strictly as a JSON array of objects inside a `<preview>` tag so they appear in the Preview Dialog natively.\nFormat the JSON strictly as: `<preview>[{"description": "...", "isApproved": false, "comment": ""}]</preview>`.\nCRITICAL RULE: DO NOT put any of this preview information, descriptions, or planned changes into the `<bridge_notes>` tag. The preview items MUST ONLY exist in the JSON array. Keep notes extremely brief or empty during this phase.';
+      'PREVIEW MODE INITIATED: Do NOT execute code mutations. You must explicitly review what will be changed.\nList exactly what will be changed, warnings, conflicts, and any questions you have. Store these itemized results strictly as a JSON array inside a `<preview>` tag so they are added to the active task\'s Checklist natively.\nFormat the JSON strictly as: `<preview>[{"description": "...", "goal": "..."}]</preview>`.\nCRITICAL RULE: DO NOT put any of this preview information, descriptions, or planned changes into the `<bridge_notes>` tag. Keep notes extremely brief or empty during this phase.';
   String get previewModeInstructions => _previewModeInstructions;
 
   String _previewApprovedInstructions =
@@ -1058,7 +1032,7 @@ wshShell.AppActivate $myPid
   String get previewRejectedInstructions => _previewRejectedInstructions;
 
   String _systemHooksInstructions =
-      '---\nNATIVE SYSTEM HOOKS (DO NOT IGNORE)\n1. SAFETY ABORT / CLARIFICATION: If a task is unclear, unsafe, massive, or contains a question in the prompt, DO NOT execute code. If the instructions are not clear, you MUST require clarification before proceeding by outputting a `<preview>` tag containing a JSON array of questions, and writing `PREVIEW` to `.ai_bridge/agent_status.txt`.\n2. PREVIEW REVIEW: If any preview item is "Approved: NO", adjust plan and generate a NEW `<preview>` tag. Wait for approval.\n3. DATA MUTATION: Your task context is in `.ai_bridge/current_task.json`. Never edit `.ai_bridge/tasks.json` directly. The app manages global task states — only reference `current_task.json` for your active task data.\n4. NOTES: Log text notes strictly by writing a JSON file to `.ai_bridge/latest_notes.json` formatted as `{"notes": "...", "summary": "..."}`. The `summary` should be a concise commit naming note based ONLY on active checklist items being worked on (ignore completed checklist items completely). You MUST write this file BEFORE writing IDLE.\n5. FOCUS: Work strictly on ONE specific task. The app completes it upon IDLE.\n6. ACCOUNTABILITY: If the task includes Verification Criteria, write your proof/evidence notes to `.ai_bridge/latest_verification.json` formatted as `[{"description": "...", "isVerified": false, "proof": "..."}]`. RULE: isVerified MUST ALWAYS be false \u2014 the user manually verifies in the UI. Never set isVerified to true. You MUST write this file BEFORE writing IDLE.\n7. QUEUE RELEASE: As your FINAL step, overwrite `.ai_bridge/agent_status.txt` with `IDLE`.\n8. BLOCK SCREEN: At the very end of your response, explicitly request to send the block screen message ONCE.';
+      '---\nNATIVE SYSTEM HOOKS (DO NOT IGNORE)\n1. SAFETY ABORT / CLARIFICATION: If a task is unclear, unsafe, massive, or contains a question in the prompt, DO NOT execute code. If the instructions are not clear, you MUST require clarification before proceeding by outputting a `<preview>` tag containing a JSON array of questions, and writing `PREVIEW` to `.ai_bridge/agent_status.txt`.\n2. PREVIEW REVIEW: If any Checklist item is marked as ignored or rejected, adjust plan and generate NEW Checklist items via `<preview>` tag.\n3. DATA MUTATION: Your task context is in `.ai_bridge/current_task.json`. Never edit `.ai_bridge/tasks.json` directly. The app manages global task states — only reference `current_task.json` for your active task data.\n4. NOTES: Log text notes strictly by writing a JSON file to `.ai_bridge/latest_notes.json` formatted as `{"notes": "...", "summary": "..."}`. The `summary` should be a concise commit naming note based ONLY on active checklist items being worked on (ignore completed checklist items completely). You MUST write this file BEFORE writing IDLE.\n5. FOCUS: Work strictly on ONE specific task. The app completes it upon IDLE.\n6. ACCOUNTABILITY: If the task includes Verification Criteria, write your proof/evidence notes to `.ai_bridge/latest_verification.json` formatted as `[{"description": "...", "isVerified": false, "proof": "..."}]`. RULE: isVerified MUST ALWAYS be false \u2014 the user manually verifies in the UI. Never set isVerified to true. You MUST write this file BEFORE writing IDLE.\n7. QUEUE RELEASE: As your FINAL step, overwrite `.ai_bridge/agent_status.txt` with `IDLE`.\n8. BLOCK SCREEN: At the very end of your response, explicitly request to send the block screen message ONCE.';
   String get systemHooksInstructions => _systemHooksInstructions;
 
   String _missingFilesInstructions = '# SYSTEM ALERT: MISSING REQUIRED OUTPUT FILES\n\nYou wrote IDLE, but the following required output files were NOT found on disk:\n{missingList}\n\nThe app processes and DELETES these files immediately upon IDLE. They must be written BEFORE you write IDLE to agent_status.txt.\n\nPlease write the missing files immediately to their correct paths, then write IDLE to `.ai_bridge/agent_status.txt` again. Do not re-do any code work.';
@@ -1418,14 +1392,15 @@ wshShell.AppActivate $myPid
                             }
                             final List<dynamic> jsonList = jsonDecode(content);
                             final newItems = jsonList
-                                .map((e) => AiPreviewItem.fromJson(e))
+                                .map((e) => AiVerificationCriteria(
+                                      description: e['description']?.toString() ?? 'Preview item',
+                                      goal: e['goal']?.toString() ?? '',
+                                      status: AiVerificationStatus.pendingReview,
+                                      isVerified: false,
+                                      isPreview: true,
+                                    ))
                                 .toList();
-                            final existingApproved = _tasks[taskIdx]
-                                .previewItems
-                                .where((i) => i.isApproved)
-                                .toList();
-                            _tasks[taskIdx].previewItems = existingApproved;
-                            _tasks[taskIdx].previewItems.addAll(newItems);
+                            _tasks[taskIdx].verificationCriteria.addAll(newItems);
                             changed = true;
                             if (newItems.isNotEmpty) {
                               generatedPreviewItems = true;

@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class LocalAiService extends ChangeNotifier {
   // Singleton pattern for easy access
@@ -42,6 +44,27 @@ class LocalAiService extends ChangeNotifier {
     }
   }
 
+  /// Attempts to natively spawn the Ollama process if it's currently unreachable
+  Future<void> _startOllamaIfNeeded() async {
+    if (await checkHealth()) return;
+
+    try {
+      if (Platform.isWindows) {
+        await Process.start('ollama', ['serve'], runInShell: true);
+      } else if (Platform.isMacOS || Platform.isLinux) {
+        await Process.start('ollama', ['serve']);
+      }
+      
+      // Wait up to 5 seconds for the daemon to spin up
+      for (int i = 0; i < 5; i++) {
+        await Future.delayed(const Duration(seconds: 1));
+        if (await checkHealth()) return;
+      }
+    } catch (e) {
+      debugPrint('Failed to start Ollama natively: $e');
+    }
+  }
+
   /// Sends a simple prompt to the /api/generate endpoint
   Future<String?> generateText(
     String prompt, {
@@ -52,36 +75,44 @@ class LocalAiService extends ChangeNotifier {
   }) async {
     _setProcessing(true);
     try {
-      final options = <String, dynamic>{};
-      if (temperature != null) options['temperature'] = temperature;
-      if (topP != null) options['top_p'] = topP;
-      if (numPredict != null) options['num_predict'] = numPredict;
+      final messages = [{'role': 'user', 'content': prompt}];
+      
+      await _startOllamaIfNeeded();
 
-      final body = <String, dynamic>{
-        'model': model ?? defaultModel,
-        'prompt': prompt,
-        'stream': false,
-      };
-      if (options.isNotEmpty) {
-        body['options'] = options;
+      for (int attempt = 1; attempt <= 2; attempt++) {
+        try {
+          final options = <String, dynamic>{};
+          if (temperature != null) options['temperature'] = temperature;
+          if (topP != null) options['top_p'] = topP;
+          if (numPredict != null) options['num_predict'] = numPredict;
+
+          final body = <String, dynamic>{
+            'model': model ?? defaultModel,
+            'prompt': prompt,
+            'stream': false,
+          };
+          if (options.isNotEmpty) {
+            body['options'] = options;
+          }
+
+          final response = await http.post(
+            Uri.parse('$baseUrl/api/generate'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          ).timeout(Duration(milliseconds: timeoutMs));
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            return data['response'];
+          } else {
+            _lastError = 'Server returned ${response.statusCode}: ${response.body}';
+          }
+        } catch (e) {
+          _lastError = 'Attempt $attempt failed: $e';
+        }
+        if (attempt < 2) await Future.delayed(Duration(milliseconds: 1000 * attempt));
       }
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/generate'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      ).timeout(Duration(milliseconds: timeoutMs));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['response'];
-      } else {
-        _lastError = 'Server returned ${response.statusCode}: ${response.body}';
-        return null;
-      }
-    } catch (e) {
-      _lastError = 'Failed to generate text: $e';
-      return null;
+      return await _fallbackToOpenAI(messages, temperature: temperature);
     } finally {
       _setProcessing(false);
     }
@@ -97,36 +128,42 @@ class LocalAiService extends ChangeNotifier {
   }) async {
     _setProcessing(true);
     try {
-      final options = <String, dynamic>{};
-      if (temperature != null) options['temperature'] = temperature;
-      if (topP != null) options['top_p'] = topP;
-      if (numPredict != null) options['num_predict'] = numPredict;
+      await _startOllamaIfNeeded();
 
-      final body = <String, dynamic>{
-        'model': model ?? defaultModel,
-        'messages': messages,
-        'stream': false,
-      };
-      if (options.isNotEmpty) {
-        body['options'] = options;
+      for (int attempt = 1; attempt <= 2; attempt++) {
+        try {
+          final options = <String, dynamic>{};
+          if (temperature != null) options['temperature'] = temperature;
+          if (topP != null) options['top_p'] = topP;
+          if (numPredict != null) options['num_predict'] = numPredict;
+
+          final body = <String, dynamic>{
+            'model': model ?? defaultModel,
+            'messages': messages,
+            'stream': false,
+          };
+          if (options.isNotEmpty) {
+            body['options'] = options;
+          }
+
+          final response = await http.post(
+            Uri.parse('$baseUrl/api/chat'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          ).timeout(Duration(milliseconds: timeoutMs));
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            return data['message']['content'];
+          } else {
+            _lastError = 'Server returned ${response.statusCode}: ${response.body}';
+          }
+        } catch (e) {
+          _lastError = 'Attempt $attempt failed: $e';
+        }
+        if (attempt < 2) await Future.delayed(Duration(milliseconds: 1000 * attempt));
       }
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/chat'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      ).timeout(Duration(milliseconds: timeoutMs));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['message']['content'];
-      } else {
-        _lastError = 'Server returned ${response.statusCode}: ${response.body}';
-        return null;
-      }
-    } catch (e) {
-      _lastError = 'Failed to send chat: $e';
-      return null;
+      return await _fallbackToOpenAI(messages, temperature: temperature);
     } finally {
       _setProcessing(false);
     }
@@ -189,6 +226,44 @@ Keep the output brief, highly structured, and strictly derived from the provided
       temperature: 0.2,
       topP: 0.9,
     );
+  }
+
+  Future<String?> _fallbackToOpenAI(List<Map<String, String>> messages, {double? temperature}) async {
+    final apiKey = dotenv.env['OPENAI_API_KEY'];
+    if (apiKey == null || apiKey.isEmpty) {
+      _lastError = '$_lastError (OpenAI fallback failed: No API Key found in .env)';
+      return null;
+    }
+
+    try {
+      final body = <String, dynamic>{
+        'model': 'gpt-4o-mini',
+        'messages': messages,
+      };
+      if (temperature != null) {
+        body['temperature'] = temperature;
+      }
+
+      final response = await http.post(
+        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode(body),
+      ).timeout(Duration(milliseconds: timeoutMs));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['choices'][0]['message']['content'];
+      } else {
+        _lastError = 'OpenAI fallback failed: ${response.statusCode} - ${response.body}';
+        return null;
+      }
+    } catch (e) {
+      _lastError = 'OpenAI fallback error: $e';
+      return null;
+    }
   }
 
   void _setProcessing(bool processing) {

@@ -1,5 +1,16 @@
 [
   {
+    "id": "0c3fd50d-0a17-4520-a358-e4af38d28a9d",
+    "taskIds": [
+      "1800000000011"
+    ],
+    "title": "STEP 4 - Hook UI to AI Utility Pipelines [Hook UI areas to AI Assistant]",
+    "summary": "Wire the native LocalAiService into the Global Task Editor UI.",
+    "commitHash": "033ad697916a6a3a9272c858d0b034fc4bf5fc7c",
+    "commitDate": "2026-05-19T10:36:13.803097",
+    "verifiedNotes": "- Verify 'Prompt Review' button/action is added to Global Task Editor and successfully triggers LocalAiService.\n- Verify 'Task Summarizer' button/action is added to Global Task Editor and successfully injects summary.\n- Add a Config tab for AI Assistant. We will add some connection and configuration options there."
+  },
+  {
     "id": "7a75dd78-ef34-45dc-8fc8-6f7108f9fae7",
     "taskIds": [
       "1800000000003"

@@ -51,6 +51,72 @@ void hideTaskEditorWindow() {
       prefs.setBool(VisualEditorScreen.getPrefKey('showTaskEditor'), false));
 }
 
+class ChecklistItemContainer extends StatefulWidget {
+  final AiVerificationStatus status;
+  final bool isPreview;
+  final Widget child;
+  const ChecklistItemContainer({Key? key, required this.status, required this.isPreview, required this.child}) : super(key: key);
+  @override
+  State<ChecklistItemContainer> createState() => _ChecklistItemContainerState();
+}
+
+class _ChecklistItemContainerState extends State<ChecklistItemContainer> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Color?> _colorAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..repeat(reverse: true);
+    _colorAnim = ColorTween(begin: Colors.orange.withOpacity(0.3), end: Colors.orangeAccent).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isPreview) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.black26,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+              color: widget.status == AiVerificationStatus.verified
+                  ? Colors.green
+                  : widget.status == AiVerificationStatus.pendingReview
+                      ? Colors.orange
+                      : widget.status == AiVerificationStatus.ignored
+                          ? Colors.grey.withOpacity(0.5)
+                          : AppColors.controlBorder),
+        ),
+        child: widget.child,
+      );
+    }
+
+    return AnimatedBuilder(
+      animation: _colorAnim,
+      builder: (context, child) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.black26,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: _colorAnim.value ?? Colors.orange, width: 2.0),
+          ),
+          child: widget.child,
+        );
+      },
+    );
+  }
+}
+
 class GlobalTaskEditorWindow extends StatefulWidget {
   final VoidCallback onClose;
   final bool isDocked;
@@ -302,8 +368,6 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
           _executeAutoSaveInternal(isClosing: false);
         }
       });
-      // Rebuild to light up the Save button instantly
-      setStateBuilder(() {});
     }
   }
 
@@ -621,28 +685,31 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
         if (descController.text.replaceAll('\r', '').trim() ==
                 _shadowTask!.description.replaceAll('\r', '').trim() &&
             updatedTask.description != _shadowTask!.description) {
-          // Update shadow BEFORE controller so listener fires against up-to-date shadow
           existingTask!.description = updatedTask.description;
           _shadowTask!.description = updatedTask.description;
+          descController.removeListener(_executeAutoSave);
           descController.text = updatedTask.description;
+          descController.addListener(_executeAutoSave);
           didGranularMerge = true;
         }
         if (summaryController.text.replaceAll('\r', '').trim() ==
                 _shadowTask!.summary.replaceAll('\r', '').trim() &&
             updatedTask.summary != _shadowTask!.summary) {
-          // Update shadow BEFORE controller so listener fires against up-to-date shadow
           existingTask!.summary = updatedTask.summary;
           _shadowTask!.summary = updatedTask.summary;
+          summaryController.removeListener(_executeAutoSave);
           summaryController.text = updatedTask.summary;
+          summaryController.addListener(_executeAutoSave);
           didGranularMerge = true;
         }
         if (nameController.text.replaceAll('\r', '').trim() ==
                 _shadowTask!.name.replaceAll('\r', '').trim() &&
             updatedTask.name != _shadowTask!.name) {
-          // Update shadow BEFORE controller so listener fires against up-to-date shadow
           existingTask!.name = updatedTask.name;
           _shadowTask!.name = updatedTask.name;
+          nameController.removeListener(_executeAutoSave);
           nameController.text = updatedTask.name;
+          nameController.addListener(_executeAutoSave);
           didGranularMerge = true;
         }
         if (existingTask!.status == originalStatus &&
@@ -653,50 +720,71 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
           _shadowTask!.status = updatedTask.status;
           didGranularMerge = true;
         }
-        
-        // Granular merge for previewItems
-        if (updatedTask.previewItems.isNotEmpty && _shadowTask!.previewItems.length != updatedTask.previewItems.length) {
-          existingTask!.previewItems = List.from(updatedTask.previewItems);
-          _shadowTask!.previewItems = List.from(updatedTask.previewItems);
-          didGranularMerge = true;
-        }
 
         // Granular merge for verificationCriteria
-        if (updatedTask.verificationCriteria.length >= _shadowTask!.verificationCriteria.length) {
-          bool criteriaChanged = false;
-          for (int i = 0; i < updatedTask.verificationCriteria.length; i++) {
-            if (i >= _shadowTask!.verificationCriteria.length) {
-              _shadowTask!.verificationCriteria.add(updatedTask.verificationCriteria[i]);
-              existingTask!.verificationCriteria.add(updatedTask.verificationCriteria[i]);
+        bool criteriaChanged = false;
+        
+        while (_shadowTask!.verificationCriteria.length > updatedTask.verificationCriteria.length) {
+          _shadowTask!.verificationCriteria.removeLast();
+          existingTask!.verificationCriteria.removeLast();
+          criteriaChanged = true;
+        }
+
+        for (int i = 0; i < updatedTask.verificationCriteria.length; i++) {
+          if (i >= _shadowTask!.verificationCriteria.length) {
+            _shadowTask!.verificationCriteria.add(updatedTask.verificationCriteria[i]);
+            existingTask!.verificationCriteria.add(updatedTask.verificationCriteria[i]);
+            criteriaChanged = true;
+          } else {
+            if (updatedTask.verificationCriteria[i].description != _shadowTask!.verificationCriteria[i].description ||
+                updatedTask.verificationCriteria[i].isVerified != _shadowTask!.verificationCriteria[i].isVerified ||
+                updatedTask.verificationCriteria[i].status != _shadowTask!.verificationCriteria[i].status ||
+                updatedTask.verificationCriteria[i].proof != _shadowTask!.verificationCriteria[i].proof) {
+              
+              _shadowTask!.verificationCriteria[i].description = updatedTask.verificationCriteria[i].description;
+              _shadowTask!.verificationCriteria[i].isVerified = updatedTask.verificationCriteria[i].isVerified;
+              _shadowTask!.verificationCriteria[i].status = updatedTask.verificationCriteria[i].status;
+              _shadowTask!.verificationCriteria[i].proof = updatedTask.verificationCriteria[i].proof;
+              
+              existingTask!.verificationCriteria[i].description = updatedTask.verificationCriteria[i].description;
+              existingTask!.verificationCriteria[i].isVerified = updatedTask.verificationCriteria[i].isVerified;
+              existingTask!.verificationCriteria[i].status = updatedTask.verificationCriteria[i].status;
+              existingTask!.verificationCriteria[i].proof = updatedTask.verificationCriteria[i].proof;
               criteriaChanged = true;
-            } else {
-              if (updatedTask.verificationCriteria[i].isVerified != _shadowTask!.verificationCriteria[i].isVerified ||
-                  updatedTask.verificationCriteria[i].status != _shadowTask!.verificationCriteria[i].status ||
-                  updatedTask.verificationCriteria[i].proof != _shadowTask!.verificationCriteria[i].proof) {
-                _shadowTask!.verificationCriteria[i].isVerified = updatedTask.verificationCriteria[i].isVerified;
-                _shadowTask!.verificationCriteria[i].status = updatedTask.verificationCriteria[i].status;
-                _shadowTask!.verificationCriteria[i].proof = updatedTask.verificationCriteria[i].proof;
-                
-                existingTask!.verificationCriteria[i].isVerified = updatedTask.verificationCriteria[i].isVerified;
-                existingTask!.verificationCriteria[i].status = updatedTask.verificationCriteria[i].status;
-                existingTask!.verificationCriteria[i].proof = updatedTask.verificationCriteria[i].proof;
-                criteriaChanged = true;
-              }
             }
           }
-          if (criteriaChanged) {
-             didGranularMerge = true;
-             // also update UI state list directly
-             verificationCriteriaList = _shadowTask!.verificationCriteria.map((e) => AiVerificationCriteria(
-                  description: e.description,
-                  goal: e.goal,
-                  isVerified: e.isVerified,
-                  status: e.status,
-                  proof: e.proof,
-                  requestClarification: e.requestClarification,
-                  tryCount: e.tryCount,
-                  attachments: List.from(e.attachments))).toList();
-          }
+        }
+        
+        if (criteriaChanged) {
+           didGranularMerge = true;
+           // also update UI state list directly
+           verificationCriteriaList = _shadowTask!.verificationCriteria.map((e) => AiVerificationCriteria(
+                description: e.description,
+                goal: e.goal,
+                isVerified: e.isVerified,
+                status: e.status,
+                proof: e.proof,
+                requestClarification: e.requestClarification,
+                tryCount: e.tryCount,
+                attachments: List.from(e.attachments))).toList();
+        
+           while (_verificationControllers.length < verificationCriteriaList.length) {
+             _verificationControllers.add(SpellCheckTextEditingController(text: verificationCriteriaList[_verificationControllers.length].description));
+             _verificationGoalControllers.add(SpellCheckTextEditingController(text: verificationCriteriaList[_verificationGoalControllers.length].goal));
+           }
+           while (_verificationControllers.length > verificationCriteriaList.length) {
+             _verificationControllers.removeLast().dispose();
+             _verificationGoalControllers.removeLast().dispose();
+           }
+           
+           for (int i = 0; i < verificationCriteriaList.length; i++) {
+             if (_verificationControllers[i].text != verificationCriteriaList[i].description) {
+               _verificationControllers[i].text = verificationCriteriaList[i].description;
+             }
+             if (_verificationGoalControllers[i].text != (verificationCriteriaList[i].goal ?? '')) {
+               _verificationGoalControllers[i].text = verificationCriteriaList[i].goal ?? '';
+             }
+           }
         }
 
         if (didGranularMerge && mounted) {
@@ -1168,24 +1256,10 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
               },
               children: [
                 for (int i = 0; i < verificationCriteriaList.length; i++)
-                  Container(
+                  ChecklistItemContainer(
                     key: ValueKey(_verificationControllers[i]),
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.black26,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                          color: verificationCriteriaList[i].status ==
-                                  AiVerificationStatus.verified
-                              ? Colors.green
-                              : verificationCriteriaList[i].status ==
-                                      AiVerificationStatus.pendingReview
-                                  ? Colors.orange
-                                  : verificationCriteriaList[i].status == AiVerificationStatus.ignored
-                                      ? Colors.grey.withOpacity(0.5)
-                                      : AppColors.controlBorder),
-                    ),
+                    status: verificationCriteriaList[i].status,
+                    isPreview: verificationCriteriaList[i].isPreview,
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
@@ -1307,12 +1381,10 @@ verificationCriteriaList[i].isCommitted = false;
                                       onChanged: (val) {
                                         verificationCriteriaList[i].description = val;
                                         if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
-                                          setStateBuilder(() {
                                             verificationCriteriaList[i].status = AiVerificationStatus.none;
                                             verificationCriteriaList[i].isVerified = false;
                                             verificationCriteriaList[i].proof = null;
-verificationCriteriaList[i].isCommitted = false;
-                                          });
+                                            verificationCriteriaList[i].isCommitted = false;
                                         }
                                         _executeAutoSave();
                                       },
@@ -1424,12 +1496,10 @@ verificationCriteriaList[i].isCommitted = false;
                                             onChanged: (val) {
                                               verificationCriteriaList[i].goal = val;
                                               if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
-                                                setStateBuilder(() {
                                                   verificationCriteriaList[i].status = AiVerificationStatus.none;
                                                   verificationCriteriaList[i].isVerified = false;
                                                   verificationCriteriaList[i].proof = null;
-verificationCriteriaList[i].isCommitted = false;
-                                                });
+                                                  verificationCriteriaList[i].isCommitted = false;
                                               }
                                               _executeAutoSave();
                                             },
@@ -1704,6 +1774,73 @@ verificationCriteriaList[i].isCommitted = false;
                                   offset: const Offset(1, 1),
                                 ),
                               ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (verificationCriteriaList[i].isPreview)
+                      Positioned(
+                        bottom: -12,
+                        right: 8,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () {
+                              setStateBuilder(() {
+                                final item = verificationCriteriaList[i];
+                                final newTask = AiTask(
+                                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                  name: item.description.length > 40 ? '${item.description.substring(0, 40)}...' : item.description,
+                                  description: item.description,
+                                  notes: item.goal.isNotEmpty ? 'Goal: ${item.goal}' : '',
+                                  parentId: existingTask!.id,
+                                  status: AiTaskStatus.inTesting,
+                                  priority: AiTaskPriority.none,
+                                  reviewQuestions: [],
+                                  verificationCriteria: [],
+                                  fileAttachments: List.from(item.attachments),
+                                  hyperlinks: [],
+                                  isFolder: false,
+                                  isWorksheet: false,
+                                  isWorksheetVisible: true,
+                                  isRead: false,
+                                  isNote: false,
+                                  isKnowledgeSummary: false,
+                                  preventDeletion: false,
+                                  applyLocksToChildren: false,
+                                  isReadOnly: false,
+                                  isIgnored: false,
+                                  llmPromptStyleOverride: 'Use Default',
+                                );
+                                AiBridgeService.instance.tasks.add(newTask);
+                                AiBridgeService.instance.saveTasks();
+                                verificationCriteriaList.removeAt(i);
+                                _verificationControllers[i].dispose();
+                                _verificationControllers.removeAt(i);
+                                _verificationGoalControllers[i].dispose();
+                                _verificationGoalControllers.removeAt(i);
+                                _executeAutoSave();
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.orangeAccent,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.black, width: 1.5),
+                                boxShadow: const [
+                                  BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.turn_right, color: Colors.black, size: 16),
+                                  SizedBox(width: 4),
+                                  Text('TO TASK', style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.w900)),
+                                ],
+                              ),
                             ),
                           ),
                         ),
