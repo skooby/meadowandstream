@@ -1,5 +1,16 @@
 [
   {
+    "id": "b7391f08-9b1e-40cc-b413-fc8657990e91",
+    "taskIds": [
+      "1779154106804"
+    ],
+    "title": "Spell Checker [Implement simple_spell_checker with focus-aware custom TextEditingController]",
+    "summary": "Lets add a simple spell checker",
+    "commitHash": "7f92d5fdda6889abf35f49af548805c4fa69969d",
+    "commitDate": "2026-05-18T19:36:51.359802",
+    "verifiedNotes": "- https://pub.dev/packages/simple_spell_checker\n- Show in input fields only while editing"
+  },
+  {
     "id": "86b5d411-0c32-4052-8ec4-240134d116e1",
     "taskIds": [
       "1778869915153"

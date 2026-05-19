@@ -158,7 +158,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     // When focus leaves a text field, immediately flush any pending debounced save.
     // This ensures _shadowTask is updated before the bridge cooldown expires and fires a reload.
     final anyFocused = _nameFocusNode.hasFocus || _descFocusNode.hasFocus ||
-        _summaryFocusNode.hasFocus || _notesFocusNode.hasFocus;
+        _summaryFocusNode.hasFocus || _notesFocusNode.hasFocus || newSubTaskFocus.hasFocus;
     
     // Toggle spell check based on focus
     if (nameController is SpellCheckTextEditingController) {
@@ -186,12 +186,13 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     descController = SpellCheckTextEditingController();
     summaryController = SpellCheckTextEditingController();
     notesController = SpellCheckTextEditingController();
-    newSubTaskController = TextEditingController();
+    newSubTaskController = SpellCheckTextEditingController();
     newSubTaskFocus = FocusNode();
     _nameFocusNode.addListener(_onFocusChanged);
     _descFocusNode.addListener(_onFocusChanged);
     _summaryFocusNode.addListener(_onFocusChanged);
     _notesFocusNode.addListener(_onFocusChanged);
+    newSubTaskFocus.addListener(_onFocusChanged);
 
     // Update UI on text changed to reflect Save button state
     nameController.addListener(_executeAutoSave);
@@ -229,7 +230,9 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
 
     _nameFocusNode.removeListener(_onFocusChanged);
     _descFocusNode.removeListener(_onFocusChanged);
+    _summaryFocusNode.removeListener(_onFocusChanged);
     _notesFocusNode.removeListener(_onFocusChanged);
+    newSubTaskFocus.removeListener(_onFocusChanged);
 
     nameController.removeListener(_executeAutoSave);
     descController.removeListener(_executeAutoSave);
@@ -1282,6 +1285,7 @@ verificationCriteriaList[i].isCommitted = false;
                                       key: ValueKey(
                                           '${existingTask?.id}_verification_$i'),
                                       controller: _verificationControllers[i],
+                                      contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
                                       style: TextStyle(
                                         color: verificationCriteriaList[i].status == AiVerificationStatus.ignored ? Colors.white54 : Colors.white,
                                         fontSize: AppUIConfig.rootFontSize,
@@ -1393,6 +1397,7 @@ verificationCriteriaList[i].isCommitted = false;
                                             key: ValueKey(
                                                 '${existingTask?.id}_verification_goal_$i'),
                                             controller: _verificationGoalControllers[i],
+                                            contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
                                             style: TextStyle(
                                               color: verificationCriteriaList[i].status == AiVerificationStatus.ignored ? Colors.white54 : Colors.white70,
                                               fontSize: AppUIConfig.rootFontSize * 0.9,
@@ -1713,6 +1718,11 @@ verificationCriteriaList[i].isCommitted = false;
               children: [
                 Expanded(
                   child: Focus(
+                    onFocusChange: (hasFocus) {
+                      if (newSubTaskController is SpellCheckTextEditingController) {
+                        (newSubTaskController as SpellCheckTextEditingController).setEditing(hasFocus);
+                      }
+                    },
                     onKeyEvent: (FocusNode node, KeyEvent event) {
                       if (event is KeyDownEvent &&
                           event.logicalKey == LogicalKeyboardKey.enter &&
@@ -1735,6 +1745,7 @@ verificationCriteriaList[i].isCommitted = false;
                     child: TextField(
                       controller:
                           newSubTaskController, // Reusing existing controller to add criteria or create a new one
+                      contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
                       focusNode: newSubTaskFocus,
                       maxLines: null,
                       keyboardType: TextInputType.multiline,
@@ -1959,6 +1970,7 @@ verificationCriteriaList[i].isCommitted = false;
                     TextField(
                       focusNode: _nameFocusNode,
                       controller: nameController,
+                      contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
                       textCapitalization: TextCapitalization.characters,
                       style: TextStyle(
                           color: AppColors.panelTextPrimary,
@@ -2288,6 +2300,7 @@ verificationCriteriaList[i].isCommitted = false;
                                         TextField(
                                           focusNode: _descFocusNode,
                                           controller: descController,
+                                          contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
                                           undoController: descUndo,
                                           style: TextStyle(
                                               color: AppColors.panelTextPrimary,
@@ -2390,6 +2403,7 @@ verificationCriteriaList[i].isCommitted = false;
                                         TextField(
                                           focusNode: _summaryFocusNode,
                                           controller: summaryController,
+                                          contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
                                           undoController: summaryUndo,
                                           style: TextStyle(
                                               color: AppColors.panelTextPrimary,
@@ -2627,6 +2641,7 @@ verificationCriteriaList[i].isCommitted = false;
                                                         : TextField(
                                                             controller:
                                                                 notesController,
+                                                            contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
                                                             undoController:
                                                                 notesUndo,
                                                             maxLines: null,
