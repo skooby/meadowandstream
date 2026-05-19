@@ -2452,7 +2452,9 @@ verificationCriteriaList[i].isCommitted = false;
                                                       setStateBuilder(() {
                                                         for (var item in verificationCriteriaList) {
                                                           item.isVerified = false;
-                                                          item.status = AiVerificationStatus.pendingReview;
+                                                          item.status = AiVerificationStatus.none;
+                                                          item.proof = null;
+                                                          item.isCommitted = false;
                                                         }
                                                         _executeAutoSave();
                                                       });

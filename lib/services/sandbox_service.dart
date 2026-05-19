@@ -22,11 +22,18 @@ class SandboxService extends ChangeNotifier {
       final sandboxFile = File('.ai_bridge/sandbox.json');
       if (await sandboxFile.exists()) {
         final content = await sandboxFile.readAsString();
-        final List<dynamic> jsonList = jsonDecode(content);
-        if (jsonList.isNotEmpty && jsonList.first is Map) {
-          _sandboxTaskIds = jsonList.map((e) => e['id'].toString()).toList();
-        } else {
-          _sandboxTaskIds = jsonList.map((e) => e.toString()).toList();
+        if (content.trim().isNotEmpty) {
+          try {
+            final List<dynamic> jsonList = jsonDecode(content);
+            if (jsonList.isNotEmpty && jsonList.first is Map) {
+              _sandboxTaskIds = jsonList.map((e) => e['id'].toString()).toList();
+            } else {
+              _sandboxTaskIds = jsonList.map((e) => e.toString()).toList();
+            }
+          } catch (e) {
+            debugPrint('Sandbox JSON decode failed (might be truncated during write): $e');
+            // Retain existing sandboxTaskIds if parse fails.
+          }
         }
       }
 
