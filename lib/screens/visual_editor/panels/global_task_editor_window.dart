@@ -22,6 +22,7 @@ import '../../../widgets/draggable_alert_dialog.dart';
 import 'global_color_picker_window.dart';
 import 'global_icon_picker_window.dart';
 import 'backup_manager_panel.dart';
+import '../../../widgets/spell_check_text_editing_controller.dart';
 import '../../../state/global_picker_state.dart';
 import 'global_notes_editor_window.dart';
 import 'attachment_viewer_window.dart';
@@ -158,6 +159,21 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     // This ensures _shadowTask is updated before the bridge cooldown expires and fires a reload.
     final anyFocused = _nameFocusNode.hasFocus || _descFocusNode.hasFocus ||
         _summaryFocusNode.hasFocus || _notesFocusNode.hasFocus;
+    
+    // Toggle spell check based on focus
+    if (nameController is SpellCheckTextEditingController) {
+      (nameController as SpellCheckTextEditingController).setEditing(_nameFocusNode.hasFocus);
+    }
+    if (descController is SpellCheckTextEditingController) {
+      (descController as SpellCheckTextEditingController).setEditing(_descFocusNode.hasFocus);
+    }
+    if (summaryController is SpellCheckTextEditingController) {
+      (summaryController as SpellCheckTextEditingController).setEditing(_summaryFocusNode.hasFocus);
+    }
+    if (notesController is SpellCheckTextEditingController) {
+      (notesController as SpellCheckTextEditingController).setEditing(_notesFocusNode.hasFocus);
+    }
+
     if (!anyFocused && hasUnsavedEdits) {
       _executeAutoSave(instant: true);
     }
@@ -166,10 +182,10 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
   @override
   void initState() {
     super.initState();
-    nameController = TextEditingController();
-    descController = TextEditingController();
-    summaryController = TextEditingController();
-    notesController = TextEditingController();
+    nameController = SpellCheckTextEditingController();
+    descController = SpellCheckTextEditingController();
+    summaryController = SpellCheckTextEditingController();
+    notesController = SpellCheckTextEditingController();
     newSubTaskController = TextEditingController();
     newSubTaskFocus = FocusNode();
     _nameFocusNode.addListener(_onFocusChanged);
@@ -805,9 +821,9 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                 verificationCriteriaList[i].goal;
           }
         } else {
-          _verificationControllers.add(TextEditingController(
+          _verificationControllers.add(SpellCheckTextEditingController(
               text: verificationCriteriaList[i].description));
-          _verificationGoalControllers.add(TextEditingController(
+          _verificationGoalControllers.add(SpellCheckTextEditingController(
               text: verificationCriteriaList[i].goal));
         }
       }
@@ -1246,6 +1262,11 @@ verificationCriteriaList[i].isCommitted = false;
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Focus(
+                                    onFocusChange: (hasFocus) {
+                                      if (_verificationControllers[i] is SpellCheckTextEditingController) {
+                                        (_verificationControllers[i] as SpellCheckTextEditingController).setEditing(hasFocus);
+                                      }
+                                    },
                                     onKeyEvent: (FocusNode node, KeyEvent event) {
                                       if (event is KeyDownEvent &&
                                           event.logicalKey ==
@@ -1347,6 +1368,11 @@ verificationCriteriaList[i].isCommitted = false;
                                       ),
                                       Expanded(
                                         child: Focus(
+                                          onFocusChange: (hasFocus) {
+                                            if (_verificationGoalControllers[i] is SpellCheckTextEditingController) {
+                                              (_verificationGoalControllers[i] as SpellCheckTextEditingController).setEditing(hasFocus);
+                                            }
+                                          },
                                           onKeyEvent: (FocusNode node, KeyEvent event) {
                                             if (event is KeyDownEvent &&
                                                 event.logicalKey ==

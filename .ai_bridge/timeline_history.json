@@ -1,5 +1,16 @@
 [
   {
+    "id": "86b5d411-0c32-4052-8ec4-240134d116e1",
+    "taskIds": [
+      "1778869915153"
+    ],
+    "title": "VERSION CONTROL TIMELINE HISTORY [Replace ListTile with InkWell+Row+Column for pixel-accurate vertical centering in Active Tasks and Timeline History rows]",
+    "summary": "Version Control System improvements and tasks",
+    "commitHash": "f9be98a86cdafa920aa9b61e87c6c8dd1a991a2b",
+    "commitDate": "2026-05-18T19:22:44.142366",
+    "verifiedNotes": "- SHow our standard text smaller at 1.0x the normal size, make the restore points 20% larger\n- Make the sub title lines in our timeline history entries 20% smaller\n- Reduce the white space between entries\n- consolidate icons to not be so spaced out\n- Show the bithub hash number left of the time stamp\n- Alternate the colors by row\n- Active Tasks reduce the white space between entries, alternate colors by row as well\n- Vertically Center enries in Acitve tasks and timeline history"
+  },
+  {
     "id": "e32c0171-7e34-4110-9df9-6dfe1d3be78e",
     "taskIds": [],
     "title": "Checkpoint",
