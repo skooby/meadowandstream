@@ -1,5 +1,16 @@
 [
   {
+    "id": "578de15d-e6fc-4711-8866-0b76317a6e23",
+    "taskIds": [
+      "1800000000001"
+    ],
+    "title": "STEP 1 - Install Ollama",
+    "summary": "",
+    "commitHash": "12d60abfbbf5cbd94f4f2da1588fac45d500aa7f",
+    "commitDate": "2026-05-19T06:28:28.212474",
+    "verifiedNotes": "- Detect operating system.\n- Install Ollama from https://ollama.com.\n- Windows: Ensure Ollama service is running.\n- Mac/Linux: Run `ollama --version`."
+  },
+  {
     "id": "c9759d87-68eb-4927-af67-9b6c854170b7",
     "taskIds": [],
     "title": "Checkpoint",
