@@ -1,5 +1,17 @@
 [
   {
+    "id": "1c8af323-7070-410c-9bee-6f5050eb39c5",
+    "taskIds": [
+      "1779190114830",
+      "1775069020512"
+    ],
+    "title": "Fix compile errors | Implement Primary Directives Injection",
+    "summary": "The recent Hot Reload/Restart resulted in compilation errors. Fix them immediately.\n\nImplement the hybrid approach for communicating Primary Directives to the AI. Create a dedicated directives file and update the bridge to inject it into every task.",
+    "commitHash": "aa38702916955e0cf0bedb536444f2023f9ffd72",
+    "commitDate": "2026-05-19T06:01:17.193102",
+    "verifiedNotes": "- Expand the Prompt Helper UI to include a 'Primary Directives' settings panel. The application should automatically generate, maintain, and overwrite the `.ai_bridge/primary_directives.md` file whenever these user-defined settings are modified.\n- Modify `AiBridgeService` to asynchronously read the contents of `.ai_bridge/primary_directives.md` as part of the payload construction phase. If the file doesn't exist, ensure it falls back gracefully or creates a default version automatically.\n- Update the payload generation logic to embed the contents of `primary_directives.md` directly into the system instructions. Ensure it uses a strong marker like `> [!IMPORTANT]` so the AI gives it maximum weight before proceeding with execution.\n- Perform an end-to-end test. Enqueue a dummy task into the AI Bridge, execute it, and review the prompt logs to verify that the Primary Directives were successfully injected into the system prompt and that the AI acknowledged them before starting the task.\n- Testing Prime Directives and pipeline\n- Primary directives file looks wrong..."
+  },
+  {
     "id": "578fbca7-c82d-45c3-a081-76dac9a0beaa",
     "taskIds": [],
     "title": "Checkpoint",

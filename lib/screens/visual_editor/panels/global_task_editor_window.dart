@@ -2446,7 +2446,23 @@ verificationCriteriaList[i].isCommitted = false;
                                                 ),
                                                 if (_selectedTabIndex == 0 && verificationCriteriaList.isNotEmpty) ...[
                                                   const Spacer(),
-                                                  TextButton.icon(
+                                                  IconButton(
+                                                    tooltip: 'Uncheck All',
+                                                    onPressed: () {
+                                                      setStateBuilder(() {
+                                                        for (var item in verificationCriteriaList) {
+                                                          item.isVerified = false;
+                                                          item.status = AiVerificationStatus.pendingReview;
+                                                        }
+                                                        _executeAutoSave();
+                                                      });
+                                                    },
+                                                    icon: const Icon(Icons.deselect, size: 18),
+                                                    color: AppColors.accent,
+                                                    splashRadius: 18,
+                                                  ),
+                                                  IconButton(
+                                                    tooltip: 'Complete All',
                                                     onPressed: () {
                                                       setStateBuilder(() {
                                                         for (var item in verificationCriteriaList) {
@@ -2456,11 +2472,9 @@ verificationCriteriaList[i].isCommitted = false;
                                                         _executeAutoSave();
                                                       });
                                                     },
-                                                    icon: const Icon(Icons.done_all, size: 14),
-                                                    label: const Text('Complete All', style: TextStyle(fontWeight: FontWeight.bold)),
-                                                    style: TextButton.styleFrom(
-                                                      foregroundColor: AppColors.accent,
-                                                    ),
+                                                    icon: const Icon(Icons.done_all, size: 18),
+                                                    color: AppColors.accent,
+                                                    splashRadius: 18,
                                                   ),
                                                 ],
                                               ],
