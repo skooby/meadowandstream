@@ -1,5 +1,16 @@
 [
   {
+    "id": "3e731434-bb2e-4e6a-b3ec-9b258efd1f28",
+    "taskIds": [
+      "1778503455784"
+    ],
+    "title": "TASK MANAGER [Fix: Increase task list strikethrough thickness]",
+    "summary": "General improvements for Task Manager",
+    "commitHash": "275379c19b948f61f136f736b73e005b921524f0",
+    "commitDate": "2026-05-18T22:56:22.412755",
+    "verifiedNotes": "- Hide the focus: Ancestor TextFieldTapRegion and icon from top toolbar\n- Tasklist show crossed out line as white"
+  },
+  {
     "id": "eead0c19-fc4b-404a-93a2-0d78e554087e",
     "taskIds": [
       "1779156022892",

@@ -2760,12 +2760,7 @@ verificationCriteriaList[i].isCommitted = false;
                                                 _handleClose();
                                               },
                                             ),
-                                            const SizedBox(width: 4),
-                                            Container(
-                                                width: 1,
-                                                height: 16,
-                                                color: Colors.white),
-                                            const SizedBox(width: 4),
+
                                           ],
                                           if (!isFolder && !isWorksheet) ...[
                                             ...fileAttachments
@@ -2855,12 +2850,7 @@ verificationCriteriaList[i].isCommitted = false;
                                                 ],
                                               );
                                             }).toList(),
-                                            const SizedBox(width: 4),
-                                            Container(
-                                                width: 1,
-                                                height: 16,
-                                                color: Colors.white),
-                                            const SizedBox(width: 4),
+
                                             IconButton(
                                               icon: const Icon(Icons.add_link,
                                                   size: 16),
@@ -2992,12 +2982,7 @@ verificationCriteriaList[i].isCommitted = false;
                                                 ],
                                               );
                                             }).toList(),
-                                            const SizedBox(width: 4),
-                                            Container(
-                                                width: 1,
-                                                height: 16,
-                                                color: Colors.white),
-                                            const SizedBox(width: 4),
+
                                           ],
                                           IconButton(
                                             icon: Icon(

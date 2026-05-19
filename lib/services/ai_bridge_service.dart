@@ -720,10 +720,13 @@ wshShell.AppActivate $myPid
           notesFile.deleteSync();
           final jsonMap = jsonDecode(content);
           final parsedSummary = jsonMap['summary']?.toString().trim() ?? '';
-          final parsedNotes = jsonMap['notes']?.toString().trim() ?? '';
+          String parsedNotes = jsonMap['notes']?.toString().trim() ?? '';
           if (parsedSummary.isNotEmpty) {
-            _tasks[taskIdx].summary = parsedSummary;
-            changed = true;
+            if (parsedNotes.isNotEmpty) {
+              parsedNotes = '**$parsedSummary**\n\n$parsedNotes';
+            } else {
+              parsedNotes = '**$parsedSummary**';
+            }
           }
           if (parsedNotes.isNotEmpty) {
             final dateStr = DateTime.now().toLocal().toString().substring(0, 16);
@@ -1295,8 +1298,11 @@ wshShell.AppActivate $myPid
                         }
 
                         if (parsedSummary.isNotEmpty) {
-                          _tasks[taskIdx].summary = parsedSummary;
-                          changed = true;
+                          if (parsedNotes.isNotEmpty) {
+                            parsedNotes = '**$parsedSummary**\n\n$parsedNotes';
+                          } else {
+                            parsedNotes = '**$parsedSummary**';
+                          }
                         }
 
                         if (parsedNotes.isNotEmpty) {
