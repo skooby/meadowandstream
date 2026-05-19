@@ -1,5 +1,16 @@
 [
   {
+    "id": "03a82b1b-0c48-498f-91a4-344979a93a35",
+    "taskIds": [
+      "1779224338774"
+    ],
+    "title": "1. Remove Legacy Automation Scripts",
+    "summary": "Delete paste.vbs, clipboard injection logic, and agent_status.txt polling.",
+    "commitHash": "445e77eb748579533d6171fe3bebd7e8f74ebe0e",
+    "commitDate": "2026-05-19T15:14:22.105315",
+    "verifiedNotes": "- Delete `.ai_bridge/paste.vbs` from the filesystem.\n- Remove the `Clipboard.setData` and `wscript` shell execution blocks from `AiBridgeService._sendToAiAgent`.\n- Remove file watcher dependencies on `agent_status.txt` for idle state polling."
+  },
+  {
     "id": "74568f34-ec8b-4b23-ac0d-8bb717321f84",
     "taskIds": [],
     "title": "Checkpoint",

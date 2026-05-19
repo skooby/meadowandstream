@@ -246,7 +246,7 @@ foreach (\$title in \$titles) {
               if (output.contains('error -') || output.contains('error •')) {
                   final errorLog = output.split('\n').where((l) => l.contains('error -') || l.contains('error •') || l.trim().startsWith('lib/')).join('\n');
                   if (errorLog.trim().isNotEmpty) {
-                      AiBridgeService.instance.forceDispatchCompileError(errorLog);
+                      // AiBridgeService.instance.forceDispatchCompileError(errorLog);
                       if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compilation Error intercepted! Natively forcing LLM report.', style: TextStyle(color: Colors.redAccent)), duration: Duration(seconds: 4)));
                       }

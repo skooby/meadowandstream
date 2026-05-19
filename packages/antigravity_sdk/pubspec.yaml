@@ -1,0 +1,6 @@
+name: antigravity_sdk
+description: A mock local package for Antigravity SDK
+version: 0.0.1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'

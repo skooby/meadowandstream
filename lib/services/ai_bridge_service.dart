@@ -10,6 +10,7 @@ import 'auto_backup_service.dart';
 import 'macro_service.dart';
 import 'version_control_service.dart';
 import 'sandbox_service.dart';
+import 'package:antigravity_sdk/antigravity_sdk.dart';
 
 enum UpdateCoverType { hotReload, hotRestart, rebuild }
 
@@ -414,7 +415,25 @@ class QueuedPrompt {
 class AiBridgeService extends ChangeNotifier with WindowListener {
   static final AiBridgeService instance = AiBridgeService._internal();
 
+  late final AntigravityClient antigravityClient;
+
   AiBridgeService._internal() {
+    antigravityClient = AntigravityClient();
+    
+    // Subscribe to artifact updates (Task 3)
+    antigravityClient.onArtifactUpdate.listen((update) {
+      final taskIdx = _tasks.indexWhere((t) => t.id == update.taskId);
+      if (taskIdx != -1) {
+        _tasks[taskIdx].notes = update.notes;
+        _tasks[taskIdx].summary = update.summary;
+        if (update.verificationCriteria.isNotEmpty) {
+           _tasks[taskIdx].verificationCriteria = update.verificationCriteria.map((c) => AiVerificationCriteria.fromJson(c)).toList();
+        }
+        _save();
+        notifyListeners();
+      }
+    });
+
     init();
   }
 
@@ -493,79 +512,49 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   final List<QueuedPrompt> _pendingPrompts = [];
   final List<QueuedPrompt> _completedPrompts = [];
-  QueuedPrompt? _activePrompt;
 
-  List<QueuedPrompt> get pendingPrompts => List.unmodifiable(_pendingPrompts);
-  List<QueuedPrompt> get completedPrompts =>
-      List.unmodifiable(_completedPrompts);
-  QueuedPrompt? get activePrompt => _activePrompt;
 
-  List<String> get activeTaskIds {
-    if (_activeProcessingTaskId != null) return [_activeProcessingTaskId!];
-    if (_activePrompt != null && _activePrompt!.taskIds != null)
-      return _activePrompt!.taskIds!;
-    return [];
-  }
+  List<QueuedPrompt> get pendingPrompts => [];
+  List<QueuedPrompt> get completedPrompts => [];
+  QueuedPrompt? get activePrompt => null;
 
-  List<String> get pipelineTaskIds {
-    final ids = <String>[];
-    for (var p in _pendingPrompts) {
-      if (p.taskIds != null) ids.addAll(p.taskIds!);
-    }
-    return ids;
-  }
+  final Map<String, SubagentConnection> _activeAgents = {};
+  Map<String, SubagentConnection> get activeAgents => Map.unmodifiable(_activeAgents);
 
-  List<String> get completedTaskIds {
-    final ids = <String>[];
-    for (var p in _completedPrompts) {
-      if (p.taskIds != null) ids.addAll(p.taskIds!);
-    }
-    return ids;
-  }
+  List<String> get activeTaskIds => _activeAgents.keys.toList();
+  List<String> get pipelineTaskIds => [];
+  List<String> get completedTaskIds => [];
 
   Future<void> sendToQueue(String text, bool blockScreen,
       {List<String>? taskIds, bool insertFirst = false}) async {
-    if (insertFirst) {
-      _pendingPrompts.insert(0, QueuedPrompt(text, blockScreen, taskIds));
-    } else {
-      _pendingPrompts.add(QueuedPrompt(text, blockScreen, taskIds));
-    }
-    
     if (taskIds != null && taskIds.isNotEmpty) {
       await SandboxService.instance.addToSandbox(taskIds);
-      // Write current_task.json so the AI only needs to reference this file
-      if (!insertFirst) {
-        _writeCurrentTaskFile(taskIds.first);
+      final taskId = taskIds.first;
+      final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
+      if (taskIdx != -1) {
+        await executeTask(_tasks[taskIdx]);
       }
-    }
-    
-    _saveQueueState();
-    notifyListeners();
-
-    // Do not prematurely evaluate queue completion if we are internally working.
-    if (_activeProcessingTaskId == null && _activePrompt == null) {
-      _processQueue();
+    } else {
+      await antigravityClient.sendPrompt(text);
     }
   }
 
-  void _writeCurrentTaskFile(String taskId) {
-    try {
-      final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
-      if (taskIdx == -1) return;
-      final task = _tasks[taskIdx];
-      final json = task.toJson();
-      File('$_dirPath/current_task.json').writeAsStringSync(jsonEncode(json));
-    } catch (e) {
-      debugPrint('Failed to write current_task.json: $e');
-    }
+  Future<void> executeTask(AiTask task) async {
+    final connection = await antigravityClient.invokeSubagent(task.toJson());
+    _activeAgents[task.id] = connection;
+    notifyListeners();
+
+    connection.statusStream.listen((status) {
+      if (status == "Completed") {
+        _activeAgents.remove(task.id);
+      }
+      notifyListeners();
+    });
   }
 
   Future<void> _sendToAiAgent(String text) async {
-    // TODO: Integrated SDK replacement will go here
+    await antigravityClient.sendPrompt(text);
   }
-
-  String? _activeProcessingTaskId;
-  DateTime? _activeProcessingTaskAssignedAt;
 
   String? _lastJsonParseError;
   String? get lastJsonParseError => _lastJsonParseError;
@@ -575,85 +564,18 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     notifyListeners();
   }
 
-  // Idea 2: Dedicated human-in-the-loop fallback to skip hung AI states
-  void forceNextQueueItem() {
-    _activeProcessingTaskId = null;
-    _activeProcessingTaskAssignedAt = null;
-    _activePrompt = null;
-    notifyListeners();
-    _processQueue();
-  }
+  void forceNextQueueItem() {}
 
-  Future<void> _saveQueueState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String> encoded =
-        _pendingPrompts.map((p) => jsonEncode(p.toJson())).toList();
-    await prefs.setStringList('ai_bridge_queue', encoded);
-    final List<String> encodedCompleted =
-        _completedPrompts.map((p) => jsonEncode(p.toJson())).toList();
-    await prefs.setStringList('ai_bridge_completed_queue', encodedCompleted);
-  }
+  Future<void> _saveQueueState() async {}
 
-  Future<void> _processQueue() async {
-    if (_isQueuePaused) return;
-
-    if (_activeProcessingTaskId != null || _activePrompt != null) {
-      // Temporally lock queue dispatch. We now rely strictly on the IDLE semaphore file
-      // or a manual user Force Next action to pop this item.
-      // Fallback timer: log if requested, but do not auto-pop.
-      return;
-    }
-
-    if (_pendingPrompts.isNotEmpty) {
-      final nextPrompt = _pendingPrompts.first;
-
-      if (nextPrompt.taskIds != null && nextPrompt.taskIds!.isNotEmpty) {
-        _activeProcessingTaskId = nextPrompt.taskIds!.first;
-        _activeProcessingTaskAssignedAt = DateTime.now();
-
-        try {
-          final task = _tasks.firstWhere((t) => t.id == _activeProcessingTaskId);
-          if (task.priority == AiTaskPriority.high || task.priority == AiTaskPriority.urgent) {
-             final desc = 'Auto-Checkpoint before ${task.name}';
-             final hash = await VersionControlService.instance.createRestorePoint(desc);
-             if (hash.isNotEmpty && !hash.startsWith('No changes') && !hash.startsWith('Failed') && !hash.startsWith('Local')) {
-               await appendCheckpointToTimeline(desc, hash);
-             }
-          }
-        } catch (_) {}
-      } else {
-        _activeProcessingTaskId = null;
-        _activeProcessingTaskAssignedAt = null;
-      }
-
-      _activePrompt = nextPrompt;
-      _pendingPrompts.removeAt(0);
-      _saveQueueState();
-      notifyListeners();
-
-      // Natively wait 8 seconds before dispatch to IDE to guarantee the queue settles perfectly and hot reloads reset focus securely
-      await Future.delayed(const Duration(seconds: 8));
-
-      _sendToAiAgent(nextPrompt.text);
-      setScreenBlockerEnabled(nextPrompt.block);
-    }
-  }
+  Future<void> _processQueue() async {}
 
   void clearQueue() {
-    _activeProcessingTaskId = null;
-    _activePrompt = null;
-    _pendingPrompts.clear();
-    _completedPrompts.clear();
-    _saveQueueState();
+    _activeAgents.clear();
     notifyListeners();
   }
 
-  void removeFromQueue(QueuedPrompt prompt) {
-    _pendingPrompts.remove(prompt);
-    _completedPrompts.remove(prompt);
-    _saveQueueState();
-    notifyListeners();
-  }
+  void removeFromQueue(QueuedPrompt prompt) {}
 
   Future<void> _absorbOrphanedFiles(String taskId) async {
     try {
@@ -733,72 +655,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     } catch (_) {}
   }
 
-  Future<void> forceDispatchCompileError(String errorLog) async {
-    try {
-      if (_activeProcessingTaskId != null) {
-        await _absorbOrphanedFiles(_activeProcessingTaskId!);
-      }
 
-      if (_compileErrorLoopCount >= 3) {
-        _isQueuePaused = true;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('ai_queue_paused', true);
-        _compileErrorLoopCount = 0;
-        
-        try {
-          File('.ai_bridge/bridge_error.txt').writeAsStringSync('CRITICAL: AI failed to fix compile errors 3 times in a row. Queue paused automatically to prevent infinite loop.');
-        } catch (_) {}
-        
-        _activeProcessingTaskId = null;
-        _activeProcessingTaskAssignedAt = null;
-        _activePrompt = null;
-        notifyListeners();
-        return;
-      }
-
-      _tasks.removeWhere((t) => t.name.toLowerCase() == 'fix compile errors');
-      
-      _compileErrorLoopCount++;
-
-      final task = await addTask(
-        'Fix compile errors',
-        'The recent Hot Reload/Restart resulted in compilation errors. Fix them immediately.',
-        notes: errorLog,
-        status: AiTaskStatus.inProgress,
-      );
-
-      if (_tasks.isNotEmpty && _tasks.first.id != task.id) {
-        await reorderBefore(task.id, _tasks.first.id);
-      }
-
-      _isQueuePaused = false;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('ai_queue_paused', false);
-
-      try {
-        File('.ai_bridge/bridge_error.txt').writeAsStringSync(errorLog);
-      } catch (_) {}
-
-      const promptText =
-          '# PRIMARY DIRECTIVES\nVoice: Direct / Robotic\nComplexity: Concise\n\nCRITICAL COMPILER REJECTION! You violently broke the application build! I have natively intercepted your code changes and they failed background validation.\nRead the massive compilation failure log inside .ai_bridge/bridge_error.txt immediately. Patch the syntax errors dynamically and DO NOT push IDLE again until you have structurally verified your fix.';
-
-      final p = QueuedPrompt(promptText, true, [task!.id]);
-      _pendingPrompts.insert(0, p);
-      _saveQueueState();
-
-      _activeProcessingTaskId = null;
-      _activeProcessingTaskAssignedAt = null;
-      _activePrompt = null;
-      notifyListeners();
-
-      _processQueue();
-    } catch (e, st) {
-      try {
-        File('.ai_bridge/bridge_error_debug.txt')
-            .writeAsStringSync('forceDispatchCompileError crashed:\n\n');
-      } catch (_) {}
-    }
-  }
 
   void dismissUpdateCover() {
     _showUpdateCover = false;
@@ -886,15 +743,13 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   bool _isAntigravityBusy = false;
-  int _compileErrorLoopCount = 0;
   Map<String, DateTime> _antigravityLastModifiedTimes = {};
   DateTime? _antigravityLastChangeObservedAt;
   Timer? _antigravityPollTimer;
   Timer? _queueCleanupTimer;
 
   bool get isThinking =>
-      _activeProcessingTaskId != null ||
-      _activePrompt != null ||
+      _activeAgents.isNotEmpty ||
       _isAntigravityBusy;
 
   void _startWatchingAntigravity() {
@@ -1176,369 +1031,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
           dir.watch(events: FileSystemEvent.all).listen((event) async {
         final normPath = event.path.replaceAll('\\', '/');
 
-        // Idea 1 Core Synchronization
-        if (false /* normPath.endsWith('agent_status.txt') removed for SDK transition */) {
-          if (_isHandlingAgentStatus) return;
-          _isHandlingAgentStatus = true;
-          try {
-            final statusFile = File(event.path);
-            if (await statusFile.exists()) {
-              final content = (await statusFile.readAsString()).trim();
-              if (content == 'IDLE' || content == 'PREVIEW') {
-                File('$_dirPath/bridge_debug.txt').writeAsStringSync(
-                    'IDLE detected! isAntigravityBusy: $_isAntigravityBusy');
-                // The AI agent has strictly reported that it is completely finished.
-                // Wait vigorously until the LLM stream physically stops typing to guarantee the IDE chat context is unlocked for the next VBS injection.
-                while (_isAntigravityBusy) {
-                  await Future.delayed(const Duration(milliseconds: 500));
-                }
-                // Add a trailing structural breather to guarantee the IDE extension regains native UI focus before initiating next clipboard payload.
-                await Future.delayed(const Duration(milliseconds: 800));
 
-                if (content == 'IDLE') {
-                  bool hasCompileError = false;
-                  try {
-                    final res = await Process.run('dart', ['analyze'],
-                        runInShell: true);
-                    final output =
-                        res.stdout.toString() + '\n' + res.stderr.toString();
-                    if (output.contains('error -') || output.contains('error ?') || output.contains('error •')) {
-                      hasCompileError = true;
-                      await forceDispatchCompileError(output);
-                    }
-                  } catch (e) {
-                    debugPrint(
-                        'Failed to run automated dart analyze check: $e');
-                  }
-                  if (hasCompileError) {
-                    // Do not execute the rest of the status transition flow if we are forcing a compile error fix
-                    _saveQueueState();
-                    notifyListeners();
-                    return;
-                  }
-                }
-
-                // App-Driven Task Status Transition Flow
-                if (_activeProcessingTaskId != null) {
-                  try {
-                    final taskIdx = _tasks
-                        .indexWhere((t) => t.id == _activeProcessingTaskId);
-                    if (taskIdx != -1) {
-                      bool changed = false;
-
-                      String aiOutput = '';
-                      try {
-                        final String userProfile =
-                            Platform.environment['USERPROFILE'] ?? '';
-                        final brainDir = Directory(
-                            '$userProfile\\.gemini\\antigravity\\brain');
-                        if (brainDir.existsSync()) {
-                          final overviewFiles = brainDir
-                              .listSync(recursive: true, followLinks: false)
-                              .whereType<File>()
-                              .where((f) => f.path.endsWith('overview.txt'))
-                              .toList();
-                          if (overviewFiles.isNotEmpty) {
-                            overviewFiles.sort((a, b) => b
-                                .lastModifiedSync()
-                                .compareTo(a.lastModifiedSync()));
-                            final latest = overviewFiles.first;
-                            try {
-                              final lines = latest.readAsLinesSync();
-                              for (int i = lines.length - 1; i >= 0; i--) {
-                                try {
-                                  final line = lines[i].trim();
-                                  if (line.isEmpty || !line.startsWith('{')) continue;
-                                  final map = jsonDecode(line);
-                                  if (map['content'] != null) {
-                                    String content = map['content'];
-                                    if (content.contains('<bridge_notes>') || 
-                                        content.contains('<preview>') || 
-                                        content.contains('<verification>')) {
-                                      aiOutput = content;
-                                      break;
-                                    }
-                                  }
-                                } catch (_) {}
-                              }
-                            } catch (_) {}
-                          }
-                        }
-                      } catch (_) {}
-
-                      // 1. Absorb Notes — Files first (guaranteed on disk before IDLE), overview.txt fallback
-                      final notesFile = File('$_dirPath/latest_notes.json');
-                      String notesContent = '';
-                      if (notesFile.existsSync()) {
-                        try {
-                          notesContent = notesFile.readAsStringSync();
-                          notesFile.deleteSync();
-                        } catch (_) {}
-                      }
-                      if (notesContent.trim().isEmpty) {
-                        final notesMatches = RegExp(
-                                r'<bridge_notes>(.*?)</bridge_notes>',
-                                dotAll: true)
-                            .allMatches(aiOutput);
-                        if (notesMatches.isNotEmpty) {
-                          notesContent = notesMatches.last.group(1)!;
-                        }
-                      }
-
-                      if (notesContent.trim().isNotEmpty) {
-                        String parsedSummary = '';
-                        String parsedNotes = '';
-                        try {
-                          String content = notesContent;
-                          if (content.trim().isNotEmpty) {
-                            int startIdx = content.indexOf('{');
-                            int endIdx = content.lastIndexOf('}');
-                            if (startIdx != -1 &&
-                                endIdx != -1 &&
-                                endIdx > startIdx) {
-                              content = content.substring(startIdx, endIdx + 1);
-                              final Map<String, dynamic> jsonMap =
-                                  jsonDecode(content);
-                              parsedSummary =
-                                  jsonMap['summary']?.toString().trim() ?? '';
-                              parsedNotes =
-                                  jsonMap['notes']?.toString().trim() ?? '';
-                            } else {
-                              parsedNotes = content.trim();
-                            }
-                          }
-                        } catch (e) {
-                          _lastJsonParseError = 'Notes Parse Error: $e';
-                          debugPrint('Error parsing notes json: $e');
-                          parsedNotes = notesContent.trim();
-                        }
-
-                        if (parsedSummary.isNotEmpty) {
-                          if (parsedNotes.isNotEmpty) {
-                            parsedNotes = '**$parsedSummary**\n\n$parsedNotes';
-                          } else {
-                            parsedNotes = '**$parsedSummary**';
-                          }
-                        }
-
-                        if (parsedNotes.isNotEmpty) {
-                          final dateStr = DateTime.now()
-                              .toLocal()
-                              .toString()
-                              .substring(0, 16);
-                          final entry =
-                              '### Update - $dateStr\n$parsedNotes\n\n---\n\n';
-
-                          if (_tasks[taskIdx].notes.trim().isNotEmpty) {
-                            _tasks[taskIdx].notes =
-                                entry + _tasks[taskIdx].notes;
-                          } else {
-                            _tasks[taskIdx].notes = entry.trim();
-                          }
-                          changed = true;
-                        }
-                      }
-
-                      // 2. Absorb Preview — Files first, overview.txt fallback
-                      final previewFile = File('$_dirPath/latest_preview.json');
-                      bool generatedPreviewItems = false;
-                      String previewContent = '';
-                      if (previewFile.existsSync()) {
-                        try {
-                          previewContent = previewFile.readAsStringSync();
-                          previewFile.deleteSync();
-                        } catch (_) {}
-                      }
-                      if (previewContent.trim().isEmpty) {
-                        final previewMatches =
-                            RegExp(r'<preview>(.*?)</preview>', dotAll: true)
-                                .allMatches(aiOutput);
-                        if (previewMatches.isNotEmpty) {
-                          previewContent = previewMatches.last.group(1)!;
-                        }
-                      }
-
-                      if (previewContent.trim().isNotEmpty) {
-                        try {
-                          String content = previewContent;
-                          if (content.trim().isNotEmpty) {
-                            int startIdx = content.indexOf('[');
-                            int endIdx = content.lastIndexOf(']');
-                            if (startIdx != -1 &&
-                                endIdx != -1 &&
-                                endIdx > startIdx) {
-                              content = content.substring(startIdx, endIdx + 1);
-                            }
-                            final List<dynamic> jsonList = jsonDecode(content);
-                            final newItems = jsonList
-                                .map((e) => AiVerificationCriteria(
-                                      description: e['description']?.toString() ?? 'Preview item',
-                                      goal: e['goal']?.toString() ?? '',
-                                      status: AiVerificationStatus.pendingReview,
-                                      isVerified: false,
-                                      isPreview: true,
-                                    ))
-                                .toList();
-                            _tasks[taskIdx].verificationCriteria.addAll(newItems);
-                            changed = true;
-                            if (newItems.isNotEmpty) {
-                              generatedPreviewItems = true;
-                            }
-                          }
-                        } catch (e) {
-                          _lastJsonParseError = 'Preview Parse Error: $e';
-                          debugPrint('Error parsing preview json: $e');
-                        }
-                      }
-
-                      // 3. Absorb Verification — Files first, overview.txt fallback
-                      final verificationFile =
-                          File('$_dirPath/latest_verification.json');
-                      String verificationContent = '';
-                      if (verificationFile.existsSync()) {
-                        try {
-                          verificationContent =
-                              verificationFile.readAsStringSync();
-                          verificationFile.deleteSync();
-                        } catch (_) {}
-                      }
-                      if (verificationContent.trim().isEmpty) {
-                        final verificationMatches = RegExp(
-                                r'<verification>(.*?)</verification>',
-                                dotAll: true)
-                            .allMatches(aiOutput);
-                        if (verificationMatches.isNotEmpty) {
-                          verificationContent =
-                              verificationMatches.last.group(1)!;
-                        }
-                      }
-
-                      if (verificationContent.trim().isNotEmpty) {
-                        try {
-                          String content = verificationContent;
-                          if (content.trim().isNotEmpty) {
-                            int startIdx = content.indexOf('[');
-                            int endIdx = content.lastIndexOf(']');
-                            if (startIdx != -1 &&
-                                endIdx != -1 &&
-                                endIdx > startIdx) {
-                              content = content.substring(startIdx, endIdx + 1);
-                            }
-                            final List<dynamic> jsonList = jsonDecode(content);
-                            final newItems = jsonList
-                                .map((e) => AiVerificationCriteria.fromJson(e))
-                                .toList();
-                            // Merge AI proofs into existing criteria - proof text only.
-                             // The user must manually mark items as verified in the UI.
-                             final existing = _tasks[taskIdx].verificationCriteria;
-                             for (final newItem in newItems) {
-                               final matchIdx = existing.indexWhere((e) {
-                                 final eDesc = e.description.trim().toLowerCase();
-                                 final nDesc = newItem.description.trim().toLowerCase();
-                                 return nDesc.startsWith(eDesc);
-                               });
-                               if (matchIdx != -1) {
-                                 // Only absorb proof text - never auto-verify
-                                 existing[matchIdx].proof = newItem.proof;
-                               } else {
-                                 // New item from AI: add with pendingReview, never auto-verified
-                                 newItem.isVerified = false;
-                                 newItem.status = AiVerificationStatus.pendingReview;
-                                 existing.add(newItem);
-                               }
-                             }
-                            changed = true;
-                          }
-                        } catch (e) {
-                          _lastJsonParseError = 'Verification Parse Error: $e';
-                          debugPrint(
-                              'Warning: Could not read latest_verification.json: $e');
-                        }
-                      }
-
-                      // 4. Missing-File Enforcement: if IDLE arrived but the agent forgot to write required files, re-queue a self-correction prompt
-                      if (content == 'IDLE') {
-                        final List<String> missingFiles = [];
-                        final bool hasVerificationCriteria = _tasks[taskIdx].verificationCriteria.isNotEmpty;
-                        final bool notesWereMissing = notesContent.trim().isEmpty;
-                        final bool verificationWasMissing = hasVerificationCriteria && verificationContent.trim().isEmpty;
-
-                        if (notesWereMissing) missingFiles.add('`.ai_bridge/latest_notes.json` (format: {"notes": "...", "summary": "..."})');
-                        if (verificationWasMissing) missingFiles.add('`.ai_bridge/latest_verification.json` (format: [{"description": "...", "isVerified": true, "proof": "..."}])');
-
-                        if (missingFiles.isNotEmpty) {
-                          final missingList = missingFiles.map((f) => '- $f').join('\n');
-                          final correctionPrompt = _missingFilesInstructions.replaceAll('{missingList}', missingList);
-                          debugPrint('[AiBridge] Missing required files after IDLE. Re-queuing correction prompt.');
-                          sendToQueue(correctionPrompt, false, taskIds: [_tasks[taskIdx].id], insertFirst: true);
-                          // Reset the IDLE status so the task doesn't complete prematurely
-                          File('$_dirPath/agent_status.txt').writeAsStringSync('BUSY');
-                          _saveQueueState();
-                          notifyListeners();
-                          return;
-                        }
-                      }
-
-                      if (content == 'IDLE' && !generatedPreviewItems) {
-                        final prefs = await SharedPreferences.getInstance();
-                        final afterCompleteStr = prefs
-                                .getString('ai_tasks_bridge_complete_status') ??
-                            'dontChange';
-                        
-                        if (afterCompleteStr != 'dontChange') {
-                          final targetStatus = AiTaskStatus.values.firstWhere(
-                                  (e) => e.name == afterCompleteStr,
-                                  orElse: () => _tasks[taskIdx].status);
-
-                          if (_tasks[taskIdx].status != targetStatus) {
-                            final oldStatus = _tasks[taskIdx].status;
-                            _tasks[taskIdx].status = targetStatus;
-                            _triggerSandboxMergeIfNeeded(oldStatus, _tasks[taskIdx]);
-                            changed = true;
-                          }
-                        }
-                      }
-                      if (changed) {
-                        _save();
-                      }
-                    }
-                  } catch (e) {
-                    debugPrint('Failed auto-status transition: $e');
-                  }
-                }
-
-                if (content == 'IDLE') {
-                  if (_activePrompt != null) {
-                    _activePrompt!.completedAt = DateTime.now();
-                    _completedPrompts.add(_activePrompt!);
-                  }
-                  _activeProcessingTaskId = null;
-                  _activeProcessingTaskAssignedAt = null;
-                  _activePrompt = null;
-                  _compileErrorLoopCount = 0; // Reset counter on successful IDLE completion
-                  // Clean up the current_task.json now that the task is complete
-                  try {
-                    final ctFile = File('$_dirPath/current_task.json');
-                    if (ctFile.existsSync()) ctFile.deleteSync();
-                  } catch (_) {}
-                }
-                _saveQueueState();
-                notifyListeners();
-
-                if (_pendingUpdateType == null) {
-                  _pendingUpdateType = UpdateCoverType.hotReload;
-                }
-                triggerPendingUpdate(force: true);
-
-                _processQueue();
-              }
-            }
-          } finally {
-            Future.delayed(const Duration(seconds: 2), () {
-              _isHandlingAgentStatus = false;
-            });
-          }
-        }
         if (normPath.toLowerCase().endsWith('suggestiontask.txt')) {
           if (_isProcessingSuggestion) return;
           _isProcessingSuggestion = true;

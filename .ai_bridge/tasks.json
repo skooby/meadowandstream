@@ -63,71 +63,6 @@
       "commitDate": null
     },
     {
-      "id": "1779224338775",
-      "name": "2. Integrate Core SDK Client",
-      "description": "Initialize the Antigravity SDK client in AiBridgeService and replace wscript SendKeys with native API calls.",
-      "summary": "",
-      "notes": "",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "verificationCriteria": [
-        {
-          "description": "Add the `antigravity_sdk` dependency to `pubspec.yaml`.",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false,
-          "isPreview": false
-        },
-        {
-          "description": "Initialize `AntigravityClient` within the `AiBridgeService` constructor.",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false,
-          "isPreview": false
-        },
-        {
-          "description": "Replace `_sendToAiAgent` logic with `AntigravityClient.sendPrompt(...)` API call.",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false,
-          "isPreview": false
-        }
-      ],
-      "status": "open",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": null,
-      "commitDate": null,
-      "parentId": "1779224338773"
-    },
-    {
       "id": "1779224338776",
       "name": "3. Migrate Context & Artifacts",
       "description": "Stop dumping current_task.json to disk. Pass task models natively through the SDK and subscribe to artifact update streams.",
@@ -6345,6 +6280,71 @@
       "commitHash": "7e4addf2ce1eeae169214838231ece1c125e1639",
       "commitDate": "2026-05-19T15:07:08.616639",
       "parentId": "1800000000000"
+    },
+    {
+      "id": "1779224338774",
+      "name": "1. Remove Legacy Automation Scripts",
+      "description": "Delete paste.vbs, clipboard injection logic, and agent_status.txt polling.",
+      "summary": "",
+      "notes": "",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Delete `.ai_bridge/paste.vbs` from the filesystem.",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": null,
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        },
+        {
+          "description": "Remove the `Clipboard.setData` and `wscript` shell execution blocks from `AiBridgeService._sendToAiAgent`.",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": null,
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        },
+        {
+          "description": "Remove file watcher dependencies on `agent_status.txt` for idle state polling.",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": null,
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        }
+      ],
+      "status": "completed",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": "445e77eb748579533d6171fe3bebd7e8f74ebe0e",
+      "commitDate": "2026-05-19T15:14:22.105315",
+      "parentId": "1779224338773"
     }
   ]
 }

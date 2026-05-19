@@ -1,4 +1,5 @@
 import '../../../state/global_task_editor_state.dart';
+import 'package:antigravity_sdk/antigravity_sdk.dart';
 import 'global_task_editor_window.dart';
 import 'global_icon_picker_window.dart';
 import 'package:flutter/material.dart';
@@ -2959,72 +2960,65 @@ showColorPickerWindow(context);
         ),
       );
     }
-  Widget _buildQueueItem(QueuedPrompt prompt, bool isActive, bool isCompleted) {
-    String displayTitle = prompt.text.toUpperCase();
-    if (prompt.taskIds != null && prompt.taskIds!.isNotEmpty) {
-      final taskId = prompt.taskIds!.first;
-      final taskList = AiBridgeService.instance.tasks.where((t) => t.id == taskId).toList();
-      if (taskList.isNotEmpty) {
-        displayTitle = taskList.first.name.toUpperCase();
-        final match = RegExp(r'\(\d+ of \d+\)').firstMatch(prompt.text);
-        if (match != null) {
-          displayTitle += ' ${match.group(0)!.toUpperCase()}';
-        }
-      }
-    }
+  Widget _buildSubagentItem(String taskId, SubagentConnection connection) {
+    final taskList = AiBridgeService.instance.tasks.where((t) => t.id == taskId).toList();
+    final displayTitle = taskList.isNotEmpty ? taskList.first.name.toUpperCase() : 'AGENT $taskId';
 
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.overlaySubtle)),
-        color: isActive ? Colors.amber.withValues(alpha: 0.1) : Colors.transparent,
-      ),
-      child: Row(
-        children: [
-          Icon(
-            isCompleted ? Icons.check_circle : (isActive ? Icons.autorenew : Icons.schedule),
-            color: isCompleted ? Colors.green : (isActive ? Colors.amber : AppColors.panelTextSecondary),
-            size: 16,
+    return StreamBuilder<String>(
+      stream: connection.statusStream,
+      builder: (context, snapshot) {
+        final status = snapshot.data ?? 'Initializing...';
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.overlaySubtle)),
+            color: Colors.amber.withValues(alpha: 0.1),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              displayTitle,
-              style: TextStyle(
-                color: isCompleted ? AppColors.panelTextSecondary : AppColors.panelTextPrimary,
-                fontSize: AppUIConfig.rootFontSize,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          child: Row(
+            children: [
+              Icon(Icons.autorenew, color: Colors.amber, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayTitle,
+                      style: TextStyle(
+                        color: AppColors.panelTextPrimary,
+                        fontSize: AppUIConfig.rootFontSize,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      status,
+                      style: TextStyle(
+                        color: AppColors.panelTextSecondary,
+                        fontSize: 10,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+              IconButton(
+                icon: Icon(Icons.edit, size: 16, color: AppColors.accent),
+                onPressed: () {
+                  if (taskList.isNotEmpty) {
+                    GlobalTaskEditorState.instance.requestEdit(existingTask: taskList.first);
+                    showTaskEditorWindow(context);
+                  }
+                },
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
           ),
-          if (prompt.taskIds?.isNotEmpty == true)
-            IconButton(
-              icon: Icon(Icons.edit, size: 16, color: AppColors.accent),
-              onPressed: () {
-                final taskId = prompt.taskIds?.first;
-                if (taskId == null) return;
-                final taskList = AiBridgeService.instance.tasks.where((t) => t.id == taskId).toList();
-                if (taskList.isNotEmpty) {
-                  GlobalTaskEditorState.instance.requestEdit(existingTask: taskList.first);
-                  showTaskEditorWindow(context);
-                }
-              },
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-            ),
-          if (!isCompleted && !isActive) ...[
-            const SizedBox(width: 8),
-            IconButton(
-              icon: Icon(Icons.close, size: 16, color: AppColors.error),
-              onPressed: () => AiBridgeService.instance.removeFromQueue(prompt),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-            ),
-          ],
-        ],
-      ),
+        );
+      }
     );
   }
 
@@ -3433,10 +3427,7 @@ showColorPickerWindow(context);
                               controller: _queueScrollController,
                               shrinkWrap: true,
                               children: [
-                                if (AiBridgeService.instance.activePrompt != null)
-                                  _buildQueueItem(AiBridgeService.instance.activePrompt!, true, false),
-                                ...AiBridgeService.instance.pendingPrompts.map((p) => _buildQueueItem(p, false, false)),
-                                ...AiBridgeService.instance.completedPrompts.map((p) => _buildQueueItem(p, false, true)),
+                                ...AiBridgeService.instance.activeAgents.entries.map((entry) => _buildSubagentItem(entry.key, entry.value)),
                               ],
                             ),
                           ),
