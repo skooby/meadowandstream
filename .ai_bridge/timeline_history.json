@@ -1,5 +1,14 @@
 [
   {
+    "id": "74568f34-ec8b-4b23-ac0d-8bb717321f84",
+    "taskIds": [],
+    "title": "Checkpoint",
+    "summary": "Manual Checkpoint: Before Antigravity SDK",
+    "commitHash": "92ed3dcb8ee0102e96c90797b59f266142df9010",
+    "commitDate": "2026-05-19T15:07:32.642543",
+    "verifiedNotes": ""
+  },
+  {
     "id": "40c5ae1c-9508-44d2-b6fe-8f2af6731c0c",
     "taskIds": [
       "1778559578740",

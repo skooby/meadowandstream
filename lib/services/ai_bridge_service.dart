@@ -561,28 +561,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> _sendToAiAgent(String text) async {
-    await Clipboard.setData(ClipboardData(text: text));
-    await MacroService.instance.executeTrigger('BridgeConnect');
-
-    final int myPid = pid;
-    final vbsFile = File('.ai_bridge/paste.vbs');
-    if (!vbsFile.parent.existsSync()) {
-      vbsFile.parent.createSync(recursive: true);
-    }
-    await vbsFile.writeAsString('''
-Set wshShell = CreateObject("WScript.Shell")
-WScript.Sleep 600
-wshShell.SendKeys "^v"
-WScript.Sleep 200
-wshShell.SendKeys "~"
-WScript.Sleep 300
-wshShell.AppActivate $myPid
-''');
-    await Process.run('wscript', ['.ai_bridge/paste.vbs']);
-
-    // Idea 1: Hard lock the external semaphore.
-    final statusFile = File('.ai_bridge/agent_status.txt');
-    await statusFile.writeAsString('BUSY');
+    // TODO: Integrated SDK replacement will go here
   }
 
   String? _activeProcessingTaskId;
@@ -1198,7 +1177,7 @@ wshShell.AppActivate $myPid
         final normPath = event.path.replaceAll('\\', '/');
 
         // Idea 1 Core Synchronization
-        if (normPath.endsWith('agent_status.txt')) {
+        if (false /* normPath.endsWith('agent_status.txt') removed for SDK transition */) {
           if (_isHandlingAgentStatus) return;
           _isHandlingAgentStatus = true;
           try {
