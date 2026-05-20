@@ -831,12 +831,39 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   List<String> get pipelineTaskIds => [];
   List<String> get completedTaskIds => [];
 
+  String _buildTaskPathName(AiTask task) {
+    final path = <String>[];
+    AiTask? current = task;
+    final visited = <String>{};
+    while (current != null) {
+      if (visited.contains(current.id)) break;
+      visited.add(current.id);
+      path.insert(0, current.name);
+      
+      if (current.parentId != null) {
+        current = _tasks.cast<AiTask?>().firstWhere(
+          (t) => t?.id == current!.parentId,
+          orElse: () => null,
+        );
+      } else if (current.worksheetId != null && !current.isWorksheet) {
+        current = _tasks.cast<AiTask?>().firstWhere(
+          (t) => t?.id == current!.worksheetId,
+          orElse: () => null,
+        );
+      } else {
+        current = null;
+      }
+    }
+    return path.join(' > ');
+  }
+
   void _writeCurrentTaskFile(String taskId) {
     try {
       final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
       if (taskIdx == -1) return;
       final task = _tasks[taskIdx];
       final json = task.toJson();
+      json['name'] = _buildTaskPathName(task);
       if (json['verificationCriteria'] != null) {
         final List<dynamic> vcList = json['verificationCriteria'] as List<dynamic>;
         json['verificationCriteria'] = vcList.where((e) => e['isPreview'] != true).toList();
@@ -886,7 +913,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   Future<void> executeTask(AiTask task) async {
     await _ensureBackendRunning();
-    final connection = await antigravityClient.invokeSubagent(task.toJson());
+    final json = task.toJson();
+    json['name'] = _buildTaskPathName(task);
+    final connection = await antigravityClient.invokeSubagent(json);
     _activeAgents[task.id] = connection;
     notifyListeners();
 
@@ -1204,21 +1233,11 @@ wshShell.AppActivate $myPid
   AiTaskPriority _filterPriority = AiTaskPriority.none;
   AiTaskPriority get filterPriority => _filterPriority;
 
-  bool _hideEmptyFolders = false;
-  bool get hideEmptyFolders => _hideEmptyFolders;
-
   void setFilterPriority(AiTaskPriority p) async {
     _filterPriority = p;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('ai_tasks_filter_priority', p.name);
-  }
-
-  void setHideEmptyFolders(bool hide) async {
-    _hideEmptyFolders = hide;
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('ai_tasks_hide_empty_folders', hide);
   }
 
   Future<void> syncPreferences() async {
@@ -1241,8 +1260,6 @@ wshShell.AppActivate $myPid
     _filterPriority = AiTaskPriority.values.firstWhere(
         (e) => e.name == filterPriorityStr,
         orElse: () => AiTaskPriority.none);
-
-    _hideEmptyFolders = prefs.getBool('ai_tasks_hide_empty_folders') ?? false;
   }
 
   bool _isAntigravityBusy = false;

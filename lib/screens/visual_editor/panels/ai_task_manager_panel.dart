@@ -390,8 +390,6 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     if (mounted) {
       setState(() {
         _showCompleted = prefs.getBool('ai_tasks_show_completed') ?? false;
-        AiBridgeService.instance.setHideEmptyFolders(
-            prefs.getBool('ai_tasks_hide_empty_folders') ?? false);
         _activeRatio = prefs.getDouble('ai_tasks_active_ratio') ?? 0.6;
         _dialogWidth = prefs.getDouble('ai_tasks_dialog_w') ?? 600;
         _dialogHeight = prefs.getDouble('ai_tasks_dialog_h') ?? 500;
@@ -3088,32 +3086,6 @@ showColorPickerWindow(context);
                           mainAxisSize: MainAxisSize.min,
                           children: [
                       IconButton(
-                        onPressed: () async {
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setBool('ai_tasks_hide_empty_folders',
-                              !AiBridgeService.instance.hideEmptyFolders);
-                          if (mounted) {
-                            setState(
-                                () => AiBridgeService.instance.setHideEmptyFolders(!AiBridgeService.instance.hideEmptyFolders));
-                          }
-                        },
-                        icon: Icon(
-                            AiBridgeService.instance.hideEmptyFolders ? Icons.folder_off : Icons.folder,
-                            size: 16,
-                            color: AiBridgeService.instance.hideEmptyFolders ? AppColors.titleBarTextSecondary : AppColors.getAdaptiveBlue(AppColors.titleBarBackground)),
-                        tooltip: 'Toggle Empty Folders',
-                        padding: const EdgeInsets.only(right: 8),
-                        constraints: const BoxConstraints(),
-                      ),
-                      IconButton(
-                        onPressed: () => AiBridgeService.instance.markAllRead(),
-                        icon: Icon(Icons.mark_email_read,
-                              size: 16, color: AppColors.titleBarTextSecondary),
-                        tooltip: 'Mark All Tasks as Read',
-                        padding: const EdgeInsets.only(right: 8),
-                        constraints: const BoxConstraints(),
-                      ),
-                      IconButton(
                         onPressed: () => _showConfigDialog(context),
                         icon: Icon(Icons.settings, size: 16, color: AppColors.titleBarTextSecondary),
                         tooltip: 'Prompt Helper Settings',
@@ -3247,7 +3219,7 @@ showColorPickerWindow(context);
 
               bool passesFilter(AiTask task) {
                 if (task.isFolder) {
-                  return true; // Folders are filtered through hasChildren and hideEmptyFolders
+                  return true; // Folders are filtered through hasChildren
                 }
                 return task.priority.index >= AiBridgeService.instance.filterPriority.index;
               }
@@ -3278,11 +3250,6 @@ showColorPickerWindow(context);
                     tasks.where((t) => t.parentId == parentId).toList();
                 for (var child in children) {
                   if (child.isWorksheet) continue;
-                  if (AiBridgeService.instance.hideEmptyFolders &&
-                      child.isFolder &&
-                      !hasChildren(child.id)) {
-                    continue;
-                  }
                   if (!child.isFolder && !passesFilter(child)) continue;
 
                   bool isEven = activeIndex % 2 == 0;

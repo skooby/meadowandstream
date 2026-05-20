@@ -1,5 +1,16 @@
 [
   {
+    "id": "2e2380e1-c30f-43b0-8615-c04acddf78af",
+    "taskIds": [
+      "1779295760360"
+    ],
+    "title": "System Logs [feat(logs): implement auto-scroll and manual scroll override for system logs]",
+    "summary": "Updates for system logs",
+    "commitHash": "a461cb6362c66b6a248eb1ec38404f7b10b5f18a",
+    "commitDate": "2026-05-20T11:00:01.968462",
+    "verifiedNotes": "- Have the scrollbar set to scroll to bottom to always see the latest messages, if we try to scroll then disable the automatic scroll to bottom"
+  },
+  {
     "id": "2e304176-b0e9-4e59-8fb3-623203151afa",
     "taskIds": [
       "1779292935054"

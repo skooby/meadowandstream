@@ -281,7 +281,7 @@ class _GlobalOverlayInjectorState extends State<_GlobalOverlayInjector> {
            if (isTextInputFocused().startsWith('YES')) {
                final completer = Completer<void>();
                void focusListener() {
-                   if (!isTextInputFocused().startsWith('YES')) {
+                   if (!completer.isCompleted && !isTextInputFocused().startsWith('YES')) {
                        completer.complete();
                    }
                }

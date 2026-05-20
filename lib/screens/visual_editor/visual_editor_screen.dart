@@ -198,9 +198,9 @@ while (\$curr -and -not \$activated) {
             }
         }
         
-        # C. Try locating associated console host (conhost.exe or openconsole.exe) spawned by this shell
+        # C. Try locating associated console host (conhost.exe or openconsole.exe) spawned by this shell using fast CIM filter
         if (-not \$activated) {
-            \$conhosts = Get-CimInstance Win32_Process | Where-Object { \$_.ParentProcessId -eq \$proc.ProcessId -and (\$_.Name -eq 'conhost.exe' -or \$_.Name -eq 'openconsole.exe') };
+            \$conhosts = Get-CimInstance Win32_Process -Filter "ParentProcessId = \$(\$proc.ProcessId) and (Name = 'conhost.exe' or Name = 'openconsole.exe')";
             foreach (\$c in \$conhosts) {
                 if (\$wshell.AppActivate(\$c.ProcessId)) {
                     \$activated = \$true;
@@ -296,8 +296,36 @@ while (\$curr -and -not \$activated) {
     }
     
     if (\$isShell) {
+        # A. Try activating PID directly
         if (\$wshell.AppActivate(\$proc.ProcessId)) {
             \$activated = \$true;
+        }
+        
+        # B. Try activating by MainWindowTitle of the ancestor process
+        if (-not \$activated) {
+            \$p = Get-Process -Id \$proc.ProcessId -ErrorAction SilentlyContinue;
+            if (\$p -and \$p.MainWindowTitle -and \$wshell.AppActivate(\$p.MainWindowTitle)) {
+                \$activated = \$true;
+            }
+        }
+        
+        # C. Try locating associated console host (conhost.exe or openconsole.exe) spawned by this shell using fast CIM filter
+        if (-not \$activated) {
+            \$conhosts = Get-CimInstance Win32_Process -Filter "ParentProcessId = \$(\$proc.ProcessId) and (Name = 'conhost.exe' or Name = 'openconsole.exe')";
+            foreach (\$c in \$conhosts) {
+                if (\$wshell.AppActivate(\$c.ProcessId)) {
+                    \$activated = \$true;
+                    break;
+                }
+                \$cp = Get-Process -Id \$c.ProcessId -ErrorAction SilentlyContinue;
+                if (\$cp -and \$cp.MainWindowTitle -and \$wshell.AppActivate(\$cp.MainWindowTitle)) {
+                    \$activated = \$true;
+                    break;
+                }
+            }
+        }
+        
+        if (\$activated) {
             Start-Sleep -Milliseconds 50;
             \$wshell.SendKeys('+r');
             Start-Sleep -Milliseconds 1200;

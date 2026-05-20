@@ -5092,59 +5092,6 @@
       "worksheetId": "1778268121185"
     },
     {
-      "id": "1778503455784",
-      "name": "TASK MANAGER",
-      "description": "General improvements for Task Manager",
-      "summary": "Fix: Task editor bottom toolbar separators",
-      "notes": "### Update - 2026-05-18 23:12\nRemoved all remaining vertical separator Containers in the bottom toolbar of global_task_editor_window.dart. Previously, when the task had no file attachments or hyperlinks, the subsequent separators in the rendering array collapsed next to the 'Duplicate Task' button, causing the separator to still appear. All trailing separators in this row have now been removed for a clean UI.\n\n---\n\n### Update - 2026-05-18 23:06\nFixed an issue where the task's main summary was being overwritten by the AI bridge's commit messages whenever checklist items were marked complete. Commit messages are now appended to the task's notes instead of overwriting the summary. Also removed the double vertical separator appearing after the 'Duplicate Task' button when no attachments are present.\n\n---\n\n### Update - 2026-05-18 22:56\nIncreased the decorationThickness of the crossed-out line for completed tasks in the Task Manager to 2.0. This makes the white strikethrough line significantly more visible and prevents it from appearing dim or alpha-blended against the text.\n\n---\n\n### Update - 2026-05-18 22:53\nRemoved the text input focus status indicator from the top toolbar of the Visual Editor Screen. Updated the task manager panel to use white for the strikethrough color of completed tasks.\n\n---",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "verificationCriteria": [
-        {
-          "description": "Feels like summary is getting rewritten as we mark checklist items as complete. The summary should summarize all items within the task editor. This is for sure happening. summary should not ",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": null,
-          "requestClarification": false,
-          "tryCount": 1,
-          "attachments": [],
-          "isCommitted": true,
-          "isPreview": false
-        },
-        {
-          "description": "Remove the double separator in the bottom area the one after duplicate task",
-          "goal": "separator is still there",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "Removed the remaining separator Containers located after the attachments map and hyperlinks map in the bottom toolbar of global_task_editor_window.dart. Because file attachments were empty, the second separator was rendering immediately after the duplicate task button. It has now been removed completely.",
-          "requestClarification": false,
-          "tryCount": 1,
-          "attachments": [],
-          "isCommitted": true,
-          "isPreview": false
-        }
-      ],
-      "status": "completed",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": "6da4b04ecda1eba4cceeb6598a1fa58e62d48f0d",
-      "commitDate": "2026-05-19T04:44:07.066741",
-      "parentId": "1774913415376"
-    },
-    {
       "id": "1779190114830",
       "name": "Fix compile errors",
       "description": "The recent Hot Reload/Restart resulted in compilation errors. Fix them immediately.",
@@ -6297,6 +6244,48 @@
       "commitHash": "8f33d85d46f6df06bb3e04f0c126253236f07297",
       "commitDate": "2026-05-20T10:49:01.573291",
       "parentId": "1778722190315",
+      "worksheetId": "1778268121185"
+    },
+    {
+      "id": "1779295760360",
+      "name": "System Logs",
+      "description": "Updates for system logs",
+      "summary": "feat(logs): implement auto-scroll and manual scroll override for system logs",
+      "notes": "### Update - 2026-05-20 10:55\nAdded ScrollController and scroll listeners to SystemLogsWindow. Automatically scrolls to the bottom on new logs. Disables auto-scroll if the user manually scrolls up, and re-enables it if they scroll back to the bottom. Wrapped the list view in a Scrollbar using the same controller.\n\n---",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Have the scrollbar set to scroll to bottom to always see the latest messages, if we try to scroll then disable the automatic scroll to bottom",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Added ScrollController to SystemLogsWindow. Registered scroll listener that detects when user scrolls up (disabling auto-scroll) or scrolls back to the bottom (re-enabling auto-scroll). Attached Scrollbar and controller to ListView.builder.",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        }
+      ],
+      "status": "completed",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": "a461cb6362c66b6a248eb1ec38404f7b10b5f18a",
+      "commitDate": "2026-05-20T11:00:01.968462",
+      "parentId": "1778537568342",
       "worksheetId": "1778268121185"
     }
   ]
