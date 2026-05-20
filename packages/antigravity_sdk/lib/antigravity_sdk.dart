@@ -372,6 +372,13 @@ class AntigravityClient {
           _log('absorbArtifacts: loaded notes (${notes.length} chars)');
         } catch (e) {
           _log('absorbArtifacts: notes parse error: $e');
+        } finally {
+          try {
+            notesFile.deleteSync();
+            _log('absorbArtifacts: deleted notes file');
+          } catch (e) {
+            _log('absorbArtifacts: failed to delete notes file: $e');
+          }
         }
       }
 
@@ -383,6 +390,13 @@ class AntigravityClient {
           _log('absorbArtifacts: loaded ${criteria.length} verification criteria');
         } catch (e) {
           _log('absorbArtifacts: verification parse error: $e');
+        } finally {
+          try {
+            verificationFile.deleteSync();
+            _log('absorbArtifacts: deleted verification file');
+          } catch (e) {
+            _log('absorbArtifacts: failed to delete verification file: $e');
+          }
         }
       }
 
@@ -399,6 +413,13 @@ class AntigravityClient {
           _log('absorbArtifacts: loaded ${previewItems.length} preview items');
         } catch (e) {
           _log('absorbArtifacts: preview parse error: $e');
+        } finally {
+          try {
+            previewFile.deleteSync();
+            _log('absorbArtifacts: deleted preview file');
+          } catch (e) {
+            _log('absorbArtifacts: failed to delete preview file: $e');
+          }
         }
       }
 

@@ -5896,59 +5896,6 @@
       "parentId": "1800000000000"
     },
     {
-      "id": "1800000000013",
-      "name": "STEP 6 - Add Optional Embeddings Support",
-      "description": "Vector database capabilities.",
-      "summary": "",
-      "notes": "",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "verificationCriteria": [
-        {
-          "description": "Install nomic-embed-text locally.",
-          "goal": "",
-          "isVerified": false,
-          "status": "pendingReview",
-          "proof": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false,
-          "isPreview": false
-        },
-        {
-          "description": "Add generateEmbeddings() method to LocalAiService.",
-          "goal": "",
-          "isVerified": false,
-          "status": "pendingReview",
-          "proof": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false,
-          "isPreview": false
-        }
-      ],
-      "status": "open",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": null,
-      "commitDate": null,
-      "parentId": "1800000000000"
-    },
-    {
       "id": "1800000000014",
       "name": "STEP 7 - Final Validation",
       "description": "E2E Testing of Native AI integration.",
@@ -6410,6 +6357,59 @@
       "commitHash": null,
       "commitDate": null,
       "parentId": "1779224338773"
+    },
+    {
+      "id": "1776705616800",
+      "name": "AI BRIDGE PIPELINE QUEUE",
+      "description": "",
+      "summary": "fix: Implement dynamic dot animation and fix hot reload/restart timing issue",
+      "notes": "### Update - 2026-05-19 20:24\nImplemented dynamic loading dot animation by creating a reusable `AnimatedDotsText` widget which cycles dot counts between 1 and 3 every 500ms using a periodic timer. Used `AnimatedDotsText` for both the global syncing overlay status text and the active subagent status messages. Fixed the hot reload/restart triggering bug where the periodic polling timer would immediately re-flag `_isAntigravityBusy = true` after a task completed, by properly resetting `_antigravityLastChangeObservedAt` to null upon task completion and IDLE status detection.\n\n---\n\n### Update - 2026-05-19 20:18\nFixed hot reload/restart triggering when changes are detected:\n- Identified that `triggerPendingUpdate` was gated by `isThinking`, which was kept true by `_isAntigravityBusy` for 5 seconds after file writes completed.\n- Found that the previous watcher checking for `agent_status.txt` changes (which would call `triggerPendingUpdate(force: true)`) had been removed when migrating to gRPC/Subprocess SDK polling.\n- Restored immediate hot reload/restart triggering upon task completion by updating the subagent's `statusStream` completion handler inside `AiBridgeService.executeTask` to reset `_isAntigravityBusy = false` and invoke `triggerPendingUpdate(force: true)` immediately.\n- Also added a watcher for `agent_status.txt` in the bridge directory file watcher to immediately reset `_isAntigravityBusy` and trigger `triggerPendingUpdate(force: true)` if the status is set to `IDLE`.\n\n---\n\n### Update - 2026-05-19 20:14\nCompleted the AI Bridge pipeline queue tasks:\n1. Improved AI Bridge activity indicator by exposing `currentStatus` on `SubagentConnection`, calculating transcript file size during polling, and formatting status strings dynamically with progressive dots and size indicator (e.g. `Working... (4.2 KB)`). Modified the global syncing overlay in `visual_editor_screen.dart` to display the active agent's status dynamically.\n2. Verified that hot reload/restart functionality is correctly wired up and triggers on code modifications as before.\n\n---\n\n### Update - 2026-05-19 19:07\nConfirmed connection to Antigravity by successfully processing the current_task.json file and completing the connection verification criteria.\n\n---",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Need a better indicator that ai bridge hasn't locked up... maybe have the current one add dots as characters are received",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Created a new stateful widget `AnimatedDotsText` in `visual_editor_screen.dart` which uses `async.Timer` to cycle through 1, 2, and 3 dots every 500ms. It dynamically parses any loading dots in the status text (ignoring decimal numbers like '4.2 KB') and animates them. Replaced the static `Text` widgets with `AnimatedDotsText` in the global syncing overlay (`visual_editor_screen.dart`) and the subagent item list (`ai_task_manager_panel.dart`).",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        },
+        {
+          "description": "Verify that we are sending hot reload/restart when changes are detected, same way as before.",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Identified a bug where the periodic Antigravity polling timer (checking `overview.txt`) would immediately re-flag `_isAntigravityBusy = true` right after a task completed, because `_antigravityLastChangeObservedAt` was not reset and the file modification time was still less than 5 seconds ago. This delayed/blocked the pending reload update. Fixed by setting `_antigravityLastChangeObservedAt = null` whenever `_isAntigravityBusy = false` is explicitly set upon task completion or IDLE status in `ai_bridge_service.dart`.",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        }
+      ],
+      "status": "completed",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": "2a60e0d06f081f6cd6108e78f0acfabec2696650",
+      "commitDate": "2026-05-19T20:25:10.283412",
+      "parentId": "1774913415376"
     }
   ]
 }

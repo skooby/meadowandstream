@@ -266,6 +266,104 @@ Keep the output brief, highly structured, and strictly derived from the provided
     }
   }
 
+  /// Generates vector embeddings for a given text
+  Future<List<double>?> generateEmbeddings(
+    String text, {
+    String? model,
+  }) async {
+    _setProcessing(true);
+    try {
+      await _startOllamaIfNeeded();
+
+      for (int attempt = 1; attempt <= 2; attempt++) {
+        try {
+          final body = <String, dynamic>{
+            'model': model ?? 'nomic-embed-text',
+            'input': text,
+          };
+
+          // Try standard /api/embed endpoint
+          final response = await http.post(
+            Uri.parse('$baseUrl/api/embed'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          ).timeout(Duration(milliseconds: timeoutMs));
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            if (data['embeddings'] != null && data['embeddings'] is List && (data['embeddings'] as List).isNotEmpty) {
+              final embeddingList = data['embeddings'] as List;
+              return (embeddingList[0] as List).map<double>((e) => (e as num).toDouble()).toList();
+            }
+          } else {
+            // Fallback to older /api/embeddings endpoint if /api/embed fails
+            final fallbackBody = <String, dynamic>{
+              'model': model ?? 'nomic-embed-text',
+              'prompt': text,
+            };
+            final fallbackResponse = await http.post(
+              Uri.parse('$baseUrl/api/embeddings'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode(fallbackBody),
+            ).timeout(Duration(milliseconds: timeoutMs));
+
+            if (fallbackResponse.statusCode == 200) {
+              final data = jsonDecode(fallbackResponse.body);
+              if (data['embedding'] != null && data['embedding'] is List) {
+                return (data['embedding'] as List).map<double>((e) => (e as num).toDouble()).toList();
+              }
+            }
+            _lastError = 'Server returned ${response.statusCode}: ${response.body}';
+          }
+        } catch (e) {
+          _lastError = 'Attempt $attempt failed: $e';
+        }
+        if (attempt < 2) await Future.delayed(Duration(milliseconds: 1000 * attempt));
+      }
+      
+      // Fallback to OpenAI embeddings
+      return await _fallbackToOpenAIEmbeddings(text);
+    } finally {
+      _setProcessing(false);
+    }
+  }
+
+  Future<List<double>?> _fallbackToOpenAIEmbeddings(String text) async {
+    final apiKey = dotenv.env['OPENAI_API_KEY'];
+    if (apiKey == null || apiKey.isEmpty) {
+      _lastError = '$_lastError (OpenAI embeddings fallback failed: No API Key found in .env)';
+      return null;
+    }
+
+    try {
+      final body = <String, dynamic>{
+        'model': 'text-embedding-3-small',
+        'input': text,
+      };
+
+      final response = await http.post(
+        Uri.parse('https://api.openai.com/v1/embeddings'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode(body),
+      ).timeout(Duration(milliseconds: timeoutMs));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final embeddingList = data['data'][0]['embedding'] as List;
+        return embeddingList.map<double>((e) => (e as num).toDouble()).toList();
+      } else {
+        _lastError = 'OpenAI embeddings fallback failed: ${response.statusCode} - ${response.body}';
+        return null;
+      }
+    } catch (e) {
+      _lastError = 'OpenAI embeddings fallback error: $e';
+      return null;
+    }
+  }
+
   void _setProcessing(bool processing) {
     _isProcessing = processing;
     notifyListeners();

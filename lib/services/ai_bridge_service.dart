@@ -1118,6 +1118,26 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       final dir = Directory(_dirPath);
       if (!await dir.exists()) {
         await dir.create(recursive: true);
+      } else {
+        // Clean up any stale files from a previous run/crash
+        final notesFile = File('$_dirPath/latest_notes.json');
+        if (notesFile.existsSync()) {
+          try {
+            notesFile.deleteSync();
+          } catch (_) {}
+        }
+        final verificationFile = File('$_dirPath/latest_verification.json');
+        if (verificationFile.existsSync()) {
+          try {
+            verificationFile.deleteSync();
+          } catch (_) {}
+        }
+        final previewFile = File('$_dirPath/latest_preview.json');
+        if (previewFile.existsSync()) {
+          try {
+            previewFile.deleteSync();
+          } catch (_) {}
+        }
       }
       await _loadFromFile();
       _startWatching();

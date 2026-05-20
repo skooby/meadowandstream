@@ -1,5 +1,16 @@
 [
   {
+    "id": "9bcd4e86-6783-4533-9ff2-53d81c533d98",
+    "taskIds": [
+      "1776705616800"
+    ],
+    "title": "AI BRIDGE PIPELINE QUEUE [fix: Implement dynamic dot animation and fix hot reload/restart timing issue]",
+    "summary": "",
+    "commitHash": "2a60e0d06f081f6cd6108e78f0acfabec2696650",
+    "commitDate": "2026-05-19T20:25:10.283412",
+    "verifiedNotes": "- Need a better indicator that ai bridge hasn't locked up... maybe have the current one add dots as characters are received\n- Verify that we are sending hot reload/restart when changes are detected, same way as before."
+  },
+  {
     "id": "5cdf4d50-79c0-4969-9cdb-cd924f293ff5",
     "taskIds": [
       "1776705616800"
