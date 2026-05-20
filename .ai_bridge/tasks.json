@@ -3811,7 +3811,7 @@
       "priority": "none",
       "isFolder": false,
       "isWorksheet": true,
-      "isWorksheetVisible": true,
+      "isWorksheetVisible": false,
       "isNote": false,
       "isKnowledgeSummary": false,
       "isRead": true,

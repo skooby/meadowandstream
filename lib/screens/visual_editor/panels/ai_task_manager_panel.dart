@@ -2992,8 +2992,8 @@ showColorPickerWindow(context);
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    Text(
-                      status,
+                    AnimatedDotsText(
+                      text: status,
                       style: TextStyle(
                         color: AppColors.panelTextSecondary,
                         fontSize: 10,

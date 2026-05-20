@@ -679,6 +679,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     connection.statusStream.listen((status) {
       if (status == "Completed") {
         _activeAgents.remove(task.id);
+        _isAntigravityBusy = false;
+        _antigravityLastChangeObservedAt = null;
+        triggerPendingUpdate(force: true);
       }
       notifyListeners();
     });
@@ -1242,6 +1245,21 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
           await Future.delayed(const Duration(
               milliseconds: 100)); // Debounce file locks gracefully
           await _loadFromFile();
+        }
+
+        if (normPath.endsWith('agent_status.txt')) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          try {
+            final file = File(event.path);
+            if (await file.exists()) {
+              final content = (await file.readAsString()).trim();
+              if (content == 'IDLE') {
+                _isAntigravityBusy = false;
+                _antigravityLastChangeObservedAt = null;
+                triggerPendingUpdate(force: true);
+              }
+            }
+          } catch (_) {}
         }
       });
     }

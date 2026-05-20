@@ -44,8 +44,10 @@ class SubagentConnection {
   final String agentId; // conversationId returned by agentapi
   final _statusController = StreamController<String>.broadcast();
   bool _closed = false;
+  String _currentStatus = 'Connecting...';
 
   Stream<String> get statusStream => _statusController.stream;
+  String get currentStatus => _currentStatus;
   bool get isClosed => _closed;
 
   SubagentConnection({required this.taskId, required this.agentId}) {
@@ -53,6 +55,7 @@ class SubagentConnection {
   }
 
   void updateStatus(String status) {
+    _currentStatus = status;
     if (!_statusController.isClosed) {
       _statusController.add(status);
     }
@@ -323,7 +326,19 @@ class AntigravityClient {
       }
 
       _log('poll[$conversationId]: still running...');
-      connection.updateStatus('Working...');
+      int size = 0;
+      if (await transcriptFile.exists()) {
+        try {
+          size = await transcriptFile.length();
+        } catch (_) {}
+      }
+      if (size > 0) {
+        final dotCount = 3 + ((size / 200).floor() % 8);
+        final dots = '.' * dotCount;
+        connection.updateStatus('Working$dots (${(size / 1024).toStringAsFixed(1)} KB)');
+      } else {
+        connection.updateStatus('Working...');
+      }
     }
 
     _log('poll[$conversationId]: timed out after ${config.timeoutSeconds}s');

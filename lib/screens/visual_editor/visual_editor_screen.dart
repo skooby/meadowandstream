@@ -1433,6 +1433,13 @@ Expanded(
             listenable: AiBridgeService.instance,
             builder: (context, _) {
               if (!AiBridgeService.instance.isThinking) return const SizedBox.shrink();
+              final activeAgents = AiBridgeService.instance.activeAgents;
+              String statusLabel = 'Ai Syncing';
+              if (activeAgents.isNotEmpty) {
+                statusLabel = activeAgents.values.map((agent) => agent.currentStatus).join(', ');
+              } else if (AiBridgeService.instance.isThinking) {
+                statusLabel = 'Ai Syncing...';
+              }
               return Positioned(
                 bottom: 16,
                 left: 64, // 48 is activity bar width, plus 16 padding margin
@@ -1452,7 +1459,18 @@ Expanded(
                       children: [
                         const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent)),
                         const SizedBox(width: 12),
-                        Text('Ai Syncing', style: TextStyle(color: Colors.blueAccent, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+                        Flexible(
+                          child: AnimatedDotsText(
+                            text: statusLabel,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.blueAccent,
+                              fontSize: AppUIConfig.rootFontSize,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1460,6 +1478,7 @@ Expanded(
               );
             },
           ),
+
           ValueListenableBuilder<bool>(
             valueListenable: showKaraokeGenWindowNotifier,
             builder: (context, show, child) {
@@ -4554,6 +4573,65 @@ class _SimulatorTelemetryEmitterState extends State<_SimulatorTelemetryEmitter>
   @override
   Widget build(BuildContext context) {
     return const SizedBox.shrink();
+  }
+}
+
+class AnimatedDotsText extends StatefulWidget {
+  final String text;
+  final TextStyle? style;
+  final TextOverflow? overflow;
+  final int? maxLines;
+
+  const AnimatedDotsText({
+    super.key,
+    required this.text,
+    this.style,
+    this.overflow,
+    this.maxLines,
+  });
+
+  @override
+  State<AnimatedDotsText> createState() => _AnimatedDotsTextState();
+}
+
+class _AnimatedDotsTextState extends State<AnimatedDotsText> {
+  async.Timer? _timer;
+  int _dotCount = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = async.Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (mounted) {
+        setState(() {
+          _dotCount = (_dotCount % 3) + 1;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dots = '.' * _dotCount;
+    final processedText = widget.text.replaceAll(RegExp(r'\.+(?!\d)'), dots);
+
+    return Text(
+      processedText,
+      style: widget.style,
+      overflow: widget.overflow,
+      maxLines: widget.maxLines,
+    );
   }
 }
 
