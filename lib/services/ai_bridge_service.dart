@@ -1648,7 +1648,7 @@ wshShell.AppActivate $myPid
               final file = File(event.path);
               if (await file.exists()) {
                 final content = (await file.readAsString()).trim();
-                if (content == 'IDLE') {
+                if (content == 'IDLE' || content == 'PREVIEW') {
                   _isAntigravityBusy = false;
                   _antigravityLastChangeObservedAt = null;
                   triggerPendingUpdate(force: true);
@@ -1656,13 +1656,14 @@ wshShell.AppActivate $myPid
               }
             } catch (_) {}
           } else {
-            if (_isHandlingAgentStatus) return;
-            _isHandlingAgentStatus = true;
             try {
               final statusFile = File(event.path);
               if (await statusFile.exists()) {
                 final content = (await statusFile.readAsString()).trim();
                 if (content == 'IDLE' || content == 'PREVIEW') {
+                  if (_isHandlingAgentStatus) return;
+                  _isHandlingAgentStatus = true;
+                  try {
                   try {
                     File('$_dirPath/bridge_debug.txt').writeAsStringSync(
                         'IDLE/PREVIEW detected! isAntigravityBusy: $_isAntigravityBusy');
@@ -2005,15 +2006,14 @@ wshShell.AppActivate $myPid
                   triggerPendingUpdate(force: true);
 
                   _processQueue();
+                } finally {
+                  _isHandlingAgentStatus = false;
                 }
               }
-            } finally {
-              Future.delayed(const Duration(seconds: 2), () {
-                _isHandlingAgentStatus = false;
-              });
             }
-          }
+          } catch (_) {}
         }
+      }
 
       });
     }
