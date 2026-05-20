@@ -172,9 +172,7 @@ class MacroService extends ChangeNotifier {
       for (var m in _macros.where((e) => shouldBeRunning.contains(e.id))) {
         if (!_runningSystemMacros.contains(m.id)) {
           _runningSystemMacros.add(m.id);
-          playMacro(m.id, wait: true).whenComplete(() {
-            _runningSystemMacros.remove(m.id);
-          });
+          playMacro(m.id, wait: false);
         }
       }
     });
@@ -479,6 +477,7 @@ class MacroService extends ChangeNotifier {
 
     if (idx != -1) {
       final macro = _macros[idx];
+      final bool effectiveWait = macro.executionTiming == 'System' ? false : wait;
       if (macro.script.trim().isNotEmpty) {
         final parsedScript = preprocess(macro.script);
         final file = File('.ai_bridge/temp_macro_${macro.id}.ps1');
@@ -868,7 +867,7 @@ function NextClipboard {
            if (conditions.startsWith(' -and ')) conditions = conditions.substring(6);
 
            if (conditions.isNotEmpty && vk != 0) {
-               scriptPrefix = 'while (\$true) {\n    if ($conditions) {\n        while (([Win32]::GetAsyncKeyState(0x11) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x12) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x10) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x5B) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x5C) -band 0x8000) -or ([Win32]::GetAsyncKeyState(\$vk) -band 0x8000)) {\n            Start-Sleep -Milliseconds 10\n        }\n${debugMode ? '        Set-PSDebug -Trace 1\n' : ''}';
+               scriptPrefix = 'while (\$true) {\n    if ($conditions) {\n        while (([Win32]::GetAsyncKeyState(0x11) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x12) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x10) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x5B) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x5C) -band 0x8000) -or ([Win32]::GetAsyncKeyState($vk) -band 0x8000)) {\n            Start-Sleep -Milliseconds 10\n        }\n${debugMode ? '        Set-PSDebug -Trace 1\n' : ''}';
                scriptSuffix = '${debugMode ? '        Set-PSDebug -Trace 0\n' : ''}        Start-Sleep -Milliseconds 100\n    }\n    Start-Sleep -Milliseconds 50\n}\n';
            } else {
                SystemLogsService.instance.addLog('Invalid Hotkey binding for "${macro.name}": "${macro.hotkey}" (Could not parse a valid base key). Disabling macro.', category: LogCategory.ERROR);
@@ -941,7 +940,7 @@ function NextClipboard {
         process.stdout.transform(utf8.decoder).listen((data) => processLogs(data));
         process.stderr.transform(utf8.decoder).listen((data) => processErrors(data));
 
-        if (wait) {
+        if (effectiveWait) {
           int code = await process.exitCode.timeout(const Duration(seconds: 5), onTimeout: () {
             process.kill();
             SystemLogsService.instance.addLog('⚠ Macro timed out after 5 seconds: ${macro.name.trim()}', category: LogCategory.ERROR);
@@ -952,6 +951,10 @@ function NextClipboard {
           }
         } else {
           process.exitCode.then((code) {
+             if (macro.executionTiming == 'System') {
+               _runningSystemProcesses.remove(macro.id);
+               _runningSystemMacros.remove(macro.id);
+             }
              if (code == 0) {
                  SystemLogsService.instance.addLog('✔ Macro Completed: ${macro.name.trim()}', category: LogCategory.MACRO);
              }

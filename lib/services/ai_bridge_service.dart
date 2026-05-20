@@ -1758,14 +1758,16 @@ wshShell.AppActivate $myPid
                                     final line = lines[i].trim();
                                     if (line.isEmpty || !line.startsWith('{')) continue;
                                     final map = jsonDecode(line);
-                                    if (map['content'] != null) {
-                                      String content = map['content'];
-                                      if (content.contains('<bridge_notes>') || 
-                                          content.contains('<preview>') || 
-                                          content.contains('<verification>')) {
-                                        aiOutput = content;
-                                        break;
+                                    if (map['source'] == 'MODEL') {
+                                      if (map['content'] != null) {
+                                        String content = map['content'];
+                                        if (content.contains('<bridge_notes>') || 
+                                            content.contains('<preview>') || 
+                                            content.contains('<verification>')) {
+                                          aiOutput = content;
+                                        }
                                       }
+                                      break;
                                     }
                                   } catch (_) {}
                                 }

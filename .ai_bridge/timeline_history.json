@@ -1,5 +1,16 @@
 [
   {
+    "id": "a33d7d36-896f-4b96-aa26-80c0e6d7df07",
+    "taskIds": [
+      "1779292935054"
+    ],
+    "title": "RESTART/RELOAD [test(bridge): verify restart and reload flow on completion]",
+    "summary": "",
+    "commitHash": "383fd52d423e9e68df01b44b78753fd12cc39e80",
+    "commitDate": "2026-05-20T10:17:26.159446",
+    "verifiedNotes": "- Testing restart/reload at end of processing task"
+  },
+  {
     "id": "c6ed40de-9149-47d3-a45c-213462a7c760",
     "taskIds": [
       "1779282807012"
