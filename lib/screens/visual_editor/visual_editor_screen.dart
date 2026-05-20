@@ -1410,23 +1410,31 @@ Expanded(
           Positioned.fill(
             child: ValueListenableBuilder<int>(
               valueListenable: WindowDockManager.instance.stateToken,
-              builder: (context, _, __) => Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  ..._windowZOrder.map((winId) {
-             
-          
-                       final panel = WindowDockManager.instance.panels.cast<DockablePanel?>().firstWhere((p) => p!.id == winId && p.dockPosition.value == DockPosition.floating, orElse: () => null);
-             Widget childWidget = SizedBox.shrink(key: ValueKey(winId + '_hidden'));
-             if (panel != null && panel.isVisible.value) {
-                childWidget = panel.floatingBuilder();
-             }
-             
-             return childWidget;
-                  }).toList(),
-              ],
+              builder: (context, _, __) => ValueListenableBuilder<bool>(
+                valueListenable: SystemLogsWindow.isPinnedOnTopNotifier,
+                builder: (context, isPinned, _) => ValueListenableBuilder<bool>(
+                  valueListenable: showSystemLogsNotifier,
+                  builder: (context, isLogsShowing, _) {
+                    final list = List<String>.from(_windowZOrder);
+                    if (isLogsShowing && isPinned) {
+                      list.remove('logs');
+                      list.add('logs');
+                    }
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: list.map((winId) {
+                        final panel = WindowDockManager.instance.panels.cast<DockablePanel?>().firstWhere((p) => p!.id == winId && p.dockPosition.value == DockPosition.floating, orElse: () => null);
+                        Widget childWidget = SizedBox.shrink(key: ValueKey(winId + '_hidden'));
+                        if (panel != null && panel.isVisible.value) {
+                           childWidget = panel.floatingBuilder();
+                        }
+                        return childWidget;
+                      }).toList(),
+                    );
+                  },
+                ),
+              ),
             ),
-          ),
           ),
           const AnnotationCanvasLayer(),
           ListenableBuilder(

@@ -38,30 +38,53 @@ class FolderEngine {
           final existing = await (db.select(db.assets)..where((x) => x.name.equals(slug) & x.type.equals('FOLDER'))).getSingleOrNull();
           if (existing != null) return false;
           
-          final resp = await supabase.from('assets').insert({
-              'tenant_id': tid, 'name': slug, 'type': 'FOLDER', 'parent_id': parentId,
-              'created_at': DateTime.now().millisecondsSinceEpoch, 'updated_at': DateTime.now().millisecondsSinceEpoch
-          }).select().single();
+          int newId = 0;
+          try {
+              final resp = await supabase.from('assets').insert({
+                  'tenant_id': tid, 'name': slug, 'type': 'FOLDER', 'parent_id': parentId,
+                  'created_at': DateTime.now().millisecondsSinceEpoch, 'updated_at': DateTime.now().millisecondsSinceEpoch
+              }).select().single();
+              newId = resp['id'] as int;
+          } catch (_) {}
           
-          await db.into(db.assets).insert(AssetsCompanion(
-             id: drift.Value(resp['id'] as int), tenantId: drift.Value(tid),
-             name: drift.Value(slug), type: const drift.Value('FOLDER'), parentId: drift.Value(parentId),
-             createdAt: drift.Value(DateTime.now().millisecondsSinceEpoch), updatedAt: drift.Value(DateTime.now().millisecondsSinceEpoch)
-          ));
+          if (newId != 0) {
+              await db.into(db.assets).insert(AssetsCompanion(
+                 id: drift.Value(newId), tenantId: drift.Value(tid),
+                 name: drift.Value(slug), type: const drift.Value('FOLDER'), parentId: drift.Value(parentId),
+                 createdAt: drift.Value(DateTime.now().millisecondsSinceEpoch), updatedAt: drift.Value(DateTime.now().millisecondsSinceEpoch)
+              ));
+          } else {
+              await db.into(db.assets).insert(AssetsCompanion(
+                 tenantId: drift.Value(tid),
+                 name: drift.Value(slug), type: const drift.Value('FOLDER'), parentId: drift.Value(parentId),
+                 createdAt: drift.Value(DateTime.now().millisecondsSinceEpoch), updatedAt: drift.Value(DateTime.now().millisecondsSinceEpoch)
+              ));
+          }
           return true;
       } 
       else if (t == 'strings' || t == 'tags') {
           final existing = await (db.select(db.strings)..where((x) => x.key.equals(slug) & x.type.equals('FOLDER'))).getSingleOrNull();
           if (existing != null) return false;
           
-          final resp = await supabase.from('strings').insert({
-              'tenant_id': tid, 'key': slug, 'type': 'FOLDER', 'parent_id': parentId,
-          }).select().single();
+          int newId = 0;
+          try {
+              final resp = await supabase.from('strings').insert({
+                  'tenant_id': tid, 'key': slug, 'type': 'FOLDER', 'parent_id': parentId,
+              }).select().single();
+              newId = resp['id'] as int;
+          } catch (_) {}
           
-          await db.into(db.strings).insert(StringsCompanion(
-             id: drift.Value(resp['id'] as int), tenantId: drift.Value(tid),
-             key: drift.Value(slug), type: const drift.Value('FOLDER'), parentId: drift.Value(parentId),
-          ));
+          if (newId != 0) {
+              await db.into(db.strings).insert(StringsCompanion(
+                 id: drift.Value(newId), tenantId: drift.Value(tid),
+                 key: drift.Value(slug), type: const drift.Value('FOLDER'), parentId: drift.Value(parentId),
+              ));
+          } else {
+              await db.into(db.strings).insert(StringsCompanion(
+                 tenantId: drift.Value(tid),
+                 key: drift.Value(slug), type: const drift.Value('FOLDER'), parentId: drift.Value(parentId),
+              ));
+          }
           return true;
       } else {
           throw Exception('Table $t not supported by folder engine');

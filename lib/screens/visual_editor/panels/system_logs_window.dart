@@ -29,6 +29,8 @@ class SystemLogsWindow extends StatefulWidget {
   final VoidCallback? onFocus;
   const SystemLogsWindow({super.key, required this.onClose, this.onFocus, this.isDocked = false});
 
+  static final ValueNotifier<bool> isPinnedOnTopNotifier = ValueNotifier<bool>(false);
+
   @override
   State<SystemLogsWindow> createState() => _SystemLogsWindowState();
 }
@@ -69,12 +71,30 @@ class _SystemLogsWindowState extends State<SystemLogsWindow> {
 
         _width = prefs.getDouble(VisualEditorScreen.getPrefKey('sys_logs_width')) ?? 800;
         _height = prefs.getDouble(VisualEditorScreen.getPrefKey('sys_logs_height')) ?? 600;
-        _bgOpacity = prefs.getDouble('ve_toolWindowOpacity') ?? 0.4;
+        _bgOpacity = prefs.getDouble('sys_logs_opacity') ?? prefs.getDouble('ve_toolWindowOpacity') ?? 0.4;
         double dx = prefs.getDouble(VisualEditorScreen.getPrefKey('sys_logs_dx')) ?? 100;
         double dy = prefs.getDouble(VisualEditorScreen.getPrefKey('sys_logs_dy')) ?? 100;
         _offset = Offset(dx, dy);
+        
+        SystemLogsWindow.isPinnedOnTopNotifier.value = prefs.getBool('sys_logs_pinned') ?? false;
       });
     }
+  }
+
+  void _cycleOpacity() async {
+     double nextOpacity;
+     if (_bgOpacity > 0.6) {
+        nextOpacity = 0.50; // 50% transparent
+     } else if (_bgOpacity > 0.35) {
+        nextOpacity = 0.25; // 75% transparent
+     } else {
+        nextOpacity = 0.75; // 25% transparent
+     }
+     setState(() {
+        _bgOpacity = nextOpacity;
+     });
+     final prefs = await SharedPreferences.getInstance();
+     await prefs.setDouble('sys_logs_opacity', nextOpacity);
   }
 
   Future<void> _savePreferences() async {
@@ -146,6 +166,41 @@ class _SystemLogsWindowState extends State<SystemLogsWindow> {
                                       fontSize: AppUIConfig.windowTitleFontSize,
                                       fontWeight: AppUIConfig.windowTitleFontWeight)),
                               const Spacer(),
+                              ValueListenableBuilder<bool>(
+                                valueListenable: SystemLogsWindow.isPinnedOnTopNotifier,
+                                builder: (context, isPinned, _) {
+                                  return IconButton(
+                                    icon: Icon(
+                                      isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                                      size: 16,
+                                      color: isPinned ? AppColors.accent : AppColors.titleBarTextSecondary,
+                                    ),
+                                    tooltip: isPinned ? 'Always on Top (Pinned)' : 'Pin on Top',
+                                    onPressed: () async {
+                                      final newValue = !isPinned;
+                                      SystemLogsWindow.isPinnedOnTopNotifier.value = newValue;
+                                      final prefs = await SharedPreferences.getInstance();
+                                      await prefs.setBool('sys_logs_pinned', newValue);
+                                      if (mounted) setState(() {});
+                                    },
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 12),
+                              IconButton(
+                                icon: Icon(
+                                  Icons.opacity,
+                                  size: 16,
+                                  color: AppColors.titleBarTextSecondary,
+                                ),
+                                tooltip: 'Toggle Transparency (${(100 - (_bgOpacity * 100)).round()}% transparent)',
+                                onPressed: _cycleOpacity,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                              const SizedBox(width: 12),
                               IconButton(
                                 icon: Icon(Icons.close,
                                     size: 18, color: AppColors.titleBarTextSecondary),

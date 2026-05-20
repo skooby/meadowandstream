@@ -478,7 +478,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
 
         if (newStatus == AiTaskStatus.inProgress) {
           bool hasTasksToPerform = verificationCriteriaList
-              .any((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored));
+              .any((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview));
           if (!hasTasksToPerform) {
             newStatus = originalStatus!;
           }
@@ -1811,7 +1811,7 @@ verificationCriteriaList[i].isCommitted = false;
                                   description: item.description,
                                   notes: item.goal.isNotEmpty ? 'Goal: ${item.goal}' : '',
                                   parentId: existingTask!.id,
-                                  status: AiTaskStatus.inTesting,
+                                  status: AiTaskStatus.inProgress,
                                   priority: AiTaskPriority.none,
                                   reviewQuestions: [],
                                   verificationCriteria: [],
@@ -2297,7 +2297,7 @@ verificationCriteriaList[i].isCommitted = false;
                                               verificationCriteriaList
                                                   .where((e) =>
                                                       e.status ==
-                                                      AiVerificationStatus.none)
+                                                      AiVerificationStatus.none && !e.isPreview)
                                                   .toList();
                                           if (uncheckedTasks.isNotEmpty) {
                                             sb.writeln('Verification Criteria:');

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -11,11 +12,38 @@ import 'package:music_app/utils/ai_command_parser.dart';
 import 'package:music_app/scripts/tenant_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class FailHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return FailHttpClient();
+  }
+}
+
+class FailHttpClient implements HttpClient {
+  @override
+  Future<HttpClientRequest> postUrl(Uri url) => Future.error(const SocketException("Offline"));
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) => Future.error(const SocketException("Offline"));
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) => Future.error(const SocketException("Offline"));
+  
+  @override
+  void close({bool force = false}) {}
+  
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    return Future.error(const SocketException("Offline"));
+  }
+}
+
 void main() {
+  HttpOverrides.global = FailHttpOverrides();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('AiCommandParser executeBatch tag/folder creation test', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'stored_tenant_id': 1,
+    });
     
     // Initialize Supabase with test credentials
     try {
@@ -54,12 +82,10 @@ void main() {
     
     // 1. Create a folder with table tags
     final logs1 = await AiCommandParser.executeBatch('folder create "Mood" --table tags', context);
-    print('Logs 1: $logs1');
     expect(logs1.any((l) => l.contains('[OK] Folder "Mood"')), isTrue);
     
     // 2. Create a tag under the folder
     final logs2 = await AiCommandParser.executeBatch('tag create "Inspirational" --folder "Mood" --color "#FFAA55"', context);
-    print('Logs 2: $logs2');
     expect(logs2.any((l) => l.contains('[OK] Tag "Inspirational"')), isTrue);
     
     // 3. Verify tag exists in local database
@@ -79,6 +105,10 @@ void main() {
   });
 
   testWidgets('I18nDao getOrCreateLangId does not enter infinite recursion', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      'stored_tenant_id': 1,
+    });
+    
     final db = AppDatabase();
     final i18nDao = I18nDao(db);
     

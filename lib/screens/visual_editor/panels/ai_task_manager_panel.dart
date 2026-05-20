@@ -609,7 +609,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   }
 
   int _getOpenChecklistCount(AiTask task) {
-    int count = task.verificationCriteria.where((c) => c.status == AiVerificationStatus.none).length;
+    int count = task.verificationCriteria.where((c) => c.status == AiVerificationStatus.none && !c.isPreview).length;
     final tasks = AiBridgeService.instance.tasks;
     final children = tasks.where((t) => t.parentId == task.id).toList();
     for (var child in children) {
@@ -619,7 +619,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   }
 
   int _getReviewChecklistCount(AiTask task) {
-    int count = task.verificationCriteria.where((c) => c.status == AiVerificationStatus.pendingReview).length;
+    int count = task.verificationCriteria.where((c) => c.status == AiVerificationStatus.pendingReview && !c.isPreview).length;
     final tasks = AiBridgeService.instance.tasks;
     final children = tasks.where((t) => t.parentId == task.id).toList();
     for (var child in children) {
@@ -2753,7 +2753,7 @@ showColorPickerWindow(context);
 
     sb.writeln('Status: ${_formatStatusName(task.status)}');
 
-    final uncheckedTasks = task.verificationCriteria.where((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored)).toList();
+    final uncheckedTasks = task.verificationCriteria.where((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview)).toList();
     if (uncheckedTasks.isNotEmpty) {
       sb.writeln('Verification Criteria:');
       for (int i = 0; i < uncheckedTasks.length; i++) {

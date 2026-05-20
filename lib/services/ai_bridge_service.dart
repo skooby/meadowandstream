@@ -837,6 +837,10 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       if (taskIdx == -1) return;
       final task = _tasks[taskIdx];
       final json = task.toJson();
+      if (json['verificationCriteria'] != null) {
+        final List<dynamic> vcList = json['verificationCriteria'] as List<dynamic>;
+        json['verificationCriteria'] = vcList.where((e) => e['isPreview'] != true).toList();
+      }
       File('$_dirPath/current_task.json').writeAsStringSync(jsonEncode(json));
     } catch (e) {
       debugPrint('Failed to write current_task.json: $e');
@@ -1664,9 +1668,13 @@ wshShell.AppActivate $myPid
                         'IDLE/PREVIEW detected! isAntigravityBusy: $_isAntigravityBusy');
                   } catch (_) {}
 
-                  while (_isAntigravityBusy) {
+                  int waitCount = 0;
+                  while (_isAntigravityBusy && waitCount < 10) {
                     await Future.delayed(const Duration(milliseconds: 500));
+                    waitCount++;
                   }
+                  _isAntigravityBusy = false;
+                  _antigravityLastChangeObservedAt = null;
                   await Future.delayed(const Duration(milliseconds: 800));
 
                   if (content == 'IDLE') {
@@ -2226,8 +2234,8 @@ wshShell.AppActivate $myPid
                       _uncommittedCompletedCriteria.putIfAbsent(newTask.id, () => []).add(desc);
                    }
                 }
-                bool oldHasUnverified = oldTask.verificationCriteria.any((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored);
-                bool newHasUnverified = newTask.verificationCriteria.any((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored);
+                bool oldHasUnverified = oldTask.verificationCriteria.any((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview);
+                bool newHasUnverified = newTask.verificationCriteria.any((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview);
                 
                 if (oldHasUnverified && !newHasUnverified && newTask.status != AiTaskStatus.completed) {
                    if (afterCompleteStatus != null) {
@@ -2284,7 +2292,7 @@ wshShell.AppActivate $myPid
                   bool allowStatusChange = true;
                   if (afterEditStatus == AiTaskStatus.inProgress) {
                     bool hasTasksToPerform = newTask.verificationCriteria
-                          .any((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored));
+                          .any((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview));
                     if (!hasTasksToPerform) {
                       allowStatusChange = false;
                     }
