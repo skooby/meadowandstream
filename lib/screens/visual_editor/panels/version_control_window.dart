@@ -35,9 +35,10 @@ class VersionControlWindow extends StatefulWidget {
   State<VersionControlWindow> createState() => _VersionControlWindowState();
 }
 
-class _VersionControlWindowState extends State<VersionControlWindow> {
+class _VersionControlWindowState extends State<VersionControlWindow> with SingleTickerProviderStateMixin {
   final Map<String, GlobalKey> _timelineKeys = {};
   final Map<String, Future<List<Map<String, String>>>> _commitFutures = {};
+  late TabController _tabController;
 
   bool _isLoaded = false;
   bool _isSyncing = false;
@@ -49,6 +50,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     SandboxService.instance.init();
     VersionControlWindow.highlightedTaskId.addListener(_scrollToHighlightedTask);
     _loadPreferences();
@@ -59,6 +61,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     VersionControlWindow.highlightedTaskId.removeListener(_scrollToHighlightedTask);
     VisualEditorScreen.currentWorkspace.removeListener(_loadPreferences);
     VisualEditorScreen.configRefreshNotifier.removeListener(_loadPreferences);
@@ -80,11 +83,27 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
   void _scrollToHighlightedTask() {
     final taskId = VersionControlWindow.highlightedTaskId.value;
     if (taskId != null) {
+      if (_tabController.index != 1) {
+        _tabController.animateTo(1);
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final key = _timelineKeys[taskId];
-        if (key != null && key.currentContext != null) {
-          Scrollable.ensureVisible(key.currentContext!, duration: const Duration(milliseconds: 300), alignment: 0.5);
-        }
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (!mounted) return;
+          final timelineCommits = AiBridgeService.instance.timelineHistory;
+          final commit = timelineCommits.firstWhere(
+            (c) => c.taskIds.contains(taskId),
+            orElse: () => timelineCommits.firstWhere(
+              (c) => c.id == taskId,
+              orElse: () => TimelineCommit(id: '', taskIds: [], title: '', summary: '', commitHash: '', commitDate: '')
+            )
+          );
+          if (commit.id.isNotEmpty) {
+            final key = _timelineKeys[commit.id];
+            if (key != null && key.currentContext != null) {
+              Scrollable.ensureVisible(key.currentContext!, duration: const Duration(milliseconds: 300), alignment: 0.5);
+            }
+          }
+        });
       });
     }
   }
@@ -386,7 +405,9 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                         final hash = await VersionControlService.instance.createRestorePoint(desc);
                         
                         if (hash.isNotEmpty && !hash.startsWith('No changes') && !hash.startsWith('Failed') && !hash.startsWith('Local')) {
-                          await AiBridgeService.instance.appendCheckpointToTimeline(desc, hash);
+                          final openTask = GlobalTaskEditorState.instance.activeRequest.value?.existingTask;
+                          final taskIds = openTask != null ? [openTask.id] : <String>[];
+                          await AiBridgeService.instance.appendCheckpointToTimeline(desc, hash, taskIds: taskIds);
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Restore Point Created')));
                           }
@@ -405,35 +426,81 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
             ),
             Container(height: 1, color: AppColors.border),
             Expanded(
-              child: DefaultTabController(
-                length: 2,
-                child: Column(
-                  children: [
-                    TabBar(
-                      labelColor: Colors.blueAccent,
-                      unselectedLabelColor: AppColors.textMuted,
-                      indicatorColor: Colors.blueAccent,
-                      labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.1),
-                      tabs: [
-                        Tab(text: 'ACTIVE TASKS'),
-                        Tab(text: 'TIMELINE HISTORY'),
-                      ],
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          // TAB 1: ACTIVE TASKS
-                          activeTasks.isEmpty 
-                            ? Center(child: Text('No active tasks', style: TextStyle(color: AppColors.textMuted)))
-                            : ListView.builder(
-                                itemCount: activeTasks.length,
-                                itemBuilder: (ctx, i) {
-                                  final t = activeTasks[i];
-                                  final isEvenTask = (i % 2 == 0);
-                                  List<Widget> taskChildren = [];
-                                  if (t.verificationCriteria.isEmpty) {
-                                    taskChildren.add(
-                                      InkWell(
+              child: Column(
+                children: [
+                  TabBar(
+                    controller: _tabController,
+                    labelColor: Colors.blueAccent,
+                    unselectedLabelColor: AppColors.textMuted,
+                    indicatorColor: Colors.blueAccent,
+                    labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.1),
+                    tabs: [
+                      Tab(text: 'ACTIVE TASKS'),
+                      Tab(text: 'TIMELINE HISTORY'),
+                    ],
+                  ),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        // TAB 1: ACTIVE TASKS
+                        activeTasks.isEmpty 
+                          ? Center(child: Text('No active tasks', style: TextStyle(color: AppColors.textMuted)))
+                          : ListView.builder(
+                              itemCount: activeTasks.length,
+                              itemBuilder: (ctx, i) {
+                                final t = activeTasks[i];
+                                final isEvenTask = (i % 2 == 0);
+                                List<Widget> taskChildren = [];
+                                if (t.verificationCriteria.isEmpty) {
+                                  taskChildren.add(
+                                    InkWell(
+                                      onTap: () {
+                                        GlobalTaskEditorState.instance.requestEdit(existingTask: t);
+                                        showTaskEditorWindow(context);
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                          children: [
+                                            const Icon(Icons.info_outline, color: Colors.blueAccent, size: 14),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                t.description.isNotEmpty ? t.description : 'Pending implementation',
+                                                style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                  );
+                                } else {
+                                  int vcIndex = 0;
+                                  taskChildren.addAll(t.verificationCriteria.map((vc) {
+                                    final isEvenVc = (vcIndex++ % 2 == 0);
+                                    final vcBg = isEvenVc
+                                        ? Colors.white.withValues(alpha: 0.02)
+                                        : Colors.white.withValues(alpha: 0.05);
+                                    IconData iconData = Icons.radio_button_unchecked;
+                                    Color iconColor = AppColors.textMuted;
+                                    
+                                    if (vc.isVerified) {
+                                      iconData = Icons.check_circle;
+                                      iconColor = Colors.green;
+                                    } else if (vc.status == AiVerificationStatus.pendingReview) {
+                                      iconData = Icons.hourglass_empty;
+                                      iconColor = Colors.orange;
+                                    } else if (vc.status == AiVerificationStatus.ignored) {
+                                      iconData = Icons.block;
+                                      iconColor = Colors.redAccent;
+                                    }
+                                    
+                                    return Container(
+                                      color: vcBg,
+                                      child: InkWell(
                                         onTap: () {
                                           GlobalTaskEditorState.instance.requestEdit(existingTask: t);
                                           showTaskEditorWindow(context);
@@ -443,121 +510,74 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
                                           child: Row(
                                             crossAxisAlignment: CrossAxisAlignment.center,
                                             children: [
-                                              const Icon(Icons.info_outline, color: Colors.blueAccent, size: 14),
+                                              Icon(iconData, color: iconColor, size: 14),
                                               const SizedBox(width: 10),
                                               Expanded(
-                                                child: Text(
-                                                  t.description.isNotEmpty ? t.description : 'Pending implementation',
-                                                  style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      vc.description,
+                                                      style: TextStyle(
+                                                        color: AppColors.textPrimary,
+                                                        fontSize: AppUIConfig.smallFontSize,
+                                                        decoration: vc.isVerified ? TextDecoration.lineThrough : null,
+                                                        decorationColor: Colors.white,
+                                                      ),
+                                                    ),
+                                                    if (vc.goal.isNotEmpty)
+                                                      Text(
+                                                        vc.goal,
+                                                        style: TextStyle(
+                                                          color: AppColors.textSecondary,
+                                                          fontSize: AppUIConfig.smallFontSize * 0.85,
+                                                          fontStyle: FontStyle.italic,
+                                                        ),
+                                                      ),
+                                                  ],
                                                 ),
                                               ),
                                             ],
                                           ),
                                         ),
-                                      )
-                                    );
-                                  } else {
-                                    int vcIndex = 0;
-                                    taskChildren.addAll(t.verificationCriteria.map((vc) {
-                                      final isEvenVc = (vcIndex++ % 2 == 0);
-                                      final vcBg = isEvenVc
-                                          ? Colors.white.withValues(alpha: 0.02)
-                                          : Colors.white.withValues(alpha: 0.05);
-                                      IconData iconData = Icons.radio_button_unchecked;
-                                      Color iconColor = AppColors.textMuted;
-                                      
-                                      if (vc.isVerified) {
-                                        iconData = Icons.check_circle;
-                                        iconColor = Colors.green;
-                                      } else if (vc.status == AiVerificationStatus.pendingReview) {
-                                        iconData = Icons.hourglass_empty;
-                                        iconColor = Colors.orange;
-                                      } else if (vc.status == AiVerificationStatus.ignored) {
-                                        iconData = Icons.block;
-                                        iconColor = Colors.redAccent;
-                                      }
-                                      
-                                      return Container(
-                                        color: vcBg,
-                                        child: InkWell(
-                                          onTap: () {
-                                            GlobalTaskEditorState.instance.requestEdit(existingTask: t);
-                                            showTaskEditorWindow(context);
-                                          },
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                            child: Row(
-                                              crossAxisAlignment: CrossAxisAlignment.center,
-                                              children: [
-                                                Icon(iconData, color: iconColor, size: 14),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Text(
-                                                        vc.description,
-                                                        style: TextStyle(
-                                                          color: AppColors.textPrimary,
-                                                          fontSize: AppUIConfig.smallFontSize,
-                                                          decoration: vc.isVerified ? TextDecoration.lineThrough : null,
-                                                          decorationColor: Colors.white,
-                                                        ),
-                                                      ),
-                                                      if (vc.goal.isNotEmpty)
-                                                        Text(
-                                                          vc.goal,
-                                                          style: TextStyle(
-                                                            color: AppColors.textSecondary,
-                                                            fontSize: AppUIConfig.smallFontSize * 0.85,
-                                                            fontStyle: FontStyle.italic,
-                                                          ),
-                                                        ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }));
-                                  }
-
-                                  return Container(
-                                    color: isEvenTask
-                                        ? Colors.white.withValues(alpha: 0.01)
-                                        : Colors.white.withValues(alpha: 0.03),
-                                    child: Theme(
-                                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                                      child: ExpansionTile(
-                                        key: PageStorageKey<String>('active_task_${t.id}'),
-                                        initiallyExpanded: true,
-                                        tilePadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                        title: Text(t.name, style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize, fontWeight: FontWeight.bold)),
-                                        subtitle: t.summary.isNotEmpty ? Text(t.summary, style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize * 0.85, fontStyle: FontStyle.italic)) : null,
-                                        children: taskChildren,
                                       ),
-                                    ),
-                                  );
+                                    );
+                                  }));
                                 }
+
+                                return Container(
+                                  color: isEvenTask
+                                      ? Colors.white.withValues(alpha: 0.01)
+                                      : Colors.white.withValues(alpha: 0.03),
+                                  child: Theme(
+                                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                                    child: ExpansionTile(
+                                      key: PageStorageKey<String>('active_task_${t.id}'),
+                                      initiallyExpanded: true,
+                                      tilePadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                      title: Text(t.name, style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize, fontWeight: FontWeight.bold)),
+                                      subtitle: t.summary.isNotEmpty ? Text(t.summary, style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize * 0.85, fontStyle: FontStyle.italic)) : null,
+                                      children: taskChildren,
+                                    ),
+                                  ),
+                                );
+                              }
+                            ),
+                        
+                        // TAB 2: TIMELINE HISTORY
+                        timelineCommits.isEmpty
+                          ? Center(child: Text('No completed tasks yet', style: TextStyle(color: AppColors.textMuted)))
+                          : SingleChildScrollView(
+                              child: Column(
+                                children: _buildTimelineNodes(context, timelineCommits),
                               ),
-                          
-                          // TAB 2: TIMELINE HISTORY
-                          timelineCommits.isEmpty
-                            ? Center(child: Text('No completed tasks yet', style: TextStyle(color: AppColors.textMuted)))
-                            : SingleChildScrollView(
-                                child: Column(
-                                  children: _buildTimelineNodes(context, timelineCommits),
-                                ),
-                              ),
-                        ],
-                      ),
+                            ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -685,41 +705,63 @@ class _VersionControlWindowState extends State<VersionControlWindow> {
       if (c.title == 'Checkpoint') {
         // Restore Point — title at rootFontSize (20% bigger than smallFontSize which is rootFontSize*0.8)
         result.add(
-          Container(
-            key: _timelineKeys[c.id],
-            margin: const EdgeInsets.only(top: 3, bottom: 1),
-            decoration: BoxDecoration(
-               border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.3)),
-               borderRadius: BorderRadius.circular(4),
-               color: Colors.orangeAccent.withValues(alpha: 0.05),
-            ),
-            child: Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                initiallyExpanded: true,
-                controlAffinity: ListTileControlAffinity.leading,
-                tilePadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                title: Row(
-                  children: [
-                    const Icon(Icons.flag, color: Colors.orangeAccent, size: 13),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        c.summary,
-                        // rootFontSize is 20% larger than smallFontSize (rootFontSize*0.8)
-                        style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: AppUIConfig.rootFontSize),
+          ValueListenableBuilder<String?>(
+            valueListenable: VersionControlWindow.highlightedTaskId,
+            builder: (ctx, highlightedId, _) {
+              final isHighlighted = highlightedId != null && c.taskIds.contains(highlightedId);
+              return Container(
+                key: _timelineKeys[c.id],
+                margin: const EdgeInsets.only(top: 3, bottom: 1),
+                decoration: BoxDecoration(
+                   border: Border.all(color: (isHighlighted ? Colors.green : Colors.orangeAccent).withValues(alpha: 0.3)),
+                   borderRadius: BorderRadius.circular(4),
+                   color: (isHighlighted ? Colors.green : Colors.orangeAccent).withValues(alpha: 0.05),
+                ),
+                child: Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    initiallyExpanded: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                    title: InkWell(
+                      onTap: () {
+                        if (c.taskIds.isNotEmpty) {
+                          try {
+                            final t = AiBridgeService.instance.tasks.firstWhere((task) => task.id == c.taskIds.first);
+                            GlobalTaskEditorState.instance.requestEdit(existingTask: t);
+                            showTaskEditorWindow(context);
+                          } catch (_) {}
+                        }
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.flag, color: Colors.orangeAccent, size: 13),
+                              const SizedBox(width: 5),
+                              Expanded(
+                                child: Text(
+                                  c.summary,
+                                  style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: AppUIConfig.rootFontSize),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                             _formatDateStr(c.commitDate),
+                             style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize * 0.85),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                    trailing: trailingRow,
+                    children: _buildTimelineNodes(context, commits.sublist(i + 1)),
+                  ),
                 ),
-                subtitle: Text(
-                   _formatDateStr(c.commitDate),
-                   style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize * 0.85),
-                ),
-                trailing: trailingRow,
-                children: _buildTimelineNodes(context, commits.sublist(i + 1)),
-              ),
-            ),
+              );
+            }
           )
         );
         break; // Rest of the commits are children of this checkpoint

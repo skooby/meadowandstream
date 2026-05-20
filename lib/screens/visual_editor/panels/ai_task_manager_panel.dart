@@ -2948,24 +2948,34 @@ showColorPickerWindow(context);
                          ),
                        );
                     }).toList(),
+                     Container(width: 1, height: 24, color: AppColors.toolbarBorderSubtle),
+                     InkWell(
+                       onTap: () {
+                          final newWs = AiTask(id: DateTime.now().millisecondsSinceEpoch.toString(), name: 'New Worksheet', isWorksheet: true, description: '');
+                          AiBridgeService.instance.tasks.add(newWs);
+                          AiBridgeService.instance.saveTasks();
+                          AiBridgeService.instance.notifyListeners();
+                          GlobalTaskEditorState.instance.requestEdit(existingTask: newWs);
+                          showTaskEditorWindow(context);
+                       },
+                       child: Tooltip(
+                         message: 'Create New Worksheet',
+                         child: Container(
+                           width: 56 * scale,
+                           height: double.infinity,
+                           alignment: Alignment.center,
+                           child: Icon(
+                             Icons.add,
+                             size: AppUIConfig.globalActionIconSize,
+                             color: AppColors.toolbarTextSecondary,
+                             shadows: AppUIConfig.iconOutline,
+                           ),
+                         ),
+                       ),
+                     ),
                   ],
                 ),
               ),
-            ),
-            Container(width: 1, height: 24, color: AppColors.toolbarBorderSubtle),
-            IconButton(
-              icon: Icon(Icons.add, size: AppUIConfig.globalActionIconSize, color: AppColors.toolbarTextSecondary, shadows: AppUIConfig.iconOutline),
-              onPressed: () {
-                 final newWs = AiTask(id: DateTime.now().millisecondsSinceEpoch.toString(), name: 'New Worksheet', isWorksheet: true, description: '');
-                 AiBridgeService.instance.tasks.add(newWs);
-                 AiBridgeService.instance.saveTasks();
-                 AiBridgeService.instance.notifyListeners();
-                 GlobalTaskEditorState.instance.requestEdit(existingTask: newWs);
-                 showTaskEditorWindow(context);
-              },
-              tooltip: 'Create New Worksheet',
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              constraints: const BoxConstraints(),
             ),
           ],
         ),

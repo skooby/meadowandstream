@@ -1000,7 +1000,7 @@ wshShell.AppActivate $myPid
              final desc = 'Auto-Checkpoint before ${task.name}';
              final hash = await VersionControlService.instance.createRestorePoint(desc);
              if (hash.isNotEmpty && !hash.startsWith('No changes') && !hash.startsWith('Failed') && !hash.startsWith('Local')) {
-               await appendCheckpointToTimeline(desc, hash);
+               await appendCheckpointToTimeline(desc, hash, taskIds: [task.id]);
              }
           }
         } catch (_) {}
@@ -2189,13 +2189,13 @@ wshShell.AppActivate $myPid
             final timelineFile = File('$_dirPath/timeline_history.json');
             if (await timelineFile.exists()) {
               final content = await timelineFile.readAsString();
-              final List<dynamic> tList = jsonDecode(content);
-              _timelineHistory = tList.map((e) => TimelineCommit.fromJson(e as Map<String, dynamic>)).toList();
-            } else {
-              _timelineHistory = [];
+              if (content.isNotEmpty) {
+                final List<dynamic> tList = jsonDecode(content);
+                _timelineHistory = tList.map((e) => TimelineCommit.fromJson(e as Map<String, dynamic>)).toList();
+              }
             }
-          } catch (_) {
-            _timelineHistory = [];
+          } catch (e) {
+            debugPrint('[AiBridge] Error loading timeline_history.json: $e');
           }
 
           final List<AiTask> oldTasks = List.from(_tasks);
@@ -2410,7 +2410,8 @@ wshShell.AppActivate $myPid
             _processQueue();
           }
         } else {
-          _tasks = [];
+          debugPrint('[AiBridge] Warning: jsonTop is null (empty or unreadable tasks.json file). Skipping reload to prevent corruption.');
+          return;
         }
         notifyListeners();
       }
@@ -2891,10 +2892,10 @@ wshShell.AppActivate $myPid
     await _save();
   }
 
-  Future<void> appendCheckpointToTimeline(String description, String commitHash) async {
+  Future<void> appendCheckpointToTimeline(String description, String commitHash, {List<String>? taskIds}) async {
     _timelineHistory.insert(0, TimelineCommit(
       id: const Uuid().v4(),
-      taskIds: [],
+      taskIds: taskIds ?? [],
       title: 'Checkpoint',
       summary: description,
       commitHash: commitHash,
