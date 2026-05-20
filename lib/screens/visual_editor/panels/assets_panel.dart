@@ -1079,26 +1079,16 @@ class _AssetsPanelState extends State<AssetsPanel> {
                                   children: [
                                     if (a.type == 'FILE') ...[
                                       IconButton(
-                                        icon: Icon(Icons.history,
-                                            color: AppColors.panelTextSecondary, size: 18),
-                                        onPressed: () async {
-                                          final targetUri = await _resolveLocalFolderPath(a);
-                                          final filePath = '$targetUri\\${a.name}';
-                                          if (context.mounted) {
-                                            showDialog(
-                                              context: context,
-                                              builder: (context) => FileHistoryDialog(
-                                                filePath: filePath,
-                                                fileName: a.name,
-                                              ),
-                                            ).then((restored) {
-                                              if (restored == true) {
-                                                setState(() {});
-                                              }
-                                            });
-                                          }
-                                        },
-                                        tooltip: 'File History',
+                                        icon: const Icon(Icons.history,
+                                            color: Colors.blueAccent, size: 18),
+                                        onPressed: () => _openRestoreGit(a),
+                                        tooltip: 'Restore from Git',
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.cloud_download,
+                                            color: Colors.tealAccent, size: 18),
+                                        onPressed: () => _openRestoreGithub(a),
+                                        tooltip: 'Restore from GitHub',
                                       ),
                                     ],
                                     IconButton(
@@ -1110,6 +1100,47 @@ class _AssetsPanelState extends State<AssetsPanel> {
                                     ),
                                   ],
                                 ),
+                                onItemSecondaryTap: (a, details) {
+                                  if (a.type != 'FILE') return;
+                                  showMenu<String>(
+                                    context: context,
+                                    color: AppColors.panelBackground,
+                                    position: RelativeRect.fromLTRB(
+                                      details.globalPosition.dx,
+                                      details.globalPosition.dy,
+                                      details.globalPosition.dx,
+                                      details.globalPosition.dy,
+                                    ),
+                                    items: [
+                                      PopupMenuItem(
+                                        value: 'restore_git',
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.history, color: Colors.blueAccent, size: 16),
+                                            const SizedBox(width: 8),
+                                            Text('Restore from Git', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: 13)),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'restore_github',
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.cloud_download, color: Colors.tealAccent, size: 16),
+                                            const SizedBox(width: 8),
+                                            Text('Restore from GitHub', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: 13)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ).then((value) {
+                                    if (value == 'restore_git') {
+                                      _openRestoreGit(a);
+                                    } else if (value == 'restore_github') {
+                                      _openRestoreGithub(a);
+                                    }
+                                  });
+                                },
                                 onNavigateToFolder: _navigateToFolder,
                                 onNavigateToItemFolder: _navigateToFolder,
                                 onSelectItem: (a) async {
@@ -1314,6 +1345,44 @@ class _AssetsPanelState extends State<AssetsPanel> {
     }
 
     return targetUri;
+  }
+
+  Future<void> _openRestoreGit(Asset a) async {
+    final targetUri = await _resolveLocalFolderPath(a);
+    final filePath = '$targetUri\\${a.name}';
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => FileHistoryDialog(
+          filePath: filePath,
+          fileName: a.name,
+          isGithub: false,
+        ),
+      ).then((restored) {
+        if (restored == true) {
+          setState(() {});
+        }
+      });
+    }
+  }
+
+  Future<void> _openRestoreGithub(Asset a) async {
+    final targetUri = await _resolveLocalFolderPath(a);
+    final filePath = '$targetUri\\${a.name}';
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => FileHistoryDialog(
+          filePath: filePath,
+          fileName: a.name,
+          isGithub: true,
+        ),
+      ).then((restored) {
+        if (restored == true) {
+          setState(() {});
+        }
+      });
+    }
   }
 
   Widget _buildSelectedAssetArea(Asset asset) {

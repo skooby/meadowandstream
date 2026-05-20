@@ -32,6 +32,7 @@ class FolderHierarchyView<T, F> extends StatelessWidget {
   final bool isLoading;
   final Widget? loadingWidget;
   final Widget? emptyWidget;
+  final void Function(T item, TapDownDetails details)? onItemSecondaryTap;
 
   const FolderHierarchyView({
     super.key,
@@ -58,6 +59,7 @@ class FolderHierarchyView<T, F> extends StatelessWidget {
     this.isLoading = false,
     this.loadingWidget,
     this.emptyWidget,
+    this.onItemSecondaryTap,
   });
 
   @override
@@ -223,49 +225,55 @@ class FolderHierarchyView<T, F> extends StatelessWidget {
      final itemId = getItemId(item);
      final Color color = getItemColor?.call(item) ?? (folder ? Colors.amberAccent : AppColors.accent);
 
-     Widget itemWidget = InkWell(
-        onTap: () {
-            onSelectItem(item);
-        },
-        onDoubleTap: () {
-            if (folder) onNavigateToItemFolder(item);
-        },
-        child: Container(
-           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-           decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFF37373D) : Colors.transparent,
-              border: Border(left: BorderSide(
-                 color: isSelected ? color : Colors.transparent, width: 4
-              ))
-           ),
-           child: Row(
-              children: [
-                 if (getItemLeading != null) 
-                    getItemLeading!(item)!
-                 else
-                    Icon(folder ? Icons.folder : Icons.insert_drive_file, color: color, size: 20),
-                 
-                 const SizedBox(width: 12),
-                 Expanded(
-                    child: Column(
-                       crossAxisAlignment: CrossAxisAlignment.start,
-                       children: [
-                          buildItemName(item),
-                          if (getItemSubtitle != null && getItemSubtitle!(item) != null) ...[
-                             const SizedBox(height: 4),
-                             Text(getItemSubtitle!(item)!, style: TextStyle(color: AppColors.textSecondary, fontSize: 10)),
-                          ]
-                       ],
-                    )
-                 ),
-                 
-                 if (getItemTrailing != null) getItemTrailing!(item)!,
-                 if (onReorder != null && !folder)
-                    ReorderableDragStartListener(
-                       index: index,
-                       child: Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.drag_indicator, color: AppColors.borderSubtle, size: 20))
-                    )
-              ]
+     Widget itemWidget = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onSecondaryTapDown: onItemSecondaryTap == null
+            ? null
+            : (details) => onItemSecondaryTap!(item, details),
+        child: InkWell(
+           onTap: () {
+               onSelectItem(item);
+           },
+           onDoubleTap: () {
+               if (folder) onNavigateToItemFolder(item);
+           },
+           child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                 color: isSelected ? const Color(0xFF37373D) : Colors.transparent,
+                 border: Border(left: BorderSide(
+                    color: isSelected ? color : Colors.transparent, width: 4
+                 ))
+              ),
+              child: Row(
+                 children: [
+                    if (getItemLeading != null) 
+                       getItemLeading!(item)!
+                    else
+                       Icon(folder ? Icons.folder : Icons.insert_drive_file, color: color, size: 20),
+                    
+                    const SizedBox(width: 12),
+                    Expanded(
+                       child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                             buildItemName(item),
+                             if (getItemSubtitle != null && getItemSubtitle!(item) != null) ...[
+                                const SizedBox(height: 4),
+                                Text(getItemSubtitle!(item)!, style: TextStyle(color: AppColors.textSecondary, fontSize: 10)),
+                             ]
+                          ],
+                       )
+                    ),
+                    
+                    if (getItemTrailing != null) getItemTrailing!(item)!,
+                    if (onReorder != null && !folder)
+                       ReorderableDragStartListener(
+                          index: index,
+                          child: Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.drag_indicator, color: AppColors.borderSubtle, size: 20))
+                       )
+                 ]
+              )
            )
         )
      );

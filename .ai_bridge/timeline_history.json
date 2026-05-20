@@ -1,5 +1,16 @@
 [
   {
+    "id": "3acbbfb5-d0c3-474f-8dce-bac406605dd8",
+    "taskIds": [
+      "1779304020000"
+    ],
+    "title": "[2/3] File History Dialog & GitHub Web Link Integration",
+    "summary": "Build FileHistoryDialog widget to show the list of commits touching a file, with links to view the diff details directly on GitHub Web.",
+    "commitHash": "08f9eb65243fe8e6daa77680f53ef9a1fde6af8d",
+    "commitDate": "2026-05-20T13:26:11.903577",
+    "verifiedNotes": "- Create FileHistoryDialog displaying a list of commits with date/author/message metadata.\n- Build a side-by-side or unified code diff viewer comparing local file vs selected revision content.\n- Implement external link launcher that opens the diff on GitHub Web (e.g. url_launcher to commit URL)."
+  },
+  {
     "id": "a152f2f2-f80f-4721-a43f-faa1d192a7bc",
     "taskIds": [
       "1779304010000"

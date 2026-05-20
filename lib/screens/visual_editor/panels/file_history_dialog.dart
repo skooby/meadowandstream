@@ -1,7 +1,13 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../constants.dart';
 import '../../../services/version_control_service.dart';
+import '../../../services/auto_backup_service.dart';
+import '../../../services/github_service.dart';
+import '../../../state/editor_state_controller.dart';
+import '../../../choreography/choreography_engine.dart';
 
 class DiffLine {
   final String text;
@@ -184,11 +190,13 @@ class DiffViewer extends StatelessWidget {
 class FileHistoryDialog extends StatefulWidget {
   final String filePath;
   final String fileName;
+  final bool isGithub;
 
   const FileHistoryDialog({
     super.key,
     required this.filePath,
     required this.fileName,
+    this.isGithub = false,
   });
 
   @override
@@ -210,6 +218,23 @@ class _FileHistoryDialogState extends State<FileHistoryDialog> {
     _loadHistory();
   }
 
+  Future<String> _getRelativePath(String absolutePath) async {
+    try {
+      final repoPath = await VersionControlService.instance.getLocalRepositoryPath();
+      if (repoPath == null || repoPath.isEmpty) return absolutePath;
+      String normAbsolute = absolutePath.replaceAll('\\', '/');
+      String normRepo = repoPath.replaceAll('\\', '/');
+      if (normAbsolute.startsWith(normRepo)) {
+        String rel = normAbsolute.substring(normRepo.length);
+        if (rel.startsWith('/')) {
+          rel = rel.substring(1);
+        }
+        return rel;
+      }
+    } catch (_) {}
+    return absolutePath;
+  }
+
   Future<void> _loadHistory() async {
     setState(() {
       _isLoading = true;
@@ -217,7 +242,14 @@ class _FileHistoryDialogState extends State<FileHistoryDialog> {
     });
 
     try {
-      final commits = await VersionControlService.instance.getFileCommitHistory(widget.filePath);
+      List<Map<String, String>> commits;
+      if (widget.isGithub) {
+        final relPath = await _getRelativePath(widget.filePath);
+        commits = await GithubService.instance.fetchCommits(relPath);
+      } else {
+        commits = await VersionControlService.instance.getFileCommitHistory(widget.filePath);
+      }
+
       final file = File(widget.filePath);
       String localContent = '';
       if (await file.exists()) {
@@ -246,7 +278,13 @@ class _FileHistoryDialogState extends State<FileHistoryDialog> {
 
     try {
       final sha = commit['sha'] ?? commit['hash'] ?? '';
-      final content = await VersionControlService.instance.getFileContentAtCommit(widget.filePath, sha);
+      String content;
+      if (widget.isGithub) {
+        final relPath = await _getRelativePath(widget.filePath);
+        content = await GithubService.instance.fetchFileContent(relPath, sha);
+      } else {
+        content = await VersionControlService.instance.getFileContentAtCommit(widget.filePath, sha);
+      }
       setState(() {
         _selectedCommitContent = content;
         _isLoadingContent = false;
@@ -299,8 +337,36 @@ class _FileHistoryDialogState extends State<FileHistoryDialog> {
 
     if (confirm == true) {
       try {
+        // Safe overwrite sequence: create pre-restore backup using AutoBackupService
+        await AutoBackupService.instance.snapshot(
+          reason: 'pre_restore_${widget.fileName}',
+          force: true,
+          outputDirName: 'Restore Backup',
+        );
+
         final file = File(widget.filePath);
         await file.writeAsString(_selectedCommitContent!);
+
+        // Dynamically trigger reload in EditorStateController if current file matches
+        if (mounted) {
+          final editor = Provider.of<EditorStateController>(context, listen: false);
+          if (editor.currentFilePath == widget.filePath || editor.localMirrorPath == widget.filePath) {
+            try {
+              final jsonStr = _selectedCommitContent!;
+              final configObj = ChoreographyConfig.fromJson(jsonDecode(jsonStr));
+              editor.loadConfig(
+                editor.currentFilePath!,
+                configObj,
+                targetType: editor.loadedTargetType,
+                targetName: editor.loadedTargetName,
+                localPath: editor.localMirrorPath,
+              );
+            } catch (ex) {
+              debugPrint("Failed to dynamically reload config: $ex");
+            }
+          }
+        }
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('File restored to selected revision successfully.')),
@@ -338,10 +404,10 @@ class _FileHistoryDialogState extends State<FileHistoryDialog> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.history, color: AppColors.accent, size: 22),
+                    Icon(widget.isGithub ? Icons.cloud_download : Icons.history, color: AppColors.accent, size: 22),
                     const SizedBox(width: 10),
                     Text(
-                      'File History: ${widget.fileName}',
+                      '${widget.isGithub ? "GitHub" : "Git"} File History: ${widget.fileName}',
                       style: TextStyle(
                         color: AppColors.panelTextPrimary,
                         fontSize: 16,
