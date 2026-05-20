@@ -1,0 +1,6 @@
+=== tags ===
+ERROR: PostgrestException(message: Could not find the table 'public.tags' in the schema cache, code: PGRST205, details: Not Found, hint: Perhaps you meant the table 'public.strings')
+=== track_tags ===
+ERROR: PostgrestException(message: Could not find the table 'public.track_tags' in the schema cache, code: PGRST205, details: Not Found, hint: Perhaps you meant the table 'public.asset_tags')
+=== album_tags ===
+ERROR: PostgrestException(message: Could not find the table 'public.album_tags' in the schema cache, code: PGRST205, details: Not Found, hint: Perhaps you meant the table 'public.asset_tags')

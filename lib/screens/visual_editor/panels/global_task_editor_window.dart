@@ -502,7 +502,10 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
             status: e.status,
             proof: e.proof,
             requestClarification: e.requestClarification,
-            tryCount: e.tryCount))
+            tryCount: e.tryCount,
+            attachments: List.from(e.attachments),
+            isCommitted: e.isCommitted,
+            isPreview: e.isPreview))
         .toList();
     existingTask!.reviewQuestions = reviewQuestionsList
         .map((e) => AiReviewQuestion(
@@ -561,7 +564,10 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                 status: e.status,
                 proof: e.proof,
                 requestClarification: e.requestClarification,
-                tryCount: e.tryCount))
+                tryCount: e.tryCount,
+                attachments: List.from(e.attachments),
+                isCommitted: e.isCommitted,
+                isPreview: e.isPreview))
             .toList(),
         reviewQuestions: reviewQuestionsList
             .map((e) => AiReviewQuestion(
@@ -739,17 +745,23 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
             if (updatedTask.verificationCriteria[i].description != _shadowTask!.verificationCriteria[i].description ||
                 updatedTask.verificationCriteria[i].isVerified != _shadowTask!.verificationCriteria[i].isVerified ||
                 updatedTask.verificationCriteria[i].status != _shadowTask!.verificationCriteria[i].status ||
-                updatedTask.verificationCriteria[i].proof != _shadowTask!.verificationCriteria[i].proof) {
+                updatedTask.verificationCriteria[i].proof != _shadowTask!.verificationCriteria[i].proof ||
+                updatedTask.verificationCriteria[i].isCommitted != _shadowTask!.verificationCriteria[i].isCommitted ||
+                updatedTask.verificationCriteria[i].isPreview != _shadowTask!.verificationCriteria[i].isPreview) {
               
               _shadowTask!.verificationCriteria[i].description = updatedTask.verificationCriteria[i].description;
               _shadowTask!.verificationCriteria[i].isVerified = updatedTask.verificationCriteria[i].isVerified;
               _shadowTask!.verificationCriteria[i].status = updatedTask.verificationCriteria[i].status;
               _shadowTask!.verificationCriteria[i].proof = updatedTask.verificationCriteria[i].proof;
+              _shadowTask!.verificationCriteria[i].isCommitted = updatedTask.verificationCriteria[i].isCommitted;
+              _shadowTask!.verificationCriteria[i].isPreview = updatedTask.verificationCriteria[i].isPreview;
               
               existingTask!.verificationCriteria[i].description = updatedTask.verificationCriteria[i].description;
               existingTask!.verificationCriteria[i].isVerified = updatedTask.verificationCriteria[i].isVerified;
               existingTask!.verificationCriteria[i].status = updatedTask.verificationCriteria[i].status;
               existingTask!.verificationCriteria[i].proof = updatedTask.verificationCriteria[i].proof;
+              existingTask!.verificationCriteria[i].isCommitted = updatedTask.verificationCriteria[i].isCommitted;
+              existingTask!.verificationCriteria[i].isPreview = updatedTask.verificationCriteria[i].isPreview;
               criteriaChanged = true;
             }
           }
@@ -766,7 +778,9 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                 proof: e.proof,
                 requestClarification: e.requestClarification,
                 tryCount: e.tryCount,
-                attachments: List.from(e.attachments))).toList();
+                attachments: List.from(e.attachments),
+                isCommitted: e.isCommitted,
+                isPreview: e.isPreview)).toList();
         
            while (_verificationControllers.length < verificationCriteriaList.length) {
              _verificationControllers.add(SpellCheckTextEditingController(text: verificationCriteriaList[_verificationControllers.length].description));
@@ -896,7 +910,9 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                   proof: e.proof,
                   requestClarification: e.requestClarification,
                   tryCount: e.tryCount,
-                  attachments: List.from(e.attachments)))
+                  attachments: List.from(e.attachments),
+                  isCommitted: e.isCommitted,
+                  isPreview: e.isPreview))
               .toList() ??
           [];
 
@@ -2318,9 +2334,10 @@ verificationCriteriaList[i].isCommitted = false;
                                             }
                                           }
 
-                                          _executeAutoSave();
+                                          existingTask!.status = AiTaskStatus.inTesting;
+                                          await _executeAutoSave(instant: true);
                                           sb.writeln('---');
-                                          AiBridgeService.instance.sendToQueue(
+                                          await AiBridgeService.instance.sendToQueue(
                                               sb.toString(), true,
                                               taskIds: [existingTask!.id]);
                                           ScaffoldMessenger.of(context)
@@ -2375,30 +2392,44 @@ verificationCriteriaList[i].isCommitted = false;
                                                   mainAxisSize:
                                                       MainAxisSize.min,
                                                   children: [
-                                                    IconButton(
-                                                      icon: const Icon(
-                                                          Icons.auto_awesome,
-                                                          size: 16),
-                                                      onPressed: () async {
-                                                        if (descController.text.isEmpty) return;
-                                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reviewing prompt...')));
-                                                        final result = await LocalAiService.instance.reviewPrompt(descController.text);
-                                                        if (result != null && context.mounted) {
-                                                          setStateBuilder(() {
-                                                            notesController.text = result + '\n\n' + notesController.text;
-                                                            _selectedTabIndex = 1;
-                                                          });
-                                                          _executeAutoSave();
-                                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Prompt Review added to Notes!')));
-                                                        } else if (context.mounted) {
-                                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: ${LocalAiService.instance.lastError}')));
-                                                        }
+                                                    ListenableBuilder(
+                                                      listenable: LocalAiService.instance,
+                                                      builder: (context, _) {
+                                                        final isProcessing = LocalAiService.instance.isProcessing;
+                                                        return IconButton(
+                                                          icon: isProcessing
+                                                              ? const SizedBox(
+                                                                  width: 16,
+                                                                  height: 16,
+                                                                  child: CircularProgressIndicator(
+                                                                    strokeWidth: 2,
+                                                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.amberAccent),
+                                                                  ),
+                                                                )
+                                                              : const Icon(Icons.auto_awesome, size: 16),
+                                                          onPressed: isProcessing
+                                                              ? null
+                                                              : () async {
+                                                                  if (descController.text.isEmpty) return;
+                                                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reviewing prompt...')));
+                                                                  final result = await LocalAiService.instance.reviewPrompt(descController.text);
+                                                                  if (result != null && context.mounted) {
+                                                                    setStateBuilder(() {
+                                                                      notesController.text = result + '\n\n' + notesController.text;
+                                                                      _selectedTabIndex = 1;
+                                                                    });
+                                                                    _executeAutoSave();
+                                                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Prompt Review added to Notes!')));
+                                                                  } else if (context.mounted) {
+                                                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: ${LocalAiService.instance.lastError}')));
+                                                                  }
+                                                                },
+                                                          color: Colors.amberAccent,
+                                                          padding: EdgeInsets.zero,
+                                                          constraints: const BoxConstraints(),
+                                                          tooltip: isProcessing ? 'Reviewing...' : 'Review Prompt with AI',
+                                                        );
                                                       },
-                                                      color: Colors.amberAccent,
-                                                      padding: EdgeInsets.zero,
-                                                      constraints:
-                                                          const BoxConstraints(),
-                                                      tooltip: 'Review Prompt with AI',
                                                     ),
                                                     const SizedBox(width: 8),
                                                     IconButton(
@@ -2503,30 +2534,44 @@ verificationCriteriaList[i].isCommitted = false;
                                                   mainAxisSize:
                                                       MainAxisSize.min,
                                                   children: [
-                                                    IconButton(
-                                                      icon: const Icon(
-                                                          Icons.auto_awesome,
-                                                          size: 16),
-                                                      onPressed: () async {
-                                                        if (notesController.text.isEmpty && descController.text.isEmpty) return;
-                                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generating summary...')));
-                                                        final input = 'Description:\n${descController.text}\n\nNotes:\n${notesController.text}';
-                                                        final result = await LocalAiService.instance.summarizeTask(input);
-                                                        if (result != null && context.mounted) {
-                                                          setStateBuilder(() {
-                                                            summaryController.text = result;
-                                                          });
-                                                          _executeAutoSave();
-                                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Summary generated!')));
-                                                        } else if (context.mounted) {
-                                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: ${LocalAiService.instance.lastError}')));
-                                                        }
+                                                    ListenableBuilder(
+                                                      listenable: LocalAiService.instance,
+                                                      builder: (context, _) {
+                                                        final isProcessing = LocalAiService.instance.isProcessing;
+                                                        return IconButton(
+                                                          icon: isProcessing
+                                                              ? const SizedBox(
+                                                                  width: 16,
+                                                                  height: 16,
+                                                                  child: CircularProgressIndicator(
+                                                                    strokeWidth: 2,
+                                                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.amberAccent),
+                                                                  ),
+                                                                )
+                                                              : const Icon(Icons.auto_awesome, size: 16),
+                                                          onPressed: isProcessing
+                                                              ? null
+                                                              : () async {
+                                                                  if (notesController.text.isEmpty && descController.text.isEmpty) return;
+                                                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generating summary...')));
+                                                                  final input = 'Description:\n${descController.text}\n\nNotes:\n${notesController.text}';
+                                                                  final result = await LocalAiService.instance.summarizeTask(input);
+                                                                  if (result != null && context.mounted) {
+                                                                    setStateBuilder(() {
+                                                                      summaryController.text = result;
+                                                                    });
+                                                                    _executeAutoSave();
+                                                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Summary generated!')));
+                                                                  } else if (context.mounted) {
+                                                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: ${LocalAiService.instance.lastError}')));
+                                                                  }
+                                                                },
+                                                          color: Colors.amberAccent,
+                                                          padding: EdgeInsets.zero,
+                                                          constraints: const BoxConstraints(),
+                                                          tooltip: isProcessing ? 'Generating...' : 'Generate Summary with AI',
+                                                        );
                                                       },
-                                                      color: Colors.amberAccent,
-                                                      padding: EdgeInsets.zero,
-                                                      constraints:
-                                                          const BoxConstraints(),
-                                                      tooltip: 'Generate Summary with AI',
                                                     ),
                                                     const SizedBox(width: 8),
                                                     IconButton(

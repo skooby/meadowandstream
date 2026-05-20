@@ -2764,8 +2764,21 @@ showColorPickerWindow(context);
         sb.writeln('${i + 1}. ${item.description}$extraInfo');
         item.status = AiVerificationStatus.pendingReview;
       }
-      final updatedCriteria = task.verificationCriteria.map((e) => AiVerificationCriteria(description: e.description, isVerified: e.isVerified, status: e.status, proof: e.proof)).toList();
-      AiBridgeService.instance.updateTaskDetails(task.id, task.name, task.description, verificationCriteria: updatedCriteria);
+      final updatedCriteria = task.verificationCriteria.map((e) => AiVerificationCriteria(
+        description: e.description,
+        goal: e.goal,
+        isVerified: e.isVerified,
+        status: e.status,
+        proof: e.proof,
+        requestClarification: e.requestClarification,
+        tryCount: e.tryCount,
+        attachments: List.from(e.attachments),
+        isCommitted: e.isCommitted,
+        isPreview: e.isPreview,
+      )).toList();
+      await AiBridgeService.instance.updateTaskDetails(task.id, task.name, task.description, verificationCriteria: updatedCriteria, status: AiTaskStatus.inTesting);
+    } else {
+      await AiBridgeService.instance.updateTaskStatus(task.id, AiTaskStatus.inTesting);
     }
 
     if (task.fileAttachments.isNotEmpty) {

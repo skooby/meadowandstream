@@ -555,9 +555,52 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
           _tasks[taskIdx].summary = update.summary;
         }
         if (update.verificationCriteria.isNotEmpty) {
-          _tasks[taskIdx].verificationCriteria = update.verificationCriteria
+          final existing = _tasks[taskIdx].verificationCriteria;
+          final incoming = update.verificationCriteria
               .map((c) => AiVerificationCriteria.fromJson(c))
               .toList();
+
+          final merged = <AiVerificationCriteria>[];
+          final usedIncoming = <String>{};
+
+          for (var ext in existing) {
+            final extDescNorm = ext.description.trim();
+            final matchIndex = incoming.indexWhere((inc) => inc.description.trim() == extDescNorm);
+
+            if (matchIndex != -1) {
+              final match = incoming[matchIndex];
+              usedIncoming.add(match.description);
+
+              // Preserve verified/ignored/pendingReview status set by user in UI
+              final resolvedStatus = ext.status != AiVerificationStatus.none ? ext.status : match.status;
+              final resolvedIsVerified = ext.isVerified || match.isVerified;
+
+              merged.add(AiVerificationCriteria(
+                description: ext.description,
+                goal: (match.goal.isNotEmpty) ? match.goal : ext.goal,
+                isVerified: resolvedIsVerified,
+                status: resolvedStatus,
+                proof: match.proof ?? ext.proof,
+                requestClarification: match.requestClarification || ext.requestClarification,
+                tryCount: match.tryCount > ext.tryCount ? match.tryCount : ext.tryCount,
+                attachments: ext.attachments.isNotEmpty ? ext.attachments : match.attachments,
+                isCommitted: ext.isCommitted || match.isCommitted,
+                isPreview: ext.isPreview || match.isPreview,
+              ));
+            } else {
+              // Not found in incoming, keep the existing item intact
+              merged.add(ext);
+            }
+          }
+
+          // Add any new incoming criteria (e.g. preview items or newly added ones)
+          for (var inc in incoming) {
+            if (!usedIncoming.contains(inc.description)) {
+              merged.add(inc);
+            }
+          }
+
+          _tasks[taskIdx].verificationCriteria = merged;
         }
         _save();
         notifyListeners();
@@ -1422,6 +1465,63 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
             final oldTaskIndex = oldTasks.indexWhere((t) => t.id == newTask.id);
             if (oldTaskIndex != -1) {
               final oldTask = oldTasks[oldTaskIndex];
+
+              // Merge verification criteria to preserve user status updates (verified, ignored, pendingReview)
+              if (newTask.verificationCriteria.isNotEmpty) {
+                final existing = oldTask.verificationCriteria;
+                final incoming = newTask.verificationCriteria;
+
+                final merged = <AiVerificationCriteria>[];
+                final usedIncoming = <String>{};
+                bool mergedAnyStatus = false;
+
+                for (var ext in existing) {
+                  final extDescNorm = ext.description.trim();
+                  final matchIndex = incoming.indexWhere((inc) => inc.description.trim() == extDescNorm);
+
+                  if (matchIndex != -1) {
+                    final match = incoming[matchIndex];
+                    usedIncoming.add(match.description);
+
+                    // Preserve verified/ignored/pendingReview status set by user in UI
+                    final resolvedStatus = ext.status != AiVerificationStatus.none ? ext.status : match.status;
+                    final resolvedIsVerified = ext.isVerified || match.isVerified;
+
+                    if (resolvedStatus != match.status || resolvedIsVerified != match.isVerified) {
+                      mergedAnyStatus = true;
+                    }
+
+                    merged.add(AiVerificationCriteria(
+                      description: ext.description,
+                      goal: (match.goal.isNotEmpty) ? match.goal : ext.goal,
+                      isVerified: resolvedIsVerified,
+                      status: resolvedStatus,
+                      proof: match.proof ?? ext.proof,
+                      requestClarification: match.requestClarification || ext.requestClarification,
+                      tryCount: match.tryCount > ext.tryCount ? match.tryCount : ext.tryCount,
+                      attachments: ext.attachments.isNotEmpty ? ext.attachments : match.attachments,
+                      isCommitted: ext.isCommitted || match.isCommitted,
+                      isPreview: ext.isPreview || match.isPreview,
+                    ));
+                  } else {
+                    // Not found in incoming, keep the existing item intact
+                    merged.add(ext);
+                    mergedAnyStatus = true;
+                  }
+                }
+
+                // Add any new incoming criteria (e.g. preview items or newly added ones)
+                for (var inc in incoming) {
+                  if (!usedIncoming.contains(inc.description)) {
+                    merged.add(inc);
+                  }
+                }
+
+                newTask.verificationCriteria = merged;
+                if (mergedAnyStatus) {
+                  requiresSave = true;
+                }
+              }
 
               bool handledMerge = false;
               // Auto-Complete Logic: If all checkboxes are checked, push to main timeline but keep task inProgress.
@@ -2322,6 +2422,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
         _unlockedTasks.remove(taskId);
       }
     }
+    if (_tasks.isEmpty) return false;
     final task =
         _tasks.firstWhere((t) => t.id == taskId, orElse: () => _tasks.first);
     if (task.id != taskId) return false;

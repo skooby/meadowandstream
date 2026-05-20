@@ -1,5 +1,16 @@
 [
   {
+    "id": "b901e1a5-670d-40a7-9f7d-4414edc643a6",
+    "taskIds": [
+      "1800000000013"
+    ],
+    "title": "STEP 6 - Add Optional Embeddings Support [fix: Delete processed latest_notes.json, latest_verification.json, and latest_preview.json files to prevent stale values from overriding subsequent tasks]",
+    "summary": "Vector database capabilities.",
+    "commitHash": "dbc5a85caaa080e64c47095202291780c468d70b",
+    "commitDate": "2026-05-19T20:42:03.957615",
+    "verifiedNotes": "No verification notes."
+  },
+  {
     "id": "9bcd4e86-6783-4533-9ff2-53d81c533d98",
     "taskIds": [
       "1776705616800"
