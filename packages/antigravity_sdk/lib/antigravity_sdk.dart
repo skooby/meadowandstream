@@ -8,6 +8,18 @@ import 'dart:io';
 // Data Models
 // ---------------------------------------------------------------------------
 
+class AntigravityModel {
+  final String id;
+  final String displayName;
+  final bool supportsReasoning;
+
+  AntigravityModel({
+    required this.id,
+    required this.displayName,
+    this.supportsReasoning = false,
+  });
+}
+
 class ArtifactUpdate {
   final String taskId;
   final String notes;
@@ -92,6 +104,12 @@ class AntigravityConfig {
   /// Timeout after which we give up polling (in seconds).
   final int timeoutSeconds;
 
+  /// The target model to use for conversations (e.g., flash_lite, flash, pro).
+  final String? targetModel;
+
+  /// The API key for Google AI Studio models.
+  final String apiKey;
+
   const AntigravityConfig({
     this.binaryPath = '',
     this.lsAddress = 'localhost:8080',
@@ -99,7 +117,31 @@ class AntigravityConfig {
     this.projectId = '',
     this.pollIntervalSeconds = 3,
     this.timeoutSeconds = 600,
+    this.targetModel,
+    this.apiKey = '',
   });
+
+  AntigravityConfig copyWith({
+    String? binaryPath,
+    String? lsAddress,
+    String? csrfToken,
+    String? projectId,
+    int? pollIntervalSeconds,
+    int? timeoutSeconds,
+    String? targetModel,
+    String? apiKey,
+  }) {
+    return AntigravityConfig(
+      binaryPath: binaryPath ?? this.binaryPath,
+      lsAddress: lsAddress ?? this.lsAddress,
+      csrfToken: csrfToken ?? this.csrfToken,
+      projectId: projectId ?? this.projectId,
+      pollIntervalSeconds: pollIntervalSeconds ?? this.pollIntervalSeconds,
+      timeoutSeconds: timeoutSeconds ?? this.timeoutSeconds,
+      targetModel: targetModel ?? this.targetModel,
+      apiKey: apiKey ?? this.apiKey,
+    );
+  }
 
   /// Resolves the binary path, falling back to the standard Windows install location.
   String get resolvedBinaryPath {
@@ -118,14 +160,40 @@ class AntigravityConfig {
 // ---------------------------------------------------------------------------
 
 class AntigravityClient {
+  static AntigravityClient? _sharedInstance;
+
+  static AntigravityClient get instance {
+    _sharedInstance ??= AntigravityClient.custom();
+    return _sharedInstance!;
+  }
+
+  static set instance(AntigravityClient client) {
+    _sharedInstance = client;
+  }
+
+  factory AntigravityClient({String? apiKey}) {
+    if (apiKey != null && apiKey.isNotEmpty) {
+      instance.config = instance.config.copyWith(apiKey: apiKey);
+    }
+    return instance;
+  }
+
   final _artifactUpdateController = StreamController<ArtifactUpdate>.broadcast();
-  final AntigravityConfig config;
+  AntigravityConfig config;
   final void Function(String)? onLog;
 
-  AntigravityClient({
+  AntigravityClient.custom({
     this.config = const AntigravityConfig(),
     this.onLog,
-  });
+    String? apiKey,
+  }) {
+    if (apiKey != null && apiKey.isNotEmpty) {
+      config = config.copyWith(apiKey: apiKey);
+    }
+    models = AntigravityModelsClient(this);
+  }
+
+  late final AntigravityModelsClient models;
 
   Stream<ArtifactUpdate> get onArtifactUpdate => _artifactUpdateController.stream;
 
@@ -137,9 +205,90 @@ class AntigravityClient {
   // Low-level subprocess helper
   // -------------------------------------------------------------------------
 
+  void updateConfig(AntigravityConfig newConfig) {
+    config = newConfig;
+    _log('Updated configuration (targetModel: ${config.targetModel})');
+  }
+
+  /// Queries the language server binary for available models.
+  Future<List<String>> getAvailableModels() async {
+    final binary = config.resolvedBinaryPath;
+    List<String> rawTiers = ['flash_lite', 'flash', 'pro'];
+    try {
+      final result = await Process.run(
+        binary,
+        ['agentapi'],
+        environment: {
+          ...Platform.environment,
+          'ANTIGRAVITY_LS_ADDRESS': config.lsAddress,
+          'ANTIGRAVITY_CSRF_TOKEN': config.csrfToken,
+          if (config.apiKey.isNotEmpty) 'ANTIGRAVITY_API_KEY': config.apiKey,
+        },
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      final stderr = result.stderr as String;
+      final stdout = result.stdout as String;
+      final output = '$stdout\n$stderr';
+      
+      final match = RegExp(r'--model=<([^>]+)>').firstMatch(output);
+      if (match != null) {
+        final modelsStr = match.group(1);
+        if (modelsStr != null) {
+          rawTiers = modelsStr.split('|').map((e) => e.trim()).toList();
+        }
+      }
+    } catch (e) {
+      _log('Failed to query available models: $e');
+    }
+
+    final List<String> versionedModels = [];
+    for (final tier in rawTiers) {
+      if (tier == 'flash_lite') {
+        versionedModels.addAll([
+          'gemini-1.5-flash-8b',
+          'gemini-2.0-flash-lite',
+          'gemini-2.5-flash-lite',
+          'llama-3.1-8b',
+        ]);
+      } else if (tier == 'flash') {
+        versionedModels.addAll([
+          'gemini-1.5-flash',
+          'gemini-2.0-flash',
+          'gemini-2.5-flash',
+          'claude-3-5-haiku',
+          'llama-3.1-70b',
+        ]);
+      } else if (tier == 'pro') {
+        versionedModels.addAll([
+          'gemini-1.5-pro',
+          'gemini-2.0-pro',
+          'gemini-2.5-pro',
+          'claude-3-5-sonnet',
+          'llama-3.1-405b',
+        ]);
+      } else {
+        versionedModels.add(tier);
+      }
+    }
+    return versionedModels;
+  }
+
+  String _resolveModelTier(String model) {
+    final lower = model.toLowerCase();
+    if (lower.contains('lite') || lower.contains('8b')) {
+      return 'flash_lite';
+    } else if (lower.contains('pro') || lower.contains('sonnet') || lower.contains('405b')) {
+      return 'pro';
+    } else if (lower.contains('flash') || lower.contains('haiku') || lower.contains('70b')) {
+      return 'flash';
+    }
+    return 'flash';
+  }
+
   Future<Map<String, dynamic>?> _runAgentapi(List<String> args) async {
     final binary = config.resolvedBinaryPath;
-    _log('Running: $binary agentapi ${args.join(' ')}');
+    _log('Executing: agentapi ${args.join(' ')}');
 
     try {
       final env = {
@@ -147,6 +296,7 @@ class AntigravityClient {
         'ANTIGRAVITY_LS_ADDRESS': config.lsAddress,
         'ANTIGRAVITY_CSRF_TOKEN': config.csrfToken,
         if (config.projectId.isNotEmpty) 'ANTIGRAVITY_PROJECT_ID': config.projectId,
+        if (config.apiKey.isNotEmpty) 'ANTIGRAVITY_API_KEY': config.apiKey,
       };
 
       final result = await Process.run(
@@ -167,6 +317,21 @@ class AntigravityClient {
       if (stdout.isNotEmpty) {
         try {
           final parsed = jsonDecode(stdout.trim()) as Map<String, dynamic>;
+          final error = parsed['error'];
+          if (error != null && error.toString().isNotEmpty) {
+            _log('[Error] $error');
+          } else {
+            final response = parsed['response'] as Map<String, dynamic>?;
+            if (response != null) {
+              if (response.containsKey('newConversation')) {
+                final newConv = response['newConversation'] as Map<String, dynamic>?;
+                if (newConv != null) {
+                  final conversationId = newConv['conversationId'] ?? '';
+                  _log('[System] Started conversation $conversationId');
+                }
+              }
+            }
+          }
           return parsed;
         } catch (e) {
           _log('JSON parse error: $e | stdout: ${stdout.trim()}');
@@ -186,13 +351,31 @@ class AntigravityClient {
 
   Future<void> sendPrompt(String text) async {
     _log('sendPrompt: "$text"');
-    final result = await _runAgentapi(['new-conversation', text]);
+    final args = <String>['new-conversation'];
+    if (config.targetModel != null && config.targetModel!.isNotEmpty) {
+      args.add('--model=${_resolveModelTier(config.targetModel!)}');
+    }
+    args.add(text);
+    final result = await _runAgentapi(args);
     if (result == null) {
       _log('sendPrompt: no result from agentapi');
       return;
     }
     final conversationId = result['response']?['newConversation']?['conversationId'];
+    if (conversationId == null || conversationId.isEmpty) {
+      _log('sendPrompt: no conversationId in response');
+      return;
+    }
     _log('sendPrompt: started conversation $conversationId');
+
+    // Poll for completion to display chat-like messages in the logs
+    final connection = SubagentConnection(
+      taskId: 'prompt_${DateTime.now().millisecondsSinceEpoch}',
+      agentId: conversationId,
+    );
+    Future.microtask(() async {
+      await _pollUntilComplete(connection, conversationId);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -228,7 +411,12 @@ class AntigravityClient {
     // Kick off background execution
     Future.microtask(() async {
       try {
-        final result = await _runAgentapi(['new-conversation', 'Process bridge current_task.json']);
+        final args = <String>['new-conversation'];
+        if (config.targetModel != null && config.targetModel!.isNotEmpty) {
+          args.add('--model=${_resolveModelTier(config.targetModel!)}');
+        }
+        args.add('Process bridge current_task.json');
+        final result = await _runAgentapi(args);
 
         if (result == null) {
           _log('invokeSubagent: agentapi returned null');
@@ -277,6 +465,7 @@ class AntigravityClient {
   Future<void> _pollUntilComplete(SubagentConnection connection, String conversationId) async {
     final deadline = DateTime.now().add(Duration(seconds: config.timeoutSeconds));
     final pollInterval = Duration(seconds: config.pollIntervalSeconds);
+    final loggedSteps = <int>{};
 
     while (DateTime.now().isBefore(deadline)) {
       await Future.delayed(pollInterval);
@@ -301,9 +490,39 @@ class AntigravityClient {
       final transcriptFile = File(brainPath);
 
       if (await transcriptFile.exists()) {
-        // Read last line to check if the conversation is done
         try {
           final lines = await transcriptFile.readAsLines();
+          for (final line in lines) {
+            if (line.trim().isEmpty) continue;
+            try {
+              final step = jsonDecode(line);
+              final stepIndex = step['step_index'] as int?;
+              if (stepIndex != null && !loggedSteps.contains(stepIndex)) {
+                loggedSteps.add(stepIndex);
+                final type = step['type'] as String?;
+                final content = step['content'] as String?;
+                final thinking = step['thinking'] as String?;
+                
+                if (type == 'USER_INPUT') {
+                  String cleanContent = content ?? '';
+                  if (cleanContent.contains('<USER_REQUEST>')) {
+                    final start = cleanContent.indexOf('<USER_REQUEST>') + '<USER_REQUEST>'.length;
+                    final end = cleanContent.indexOf('</USER_REQUEST>');
+                    if (end != -1 && end > start) {
+                      cleanContent = cleanContent.substring(start, end).trim();
+                    }
+                  }
+                  _log('[User] $cleanContent');
+                } else if (type == 'PLANNER_RESPONSE') {
+                  final text = (thinking != null && thinking.isNotEmpty) ? thinking : (content ?? '');
+                  if (text.isNotEmpty) {
+                    _log('[Antigravity] $text');
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+
           final lastLine = lines.lastWhere((l) => l.trim().isNotEmpty, orElse: () => '');
           if (lastLine.isNotEmpty) {
             try {
@@ -438,5 +657,43 @@ class AntigravityClient {
 
   void dispose() {
     _artifactUpdateController.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Models Client
+// ---------------------------------------------------------------------------
+
+class AntigravityModelsClient {
+  final AntigravityClient _client;
+
+  AntigravityModelsClient(this._client);
+
+  Future<List<AntigravityModel>> list() async {
+    final rawModels = await _client.getAvailableModels();
+    return rawModels.map<AntigravityModel>((m) {
+      String displayName = m;
+      bool supportsReasoning = m.contains('pro') || m.contains('thinking');
+      if (m == 'gemini-1.5-flash-8b') displayName = 'Gemini 1.5 Flash-8B';
+      else if (m == 'gemini-1.5-flash') displayName = 'Gemini 1.5 Flash';
+      else if (m == 'gemini-1.5-pro') displayName = 'Gemini 1.5 Pro';
+      else if (m == 'gemini-2.0-flash-lite') displayName = 'Gemini 2.0 Flash Lite';
+      else if (m == 'gemini-2.0-flash') displayName = 'Gemini 2.0 Flash';
+      else if (m == 'gemini-2.0-pro') displayName = 'Gemini 2.0 Pro';
+      else if (m == 'gemini-2.5-flash-lite') displayName = 'Gemini 2.5 Flash Lite';
+      else if (m == 'gemini-2.5-flash') displayName = 'Gemini 2.5 Flash';
+      else if (m == 'gemini-2.5-pro') displayName = 'Gemini 2.5 Pro';
+      else if (m == 'claude-3-5-sonnet') displayName = 'Claude 3.5 Sonnet';
+      else if (m == 'claude-3-5-haiku') displayName = 'Claude 3.5 Haiku';
+      else if (m == 'llama-3.1-8b') displayName = 'Llama 3.1 8B';
+      else if (m == 'llama-3.1-70b') displayName = 'Llama 3.1 70B';
+      else if (m == 'llama-3.1-405b') displayName = 'Llama 3.1 405B';
+
+      return AntigravityModel(
+        id: m,
+        displayName: displayName,
+        supportsReasoning: supportsReasoning,
+      );
+    }).toList();
   }
 }

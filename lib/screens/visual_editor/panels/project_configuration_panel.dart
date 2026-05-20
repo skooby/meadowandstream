@@ -14,6 +14,8 @@ import '../../../db/daos/i18n_dao.dart';
 import '../../../db/app_database.dart';
 import 'package:dio/dio.dart';
 import '../../../services/backend_process_manager.dart';
+import '../../../services/ai_bridge_service.dart';
+import 'package:antigravity_sdk/antigravity_sdk.dart';
 import '../visual_editor_screen.dart';
 import '../../../constants.dart';
 import '../../../services/version_control_service.dart';
@@ -289,6 +291,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   String? _antigravityInvokeEndpoint;
   String? _antigravityPromptEndpoint;
   String? _antigravityStartupCommand;
+  String? _antigravityModel;
+  String? _antigravityApiKey;
+  Future<List<AntigravityModel>>? _modelsFuture;
   String? _versionControlRepoUrl;
   String? _ollamaBaseUrl;
   String? _ollamaModel;
@@ -406,6 +411,17 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _antigravityInvokeEndpoint = prefs.getString('antigravity_invoke_endpoint');
       _antigravityPromptEndpoint = prefs.getString('antigravity_prompt_endpoint');
       _antigravityStartupCommand = prefs.getString('antigravity_startup_command');
+      _antigravityApiKey = prefs.getString('antigravity_api_key');
+      final savedModel = prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
+      if (savedModel == 'flash_lite') {
+        _antigravityModel = 'gemini-2.0-flash-lite';
+      } else if (savedModel == 'flash') {
+        _antigravityModel = 'gemini-2.0-flash';
+      } else if (savedModel == 'pro') {
+        _antigravityModel = 'gemini-2.0-pro';
+      } else {
+        _antigravityModel = savedModel;
+      }
       _versionControlRepoUrl = prefs.getString('project_version_control_repo_url');
       _ollamaBaseUrl = prefs.getString('ollamaBaseUrl');
       _ollamaModel = prefs.getString('ollamaModel');
@@ -423,6 +439,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       if (AppUIConfig.activeTheme != null) {
           _applyTheme(AppUIConfig.activeTheme!);
       }
+      _modelsFuture = AntigravityClient().models.list();
     });
   }
 
@@ -835,6 +852,20 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           await prefs.remove('antigravity_startup_command');
       }
 
+      final newAntigravityApiKey = values.containsKey('antigravityApiKey') ? values['antigravityApiKey'] as String? : _antigravityApiKey;
+      if (newAntigravityApiKey != null && newAntigravityApiKey.trim().isNotEmpty) {
+          await prefs.setString('antigravity_api_key', newAntigravityApiKey.trim());
+      } else {
+          await prefs.remove('antigravity_api_key');
+      }
+
+      final newAntigravityModel = values.containsKey('antigravityModel') ? values['antigravityModel'] as String? : _antigravityModel;
+      if (newAntigravityModel != null && newAntigravityModel.trim().isNotEmpty) {
+          await prefs.setString('antigravity_model', newAntigravityModel.trim());
+      } else {
+          await prefs.remove('antigravity_model');
+      }
+
       if (mounted) {
          setState(() {
             _primaryStorageUrl = newUrl;
@@ -876,6 +907,8 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             _antigravityInvokeEndpoint = newAntigravityInvokeEndpoint;
             _antigravityPromptEndpoint = newAntigravityPromptEndpoint;
             _antigravityStartupCommand = newAntigravityStartupCommand;
+            _antigravityModel = newAntigravityModel;
+            _antigravityApiKey = newAntigravityApiKey;
             _versionControlRepoUrl = newVersionControlRepoUrl;
             _ollamaBaseUrl = newOllamaBaseUrl;
             _ollamaModel = newOllamaModel;
@@ -883,7 +916,15 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             // _albumFolderIds, _tagsFolderId, _languagesFolderId remain synchronously updated.
          });
          
-         await _updateActiveThemeAndSave();
+          await _updateActiveThemeAndSave();
+          try {
+            await AiBridgeService.instance.updateAntigravityConfig();
+            setState(() {
+              _modelsFuture = AntigravityClient().models.list();
+            });
+          } catch (e) {
+            debugPrint('[ProjectConfigurationPanel] Error updating active Antigravity config: $e');
+          }
 
          // Trigger the global notifier so all tool windows instantly repaint with new opacity
          VisualEditorScreen.configRefreshNotifier.value++;
@@ -1172,7 +1213,10 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
     try {
       final response = await dio.get(url);
       if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Connection Successful: \${response.statusCode}'), backgroundColor: Colors.green));
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Connection Successful: ${response.statusCode}'), backgroundColor: Colors.green));
+         setState(() {
+           _modelsFuture = AntigravityClient().models.list();
+         });
       }
     } catch (e) {
       // Auto-spawn backend on connection failure
@@ -1186,7 +1230,10 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
         
         final retryResponse = await dio.get(url);
         if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backend Started & Connected: \${retryResponse.statusCode}'), backgroundColor: Colors.green));
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backend Started & Connected: ${retryResponse.statusCode}'), backgroundColor: Colors.green));
+           setState(() {
+             _modelsFuture = AntigravityClient().models.list();
+           });
         }
       } catch (retryError) {
         if (mounted) {
@@ -1335,6 +1382,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                 'antigravityInvokeEndpoint': _antigravityInvokeEndpoint ?? '/api/v1/agents/invoke',
                 'antigravityPromptEndpoint': _antigravityPromptEndpoint ?? '/api/v1/prompt',
                 'antigravityStartupCommand': _antigravityStartupCommand ?? 'antigravity-server',
+                'antigravityApiKey': _antigravityApiKey ?? '',
                 'versionControlRepoUrl': _versionControlRepoUrl ?? '',
               },
               child: Column(
@@ -2506,10 +2554,65 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                               decoration: _inputDecoration(),
                             )),
                             const SizedBox(height: 16),
-                            _buildLabeled('Antigravity Startup Command', Icons.terminal, FormBuilderTextField(
-                              name: 'antigravityStartupCommand',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
+                             _buildLabeled('Antigravity Startup Command', Icons.terminal, FormBuilderTextField(
+                               name: 'antigravityStartupCommand',
+                               style: TextStyle(color: AppColors.panelTextPrimary),
+                               decoration: _inputDecoration(),
+                             )),
+                             const SizedBox(height: 16),
+                             _buildLabeled('Antigravity API Key', Icons.key, FormBuilderTextField(
+                               name: 'antigravityApiKey',
+                               style: TextStyle(color: AppColors.panelTextPrimary),
+                               decoration: _inputDecoration(),
+                               obscureText: true,
+                             )),
+                             const SizedBox(height: 16),
+                            _buildLabeled('Antigravity Target Model', Icons.psychology_alt, FutureBuilder<List<AntigravityModel>>(
+                              future: _modelsFuture,
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const SizedBox(
+                                    height: 48,
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    ),
+                                  );
+                                } else if (snapshot.hasError) {
+                                  return Text('Error loading models: ${snapshot.error}', style: const TextStyle(color: Colors.redAccent));
+                                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                                  return const Text('No models found in current SDK instance.', style: TextStyle(color: Colors.grey));
+                                }
+
+                                final models = snapshot.data!;
+                                final hasSelection = models.any((m) => m.id == _antigravityModel);
+                                final initialValue = hasSelection
+                                    ? _antigravityModel
+                                    : (models.isNotEmpty ? models.first.id : 'gemini-2.0-flash');
+
+                                return FormBuilderDropdown<String>(
+                                  name: 'antigravityModel',
+                                  decoration: _inputDecoration(),
+                                  dropdownColor: AppColors.panelBackground,
+                                  initialValue: initialValue,
+                                  onChanged: (val) {
+                                    _antigravityModel = val;
+                                  },
+                                  onSaved: (val) {
+                                    _antigravityModel = val;
+                                  },
+                                  items: models.map((m) {
+                                    return DropdownMenuItem(
+                                      value: m.id,
+                                      child: Text(m.displayName, style: TextStyle(color: AppColors.panelTextPrimary)),
+                                    );
+                                  }).toList(),
+                                );
+                              },
                             )),
                             const SizedBox(height: 32),
                             ElevatedButton.icon(

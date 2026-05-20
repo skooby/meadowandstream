@@ -524,19 +524,44 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       }
     }
 
-    debugPrint('[AiBridgeService] Configured Antigravity SDK with address: $lsAddress, token: $csrfToken, projectId: $projectId');
+    final targetModel = prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
 
-    antigravityClient = AntigravityClient(
+    debugPrint('[AiBridgeService] Configured Antigravity SDK with address: $lsAddress, token: $csrfToken, projectId: $projectId, model: $targetModel');
+
+    final apiKey = prefs.getString('antigravity_api_key') ?? '';
+
+    antigravityClient = AntigravityClient.custom(
       config: AntigravityConfig(
         binaryPath: binaryPath,
         lsAddress: lsAddress,
         csrfToken: csrfToken,
         projectId: projectId,
+        targetModel: targetModel,
+        apiKey: apiKey,
       ),
       onLog: (logMessage) {
         SystemLogsService.instance.addLog(logMessage, category: LogCategory.AI);
       },
     );
+    AntigravityClient.instance = antigravityClient;
+
+    // Fetch and log available models at start for testing
+    Future.microtask(() async {
+      try {
+        final models = await AntigravityClient().models.list();
+        final sb = StringBuffer('Available Antigravity Models:\n');
+        for (final m in models) {
+          sb.writeln('  - ${m.id} (${m.displayName}) [reasoning: ${m.supportsReasoning}]');
+        }
+        final logMsg = sb.toString();
+        debugPrint('[AiBridgeService] $logMsg');
+        SystemLogsService.instance.addLog('[AiBridgeService] $logMsg', category: LogCategory.AI);
+      } catch (e) {
+        final errMsg = 'Error listing models at startup: $e';
+        debugPrint('[AiBridgeService] $errMsg');
+        SystemLogsService.instance.addLog('[AiBridgeService] $errMsg', category: LogCategory.AI);
+      }
+    });
 
     // Subscribe to artifact updates
     antigravityClient.onArtifactUpdate.listen((update) {
@@ -608,6 +633,96 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     });
 
     init();
+  }
+
+  Future<void> updateAntigravityConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    final binaryPath = prefs.getString('antigravity_binary_path') ?? '';
+    final startupCmd = prefs.getString('antigravity_startup_command') ?? 'antigravity-server';
+    final resolvedCmd = BackendProcessManager().getResolvedStartupCommand(startupCmd);
+
+    // Dynamically parse CSRF token from the startup command
+    String csrfToken = '6c867a8e-96cc-483d-a132-178ab094abe3';
+    final csrfMatch = RegExp(r'--csrf_token\s+([^\s]+)').firstMatch(resolvedCmd);
+    if (csrfMatch != null) {
+      csrfToken = csrfMatch.group(1)!.replaceAll('"', '').replaceAll("'", "");
+    }
+
+    // Dynamically parse address / hostport from preferences or startup command
+    final baseUrl = prefs.getString('antigravity_base_url') ?? 'http://localhost:8080';
+    var lsAddress = baseUrl.replaceFirst(RegExp(r'^https?://'), '');
+    if (lsAddress.endsWith('/')) {
+      lsAddress = lsAddress.substring(0, lsAddress.length - 1);
+    }
+    if (lsAddress.startsWith('localhost')) {
+      lsAddress = lsAddress.replaceFirst('localhost', '127.0.0.1');
+    }
+    
+    if (!lsAddress.contains(':')) {
+      final portMatch = RegExp(r'--http_server_port\s+([^\s]+)').firstMatch(resolvedCmd);
+      if (portMatch != null) {
+        final port = portMatch.group(1)!.replaceAll('"', '').replaceAll("'", "");
+        lsAddress = '$lsAddress:$port';
+      } else {
+        lsAddress = '$lsAddress:8080';
+      }
+    }
+
+    String projectId = '';
+    final envId = Platform.environment['ANTIGRAVITY_PROJECT_ID'];
+    if (envId != null && envId.isNotEmpty) {
+      projectId = envId;
+    } else {
+      try {
+        final userProfile = Platform.environment['USERPROFILE'] ?? '';
+        final projectsDir = Directory('$userProfile\\.gemini\\config\\projects');
+        if (await projectsDir.exists()) {
+          final currentPathNormalized = Directory.current.absolute.path.replaceAll('\\', '/').toLowerCase();
+          await for (final entity in projectsDir.list()) {
+            if (entity is File && entity.path.endsWith('.json')) {
+              try {
+                final content = await entity.readAsString();
+                final json = jsonDecode(content);
+                final id = json['id'] as String?;
+                final resources = json['projectResources']?['resources'] as List?;
+                if (resources != null && id != null) {
+                  for (final res in resources) {
+                    final folderUri = res['gitFolder']?['folderUri'] as String?;
+                    if (folderUri != null) {
+                      final decodedUri = Uri.decodeFull(folderUri).replaceAll('\\', '/').toLowerCase();
+                      if (decodedUri.contains(currentPathNormalized)) {
+                        projectId = id;
+                        break;
+                      }
+                    }
+                  }
+                }
+              } catch (_) {}
+              if (projectId.isNotEmpty) break;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[AiBridgeService] Error scanning projects configuration directory: $e');
+      }
+    }
+
+    final targetModel = prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
+
+    debugPrint('[AiBridgeService] Updating Antigravity SDK Config with address: $lsAddress, token: $csrfToken, projectId: $projectId, model: $targetModel');
+
+    final apiKey = prefs.getString('antigravity_api_key') ?? '';
+
+    antigravityClient.updateConfig(
+      AntigravityConfig(
+        binaryPath: binaryPath,
+        lsAddress: lsAddress,
+        csrfToken: csrfToken,
+        projectId: projectId,
+        targetModel: targetModel,
+        apiKey: apiKey,
+      ),
+    );
   }
 
   final String _dirPath = '.ai_bridge';
