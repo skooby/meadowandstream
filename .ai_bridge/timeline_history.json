@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "id": "569d3e95-8950-4057-a73a-a927f04c2907",
+    "taskIds": [
+      "1779299719063"
+    ],
+    "title": "TASK MANAGER",
+    "summary": "",
+    "commitHash": "27ab2ab18a33d6eac56fc6c1a4534f7b6afffa10",
+    "commitDate": "2026-05-20T12:15:28.931435",
+    "verifiedNotes": "- Move the worksheet + icon to the end of the worksheet icons in the toolbar\n- Task Editor Remove the dropdown for the type of task this is... not sure where that came from... the dropdown to the left of status"
+  }
+]

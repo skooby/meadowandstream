@@ -2977,6 +2977,23 @@ showColorPickerWindow(context);
                 ),
               ),
             ),
+            Container(
+              margin: EdgeInsets.only(left: 8 * scale, right: 12 * scale),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: Colors.white.withOpacity(0.8),
+                    width: 1.5 * scale),
+              ),
+              child: IconButton(
+                  icon: Icon(Icons.bolt, size: 20 * scale),
+                  tooltip: 'Do Work (Batch Process)',
+                  color: Colors.yellow,
+                  padding: EdgeInsets.all(6 * scale),
+                  constraints: const BoxConstraints(),
+                  onPressed: _executeBatchWorkPrompt,
+              ),
+            ),
           ],
         ),
       );
@@ -3154,19 +3171,25 @@ showColorPickerWindow(context);
                         ],
                       ),
                       IconButton(
-                        onPressed: _executeBatchWorkPrompt,
-                        icon: Icon(Icons.bolt, size: 16, color: AppColors.getAdaptiveAmber(AppColors.titleBarBackground)),
-                        tooltip: 'Do Work (Batch Process)',
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        constraints: const BoxConstraints(),
-                      ),
-                      IconButton(
                         onPressed: () {
                             GlobalTaskEditorState.instance.requestEdit(forceFolderCreation: true);
                             showTaskEditorWindow(context);
                         },
-                        icon: Icon(Icons.create_new_folder, size: 16, color: AppColors.getAdaptiveAccent(AppColors.titleBarBackground)),
+                        icon: Icon(Icons.create_new_folder, size: 18, color: AppColors.folder),
                         tooltip: 'Add Folder',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () {
+                            final visibleWorksheets = AiBridgeService.instance.worksheets.where((w) => w.isWorksheetVisible).toList();
+                            final String? targetParentId = visibleWorksheets.isNotEmpty ? visibleWorksheets.first.id : null;
+                            GlobalTaskEditorState.instance.requestEdit(preselectedParentId: targetParentId);
+                            showTaskEditorWindow(context);
+                        },
+                        icon: Icon(Icons.add, size: 20, color: AppColors.accent),
+                        tooltip: 'Add Task',
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                       ),
