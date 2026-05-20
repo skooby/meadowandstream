@@ -504,4 +504,64 @@ class VersionControlService {
       throw Exception('Failed timeline cleanup: $e');
     }
   }
+
+  Future<List<Map<String, String>>> getFileCommitHistory(String filePath) async {
+    final path = await getLocalRepositoryPath();
+    if (path == null || path.isEmpty) {
+      SystemLogsService.instance.addLog('getFileCommitHistory failed: path is null or empty', category: LogCategory.VC);
+      return [];
+    }
+
+    try {
+      final result = await Process.run(
+        'git',
+        ['log', '--follow', '--format=%H===%s===%an===%ad', '--date=iso', '--', filePath],
+        workingDirectory: path,
+        runInShell: false,
+      );
+
+      if (result.exitCode == 0) {
+        final out = result.stdout.toString().trim();
+        if (out.isEmpty) return [];
+        final lines = out.split('\n');
+        return lines.map((line) {
+          final parts = line.split('===');
+          if (parts.length >= 4) {
+            return {
+              'sha': parts[0],
+              'hash': parts[0],
+              'message': parts[1],
+              'author': parts[2],
+              'date': parts[3],
+            };
+          }
+          return {'sha': '', 'hash': '', 'message': 'Unknown format', 'author': '', 'date': ''};
+        }).toList();
+      } else {
+        SystemLogsService.instance.addLog('getFileCommitHistory exitCode != 0: ${result.exitCode}\n${result.stderr}', category: LogCategory.VC);
+      }
+    } catch (e) {
+      SystemLogsService.instance.addLog('getFileCommitHistory exception: $e', category: LogCategory.VC);
+    }
+    return [];
+  }
+
+  Future<String> getFileContentAtCommit(String filePath, String commitSha) async {
+    final path = await getLocalRepositoryPath();
+    if (path == null || path.isEmpty) throw Exception('Local repository path not set.');
+    
+    final normalizedPath = filePath.replaceAll('\\', '/');
+
+    final result = await Process.run(
+      'git',
+      ['show', '$commitSha:$normalizedPath'],
+      workingDirectory: path,
+      runInShell: false,
+    );
+
+    if (result.exitCode != 0) {
+      throw Exception('Failed to get file content at commit $commitSha:\n${result.stderr}');
+    }
+    return result.stdout.toString();
+  }
 }
