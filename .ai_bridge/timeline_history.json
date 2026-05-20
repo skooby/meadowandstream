@@ -1,5 +1,16 @@
 [
   {
+    "id": "2e304176-b0e9-4e59-8fb3-623203151afa",
+    "taskIds": [
+      "1779292935054"
+    ],
+    "title": "RESTART/RELOAD [test(bridge): verify return sequence stability without lockups]",
+    "summary": "",
+    "commitHash": "8f33d85d46f6df06bb3e04f0c126253236f07297",
+    "commitDate": "2026-05-20T10:49:01.573291",
+    "verifiedNotes": "- Testing restart/reload at end of processing task\n- Checking for return lockups from AI Bridge"
+  },
+  {
     "id": "779cd37b-c946-4fbe-9d5c-67b740230201",
     "taskIds": [
       "1779292935054"

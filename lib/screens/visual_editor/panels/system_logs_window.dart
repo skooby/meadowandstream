@@ -43,9 +43,14 @@ class _SystemLogsWindowState extends State<SystemLogsWindow> {
   double _bgOpacity = 0.4;
   Offset _offset = const Offset(100, 100);
 
+  final ScrollController _scrollController = ScrollController();
+  bool _autoScroll = true;
+
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
+    SystemLogsService.instance.addListener(_scrollToBottomIfNeeded);
     _loadPreferences();
     VisualEditorScreen.currentWorkspace.addListener(_loadPreferences);
     VisualEditorScreen.configRefreshNotifier.addListener(_loadPreferences);
@@ -54,10 +59,50 @@ class _SystemLogsWindowState extends State<SystemLogsWindow> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    SystemLogsService.instance.removeListener(_scrollToBottomIfNeeded);
+    _scrollController.dispose();
     VisualEditorScreen.currentWorkspace.removeListener(_loadPreferences);
     VisualEditorScreen.configRefreshNotifier.removeListener(_loadPreferences);
     VisualEditorScreen.activeWindowNotifier.removeListener(_onActiveWindowChanged);
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients) {
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+      
+      // If the user scrolls up by more than 10 pixels, disable autoScroll.
+      // If they scroll back down to the bottom (within 10 pixels), re-enable autoScroll.
+      if (maxScroll - currentScroll > 10) {
+        if (_autoScroll) {
+          setState(() {
+            _autoScroll = false;
+          });
+        }
+      } else {
+        if (!_autoScroll) {
+          setState(() {
+            _autoScroll = true;
+          });
+        }
+      }
+    }
+  }
+
+  void _scrollToBottomIfNeeded() {
+    if (_autoScroll && _scrollController.hasClients) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
   }
 
   void _onActiveWindowChanged() {
@@ -78,6 +123,7 @@ class _SystemLogsWindowState extends State<SystemLogsWindow> {
         
         SystemLogsWindow.isPinnedOnTopNotifier.value = prefs.getBool('sys_logs_pinned') ?? false;
       });
+      _scrollToBottomIfNeeded();
     }
   }
 
@@ -292,36 +338,40 @@ class _SystemLogsWindowState extends State<SystemLogsWindow> {
                         style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.rootFontSize),
                       ),
                     )
-                  : ListView.builder(
-                      itemCount: logs.length,
-                      itemBuilder: (context, index) {
-                        final log = logs[index];
-                        Color tagColor = Colors.greenAccent;
-                        if (log.category == LogCategory.ERROR) {
-                          tagColor = Colors.redAccent;
-                        } else if (log.category == LogCategory.NETWORK)
-                          tagColor = AppColors.accent;
-                        else if (log.category == LogCategory.DB)
-                          tagColor = Colors.amberAccent;
-                        else if (log.category == LogCategory.AI)
-                          tagColor = Colors.purpleAccent;
-                        else if (log.category == LogCategory.MACRO)
-                          tagColor = Colors.tealAccent;
-                        else if (log.category == LogCategory.VC)
-                          tagColor = Colors.blueAccent;
+                  : Scrollbar(
+                      controller: _scrollController,
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        itemCount: logs.length,
+                        itemBuilder: (context, index) {
+                          final log = logs[index];
+                          Color tagColor = Colors.greenAccent;
+                          if (log.category == LogCategory.ERROR) {
+                            tagColor = Colors.redAccent;
+                          } else if (log.category == LogCategory.NETWORK)
+                            tagColor = AppColors.accent;
+                          else if (log.category == LogCategory.DB)
+                            tagColor = Colors.amberAccent;
+                          else if (log.category == LogCategory.AI)
+                            tagColor = Colors.purpleAccent;
+                          else if (log.category == LogCategory.MACRO)
+                            tagColor = Colors.tealAccent;
+                          else if (log.category == LogCategory.VC)
+                            tagColor = Colors.blueAccent;
 
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12.0, vertical: 2.0),
-                          child: SelectableText(
-                            '[${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}:${log.timestamp.second.toString().padLeft(2, '0')}] [${log.category.name}] ${log.message}',
-                            style: TextStyle(
-                                color: tagColor,
-                                fontSize: AppUIConfig.rootFontSize,
-                                fontFamily: 'monospace'),
-                          ),
-                        );
-                      },
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12.0, vertical: 2.0),
+                            child: SelectableText(
+                              '[${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}:${log.timestamp.second.toString().padLeft(2, '0')}] [${log.category.name}] ${log.message}',
+                              style: TextStyle(
+                                  color: tagColor,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontFamily: 'monospace'),
+                            ),
+                          );
+                        },
+                      ),
                     ),
             ),
             Container(
@@ -414,6 +464,7 @@ class _SystemLogsWindowState extends State<SystemLogsWindow> {
         child: InkWell(
             onTap: () {
               setState(() => _selectedLogCategory = category);
+              _scrollToBottomIfNeeded();
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

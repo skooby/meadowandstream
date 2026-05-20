@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:music_app/screens/visual_editor/panels/system_logs_window.dart';
+import 'package:music_app/services/system_logs_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('SystemLogsWindow Pin and Transparency toggle test', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
+    SystemLogsService.instance.addLog('Test log entry');
 
     bool onCloseCalled = false;
 
@@ -59,5 +61,13 @@ void main() {
     // Tap it again
     await tester.tap(opacityButtonFinder);
     await tester.pumpAndSettle();
+
+    // Verify ScrollController is attached
+    final listFinder = find.byType(ListView);
+    expect(listFinder, findsOneWidget);
+    final Scrollable scrollable = tester.widget<Scrollable>(
+      find.descendant(of: listFinder, matching: find.byType(Scrollable)).first,
+    );
+    expect(scrollable.controller, isNotNull);
   });
 }
