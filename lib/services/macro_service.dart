@@ -942,7 +942,11 @@ function NextClipboard {
         process.stderr.transform(utf8.decoder).listen((data) => processErrors(data));
 
         if (wait) {
-          int code = await process.exitCode;
+          int code = await process.exitCode.timeout(const Duration(seconds: 5), onTimeout: () {
+            process.kill();
+            SystemLogsService.instance.addLog('⚠ Macro timed out after 5 seconds: ${macro.name.trim()}', category: LogCategory.ERROR);
+            return -1;
+          });
           if (code == 0) {
              SystemLogsService.instance.addLog('✔ Macro Completed: ${macro.name.trim()}', category: LogCategory.MACRO);
           }

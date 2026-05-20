@@ -1272,7 +1272,8 @@ wshShell.AppActivate $myPid
         if (brainDir.existsSync()) {
           final entities = brainDir.listSync(recursive: true, followLinks: false).whereType<File>();
           for (final file in entities) {
-            if (file.path.endsWith('overview.txt')) {
+            if (file.path.endsWith('transcript.jsonl') ||
+                file.path.endsWith('overview.txt')) {
               final stat = file.statSync();
               final prev = _antigravityLastModifiedTimes[file.path];
               if (prev != stat.modified) {
@@ -1649,6 +1650,7 @@ wshShell.AppActivate $myPid
               if (await file.exists()) {
                 final content = (await file.readAsString()).trim();
                 if (content == 'IDLE' || content == 'PREVIEW') {
+                  _activeAgents.clear();
                   _isAntigravityBusy = false;
                   _antigravityLastChangeObservedAt = null;
                   triggerPendingUpdate(force: true);
@@ -1661,46 +1663,67 @@ wshShell.AppActivate $myPid
               if (await statusFile.exists()) {
                 final content = (await statusFile.readAsString()).trim();
                 if (content == 'IDLE' || content == 'PREVIEW') {
-                  if (_isHandlingAgentStatus) return;
+                  print('[AiBridge] Status change observed in agent_status.txt: $content');
+                  print('[AiBridge] Current _isHandlingAgentStatus state: $_isHandlingAgentStatus');
+                  if (_isHandlingAgentStatus) {
+                    print('[AiBridge] Status watcher is already handling an event. Ignoring duplicate event.');
+                    return;
+                  }
                   _isHandlingAgentStatus = true;
+                  print('[AiBridge] Acquired status handling lock (_isHandlingAgentStatus = true)');
                   try {
-                  try {
-                    File('$_dirPath/bridge_debug.txt').writeAsStringSync(
-                        'IDLE/PREVIEW detected! isAntigravityBusy: $_isAntigravityBusy');
-                  } catch (_) {}
-
-                  int waitCount = 0;
-                  while (_isAntigravityBusy && waitCount < 10) {
-                    await Future.delayed(const Duration(milliseconds: 500));
-                    waitCount++;
-                  }
-                  _isAntigravityBusy = false;
-                  _antigravityLastChangeObservedAt = null;
-                  await Future.delayed(const Duration(milliseconds: 800));
-
-                  if (content == 'IDLE') {
-                    bool hasCompileError = false;
                     try {
-                      final res = await Process.run('dart', ['analyze'],
-                          runInShell: true);
-                      final output =
-                          res.stdout.toString() + '\n' + res.stderr.toString();
-                      if (output.contains('error -') ||
-                          output.contains('error •') ||
-                          output.contains('error \u2022')) {
-                        hasCompileError = true;
-                        await forceDispatchCompileError(output);
+                      File('$_dirPath/bridge_debug.txt').writeAsStringSync(
+                          'IDLE/PREVIEW detected! isAntigravityBusy: $_isAntigravityBusy');
+                    } catch (_) {}
+
+                    int waitCount = 0;
+                    print('[AiBridge] Waiting for _isAntigravityBusy to be false. Current: $_isAntigravityBusy');
+                    while (_isAntigravityBusy && waitCount < 10) {
+                      await Future.delayed(const Duration(milliseconds: 500));
+                      waitCount++;
+                    }
+                    _isAntigravityBusy = false;
+                    _antigravityLastChangeObservedAt = null;
+                    print('[AiBridge] Busy wait finished. Proceeding with status processing.');
+                    await Future.delayed(const Duration(milliseconds: 800));
+
+                    if (content == 'IDLE') {
+                      bool hasCompileError = false;
+                      print('[AiBridge] Running dart analyze build check...');
+                      try {
+                        final res = await Process.run('dart', ['analyze'],
+                            runInShell: true);
+                        final output =
+                            res.stdout.toString() + '\n' + res.stderr.toString();
+                        if (output.contains('error -') ||
+                            output.contains('error •') ||
+                            output.contains('error \u2022')) {
+                          hasCompileError = true;
+                          print('[AiBridge] Build check failed. Dispatching compile error...');
+                          await forceDispatchCompileError(output);
+                        } else {
+                          print('[AiBridge] Build check passed.');
+                        }
+                      } catch (e) {
+                        print('[AiBridge] Failed to run automated dart analyze check: $e');
                       }
-                    } catch (e) {
-                      debugPrint(
-                          'Failed to run automated dart analyze check: $e');
+                      if (hasCompileError) {
+                        print('[AiBridge] Compile error detected. Clearing active prompt/task state to unblock UI.');
+                        if (_activePrompt != null) {
+                          _activePrompt!.completedAt = DateTime.now();
+                          _completedPrompts.add(_activePrompt!);
+                        }
+                        _activeProcessingTaskId = null;
+                        _activeProcessingTaskAssignedAt = null;
+                        _activePrompt = null;
+                        _saveQueueState();
+                        notifyListeners();
+                        print('[AiBridge] Queue state saved. Executing _processQueue() for correction prompt.');
+                        _processQueue();
+                        return;
+                      }
                     }
-                    if (hasCompileError) {
-                      _saveQueueState();
-                      notifyListeners();
-                      return;
-                    }
-                  }
 
                   if (_activeProcessingTaskId != null) {
                     try {
@@ -1719,7 +1742,9 @@ wshShell.AppActivate $myPid
                             final overviewFiles = brainDir
                                 .listSync(recursive: true, followLinks: false)
                                 .whereType<File>()
-                                .where((f) => f.path.endsWith('overview.txt'))
+                                .where((f) =>
+                                    f.path.endsWith('transcript.jsonl') ||
+                                    f.path.endsWith('overview.txt'))
                                 .toList();
                             if (overviewFiles.isNotEmpty) {
                               overviewFiles.sort((a, b) => b
@@ -1933,27 +1958,45 @@ wshShell.AppActivate $myPid
                           }
                         }
 
-                        // 4. Missing-File Enforcement
-                        if (content == 'IDLE') {
-                          final List<String> missingFiles = [];
-                          final bool hasVerificationCriteria = _tasks[taskIdx].verificationCriteria.isNotEmpty;
-                          final bool notesWereMissing = notesContent.trim().isEmpty;
-                          final bool verificationWasMissing = hasVerificationCriteria && verificationContent.trim().isEmpty;
+                         // 4. Missing-File Enforcement
+                         if (content == 'IDLE') {
+                           print('[AiBridge] Performing Missing-File Enforcement check...');
+                           final List<String> missingFiles = [];
+                           final bool hasVerificationCriteria = _tasks[taskIdx].verificationCriteria.isNotEmpty;
+                           final bool notesWereMissing = notesContent.trim().isEmpty;
+                           final bool verificationWasMissing = hasVerificationCriteria && verificationContent.trim().isEmpty;
 
-                          if (notesWereMissing) missingFiles.add('`.ai_bridge/latest_notes.json` (format: {"notes": "...", "summary": "..."})');
-                          if (verificationWasMissing) missingFiles.add('`.ai_bridge/latest_verification.json` (format: [{"description": "...", "isVerified": true, "proof": "..."}])');
+                           if (notesWereMissing) missingFiles.add('`.ai_bridge/latest_notes.json` (format: {"notes": "...", "summary": "..."})');
+                           if (verificationWasMissing) missingFiles.add('`.ai_bridge/latest_verification.json` (format: [{"description": "...", "isVerified": true, "proof": "..."}])');
 
-                          if (missingFiles.isNotEmpty) {
-                            final missingList = missingFiles.map((f) => '- $f').join('\n');
-                            final correctionPrompt = _missingFilesInstructions.replaceAll('{missingList}', missingList);
-                            debugPrint('[AiBridge] Missing required files after IDLE. Re-queuing correction prompt.');
-                            await sendToQueue(correctionPrompt, false, taskIds: [_tasks[taskIdx].id], insertFirst: true);
-                            File('$_dirPath/agent_status.txt').writeAsStringSync('BUSY');
-                            _saveQueueState();
-                            notifyListeners();
-                            return;
-                          }
-                        }
+                           if (missingFiles.isNotEmpty) {
+                             print('[AiBridge] Missing required files after IDLE: $missingFiles');
+                             final missingList = missingFiles.map((f) => '- $f').join('\n');
+                             final correctionPrompt = _missingFilesInstructions.replaceAll('{missingList}', missingList);
+                             
+                             print('[AiBridge] Re-queuing correction prompt for missing files.');
+                             await sendToQueue(correctionPrompt, false, taskIds: [_tasks[taskIdx].id], insertFirst: true);
+
+                             print('[AiBridge] Clearing active prompt/task state to unblock UI.');
+                             if (_activePrompt != null) {
+                               _activePrompt!.completedAt = DateTime.now();
+                               _completedPrompts.add(_activePrompt!);
+                             }
+                             _activeProcessingTaskId = null;
+                             _activeProcessingTaskAssignedAt = null;
+                             _activePrompt = null;
+
+                             File('$_dirPath/agent_status.txt').writeAsStringSync('BUSY');
+                             _saveQueueState();
+                             notifyListeners();
+                             
+                             print('[AiBridge] Executing _processQueue() for correction prompt.');
+                             _processQueue();
+                             return;
+                           } else {
+                             print('[AiBridge] Missing-File Enforcement check passed.');
+                           }
+                         }
 
                         if (content == 'IDLE' && !generatedPreviewItems) {
                           final prefs = await SharedPreferences.getInstance();
@@ -1984,6 +2027,7 @@ wshShell.AppActivate $myPid
                   }
 
                   if (content == 'IDLE') {
+                    print('[AiBridge] IDLE detected. Completing and archiving active prompt.');
                     if (_activePrompt != null) {
                       _activePrompt!.completedAt = DateTime.now();
                       _completedPrompts.add(_activePrompt!);
@@ -1994,8 +2038,13 @@ wshShell.AppActivate $myPid
                     _compileErrorLoopCount = 0;
                     try {
                       final ctFile = File('$_dirPath/current_task.json');
-                      if (ctFile.existsSync()) ctFile.deleteSync();
-                    } catch (_) {}
+                      if (ctFile.existsSync()) {
+                        print('[AiBridge] Deleting current_task.json');
+                        ctFile.deleteSync();
+                      }
+                    } catch (e) {
+                      print('[AiBridge] Failed to delete current_task.json: $e');
+                    }
                   }
                   _saveQueueState();
                   notifyListeners();
@@ -2003,11 +2052,14 @@ wshShell.AppActivate $myPid
                   if (_pendingUpdateType == null) {
                     _pendingUpdateType = UpdateCoverType.hotReload;
                   }
+                  print('[AiBridge] Triggering pending update. Type: $_pendingUpdateType');
                   triggerPendingUpdate(force: true);
 
+                  print('[AiBridge] Executing _processQueue() for any remaining prompts.');
                   _processQueue();
                 } finally {
                   _isHandlingAgentStatus = false;
+                  print('[AiBridge] Released status handling lock (_isHandlingAgentStatus = false)');
                 }
               }
             }

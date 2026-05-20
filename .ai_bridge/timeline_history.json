@@ -1,5 +1,16 @@
 [
   {
+    "id": "c47c045e-9132-4874-b124-f36f861a8702",
+    "taskIds": [
+      "1779282807012"
+    ],
+    "title": "SYSTEM LOG [test(bridge): verify preview filtering and prevent status loop lockup]",
+    "summary": "",
+    "commitHash": "d9f5ccaa6d0c22a97cbae240ceb60484886bbac0",
+    "commitDate": "2026-05-20T08:06:19.382104",
+    "verifiedNotes": "- Add the ability to PIN the window on top\n- Add an icon to have background to toggle between 25%, 50%, 75% transparent\n- Test preview tasks make sure they are not appearing, and check for return lockups"
+  },
+  {
     "id": "ca38bd5b-bbb6-4b40-a2b7-b7b45f0397d1",
     "taskIds": [
       "1779282807012"
