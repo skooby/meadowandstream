@@ -18,6 +18,7 @@ import '../../../models/app_collection.dart';
 
 import 'package:drift/drift.dart' as drift;
 import '../components/folder_hierarchy_view.dart';
+import 'file_history_dialog.dart';
 
 import '../../../widgets/draggable_alert_dialog.dart';
 import '../../../constants.dart';
@@ -1073,12 +1074,41 @@ class _AssetsPanelState extends State<AssetsPanel> {
                                         ? Colors.amberAccent
                                         : AppColors.panelTextSecondary,
                                     size: 20),
-                                getItemTrailing: (a) => IconButton(
-                                  icon: Icon(Icons.delete_outline,
-                                      color: AppColors.borderSubtle, size: 18),
-                                  onPressed: () => _deleteAsset(a),
-                                  tooltip: 'Delete ${a.type}',
-                                  hoverColor: Colors.redAccent.withOpacity(0.2),
+                                getItemTrailing: (a) => Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (a.type == 'FILE') ...[
+                                      IconButton(
+                                        icon: Icon(Icons.history,
+                                            color: AppColors.panelTextSecondary, size: 18),
+                                        onPressed: () async {
+                                          final targetUri = await _resolveLocalFolderPath(a);
+                                          final filePath = '$targetUri\\${a.name}';
+                                          if (context.mounted) {
+                                            showDialog(
+                                              context: context,
+                                              builder: (context) => FileHistoryDialog(
+                                                filePath: filePath,
+                                                fileName: a.name,
+                                              ),
+                                            ).then((restored) {
+                                              if (restored == true) {
+                                                setState(() {});
+                                              }
+                                            });
+                                          }
+                                        },
+                                        tooltip: 'File History',
+                                      ),
+                                    ],
+                                    IconButton(
+                                      icon: Icon(Icons.delete_outline,
+                                          color: AppColors.borderSubtle, size: 18),
+                                      onPressed: () => _deleteAsset(a),
+                                      tooltip: 'Delete ${a.type}',
+                                      hoverColor: Colors.redAccent.withOpacity(0.2),
+                                    ),
+                                  ],
                                 ),
                                 onNavigateToFolder: _navigateToFolder,
                                 onNavigateToItemFolder: _navigateToFolder,
@@ -1305,6 +1335,31 @@ class _AssetsPanelState extends State<AssetsPanel> {
                     fontWeight: FontWeight.bold)),
             Row(
               children: [
+                if (asset.type == 'FILE') ...[
+                  IconButton(
+                    onPressed: () async {
+                      final targetUri = await _resolveLocalFolderPath(asset);
+                      final filePath = '$targetUri\\${asset.name}';
+                      if (context.mounted) {
+                        showDialog(
+                          context: context,
+                          builder: (context) => FileHistoryDialog(
+                            filePath: filePath,
+                            fileName: asset.name,
+                          ),
+                        ).then((restored) {
+                          if (restored == true) {
+                            setState(() {});
+                          }
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.history),
+                    color: AppColors.accent,
+                    tooltip: 'View File History',
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 IconButton(
                   onPressed: () async {
                     String targetUri = await _resolveLocalFolderPath(asset);

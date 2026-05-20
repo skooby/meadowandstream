@@ -1,5 +1,16 @@
 [
   {
+    "id": "a152f2f2-f80f-4721-a43f-faa1d192a7bc",
+    "taskIds": [
+      "1779304010000"
+    ],
+    "title": "[1/3] Git Local File History & Content Integration [feat(vc): implement local git history, git show, and github service fetch helpers]",
+    "summary": "Implement helper methods in VersionControlService to retrieve a single file's commit history and contents at specific SHAs using local git CLI commands.",
+    "commitHash": "de20d9124d4f2694e9f782afeb44a9b968d9ff6e",
+    "commitDate": "2026-05-20T13:22:41.927407",
+    "verifiedNotes": "- Create github_service.dart and define personal access token authorization header handling.\n- Implement fetchCommits(String filePath) to retrieve the commit history of a specific file.\n- Implement fetchFileContent(String filePath, String commitSha) to pull the raw text of the file.\n- Implement getFileCommitHistory(String filePath) using git log --follow --format=%H===%s===%an===%ad --date=iso -- <filePath>\n- Implement getFileContentAtCommit(String filePath, String commitSha) using git show <commitSha>:<filePath>"
+  },
+  {
     "id": "6ee7c815-8eda-4189-8875-649f94ad5e22",
     "taskIds": [
       "1779304010000"
