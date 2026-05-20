@@ -1,5 +1,16 @@
 [
   {
+    "id": "26364c0f-044a-49e3-a515-985cadf1ed20",
+    "taskIds": [
+      "1779227119674"
+    ],
+    "title": "ANTIGRAVITY CONNECTION [Fix Antigravity model dropdown styling and formatting]",
+    "summary": "",
+    "commitHash": "2e028d3994403f78d6e3ebe9c8e8d899228db805",
+    "commitDate": "2026-05-19T22:58:23.226932",
+    "verifiedNotes": "- Lets output to the log what is received from Antigravity, this should be in readable form\n- In the Config we need to query what models are available and be able to set the target model that is used\n- dropdown box for choosing the model is white text on white background"
+  },
+  {
     "id": "23e879e7-0ddb-4b8c-b89e-c8f38b6a43cd",
     "taskIds": [
       "1800000000014",

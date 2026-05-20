@@ -7,6 +7,7 @@ import '../db/app_database.dart';
 import '../db/daos/i18n_dao.dart';
 import '../db/daos/assets_dao.dart';
 import '../db/daos/asset_tags_dao.dart';
+import '../scripts/tenant_service.dart';
 import 'folder_engine.dart';
 
 class AiCommandParser {
@@ -147,6 +148,94 @@ class AiCommandParser {
 
   /// Seamlessly constructs strings, translates, and generates hierarchical nested structured tags natively via headless API algorithms.
   static Future<bool> _createTag(String name, String? folderName, String? colorStr, I18nDao i18nDao, AssetsDao assetsDao, SupabaseClient supabase) async {
-       return false;
+      try {
+         final tid = TenantService.currentTenantId ?? 0;
+         int? parentId;
+         
+         if (folderName != null && folderName.isNotEmpty) {
+            final existingFolder = await (i18nDao.select(i18nDao.db.strings)
+               ..where((s) => s.key.equals(folderName) & s.type.equals('FOLDER'))).getSingleOrNull();
+            if (existingFolder != null) {
+               parentId = existingFolder.id;
+            } else {
+               parentId = await i18nDao.getOrCreateStringFolder(folderName);
+            }
+         }
+
+         final String key = (folderName != null && folderName.isNotEmpty)
+             ? 'tag.${folderName.toLowerCase()}.${name.toLowerCase()}'
+             : 'tag.${name.toLowerCase()}';
+
+         final existing = await (i18nDao.select(i18nDao.db.strings)
+            ..where((s) => s.key.equals(key))).getSingleOrNull();
+         if (existing != null) return false;
+
+         final payload = {
+            'tenant_id': tid,
+            'key': key,
+            'parent_id': parentId,
+            'type': 'STRING',
+            'color': colorStr,
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+         };
+
+         int newId = 0;
+         try {
+            final resp = await supabase.from('strings').insert(payload).select().single();
+            newId = resp['id'] as int;
+         } catch (e) {
+            // Offline fallback
+         }
+
+         final int insertedId;
+         if (newId != 0) {
+            insertedId = await i18nDao.into(i18nDao.db.strings).insert(
+               StringsCompanion(
+                  id: drift.Value(newId),
+                  tenantId: drift.Value(tid),
+                  key: drift.Value(key),
+                  parentId: drift.Value(parentId),
+                  type: const drift.Value('STRING'),
+                  color: drift.Value(colorStr),
+                  createdAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+                  updatedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+               ),
+               mode: drift.InsertMode.insertOrReplace
+            );
+         } else {
+            insertedId = await i18nDao.into(i18nDao.db.strings).insert(
+               StringsCompanion(
+                  tenantId: drift.Value(tid),
+                  key: drift.Value(key),
+                  parentId: drift.Value(parentId),
+                  type: const drift.Value('STRING'),
+                  color: drift.Value(colorStr),
+                  createdAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+                  updatedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+               )
+            );
+         }
+
+         final langId = await i18nDao.getOrCreateLangId('en');
+         await i18nDao.setTranslation(insertedId, 'en', name);
+
+         if (newId != 0) {
+            try {
+               await supabase.from('translations').upsert({
+                  'tenant_id': tid,
+                  'string_id': insertedId,
+                  'lang_id': langId,
+                  'value': name,
+                  'updated_at': DateTime.now().toUtc().toIso8601String()
+               }, onConflict: 'string_id, lang_id');
+            } catch (_) {}
+         }
+
+         return true;
+      } catch (e) {
+         print('Error creating tag: $e');
+         return false;
+      }
   }
 }

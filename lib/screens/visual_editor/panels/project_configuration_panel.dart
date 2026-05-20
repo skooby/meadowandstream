@@ -288,6 +288,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   int _queueClearCompletedMinutes = -1;
   String? _agentRules;
   String? _antigravityBaseUrl;
+  String? _antigravityBridgeMode;
   String? _antigravityInvokeEndpoint;
   String? _antigravityPromptEndpoint;
   String? _antigravityStartupCommand;
@@ -408,6 +409,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _queueClearCompletedMinutes = prefs.getInt('queueClearCompletedMinutes') ?? -1;
       _agentRules = prefs.getString('project_agent_rules');
       _antigravityBaseUrl = prefs.getString('antigravity_base_url');
+      _antigravityBridgeMode = prefs.getString('antigravity_bridge_mode') ?? 'sdk';
       _antigravityInvokeEndpoint = prefs.getString('antigravity_invoke_endpoint');
       _antigravityPromptEndpoint = prefs.getString('antigravity_prompt_endpoint');
       _antigravityStartupCommand = prefs.getString('antigravity_startup_command');
@@ -824,6 +826,17 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           await prefs.remove('project_agent_rules');
       }
 
+      final newAntigravityBridgeMode = values.containsKey('antigravityBridgeMode') ? values['antigravityBridgeMode'] as String? : _antigravityBridgeMode;
+      if (newAntigravityBridgeMode != null && newAntigravityBridgeMode.trim().isNotEmpty) {
+          await prefs.setString('antigravity_bridge_mode', newAntigravityBridgeMode.trim());
+          final mode = AntigravityBridgeMode.values.firstWhere(
+              (e) => e.name == newAntigravityBridgeMode,
+              orElse: () => AntigravityBridgeMode.sdk);
+          AiBridgeService.instance.setBridgeMode(mode);
+      } else {
+          await prefs.remove('antigravity_bridge_mode');
+      }
+
       final newAntigravityBaseUrl = values.containsKey('antigravityBaseUrl') ? values['antigravityBaseUrl'] as String? : _antigravityBaseUrl;
       if (newAntigravityBaseUrl != null && newAntigravityBaseUrl.trim().isNotEmpty) {
           await prefs.setString('antigravity_base_url', newAntigravityBaseUrl.trim());
@@ -904,6 +917,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             _queueClearCompletedMinutes = newClearCompleted;
             _agentRules = newAgentRules;
             _antigravityBaseUrl = newAntigravityBaseUrl;
+            _antigravityBridgeMode = newAntigravityBridgeMode;
             _antigravityInvokeEndpoint = newAntigravityInvokeEndpoint;
             _antigravityPromptEndpoint = newAntigravityPromptEndpoint;
             _antigravityStartupCommand = newAntigravityStartupCommand;
@@ -919,9 +933,11 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           await _updateActiveThemeAndSave();
           try {
             await AiBridgeService.instance.updateAntigravityConfig();
-            setState(() {
-              _modelsFuture = AntigravityClient().models.list();
-            });
+            if (mounted) {
+              setState(() {
+                _modelsFuture = AntigravityClient().models.list();
+              });
+            }
           } catch (e) {
             debugPrint('[ProjectConfigurationPanel] Error updating active Antigravity config: $e');
           }
@@ -929,9 +945,11 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
          // Trigger the global notifier so all tool windows instantly repaint with new opacity
          VisualEditorScreen.configRefreshNotifier.value++;
 
-         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Project configuration auto-saved'), backgroundColor: Colors.green, duration: Duration(seconds: 1))
-         );
+         if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Project configuration auto-saved'), backgroundColor: Colors.green, duration: Duration(seconds: 1))
+           );
+         }
       }
     }
   }
@@ -1378,6 +1396,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                 'textOutlineWidth': _textOutlineWidth.toString(),
                 'queueClearCompletedMinutes': _queueClearCompletedMinutes.toString(),
                 'agentRules': _agentRules ?? 'Role: Senior Systems Architect.\nCommunication Style: Minimalist. No greetings, no "I hope this helps," no conversational filler. Output only technical plans, code, or critical status alerts.\nOperational Protocol:\nAlways prioritize Planning Mode before Acting.\nUse the /terminal to verify assumptions; do not guess file structures.\nIf a task is ambiguous, list 3 specific questions and stop.\n\nThe "Focus & Drift" Monitor:\nBefore every task, state the current objective in one sentence.\nIf the current task deviates from the PROJECT_SUMMARY.md goals, flag a "Context Drift Alert" and request realignment.\nError Reduction: Run a "Red Team" check on every code block for null pointers and race conditions before presenting.\n\nThe "State Persistence" Workflow:\nCreate a workflow /sync that:\nScans the last 10 interactions.\nUpdates PROJECT_SUMMARY.md with:\n[Current Architecture]\n[Resolved Blockers]\n[Pending Critical Tasks].\nUpdates BRIDGE_LOGS.md with any API or connectivity changes.\nDeletes outdated \'TODO\' comments in the codebase.\n\nThe "New Chat" Handover:\nGenerate a Handover Manifest. Summarize the current technical state, the specific logic of the AI Bridge we just built, and the exact next step. Format this so I can paste it into a fresh chat to give the new agent 100% context instantly.\n\nAutomated Summary Maintenance:\nUpon completion of any file write or terminal command, automatically append a 1-sentence summary of the change to the CHANGELOG.md and verify it against the PROJECT_SUMMARY.md for consistency.',
+                'antigravityBridgeMode': _antigravityBridgeMode ?? 'sdk',
                 'antigravityBaseUrl': _antigravityBaseUrl ?? 'http://localhost:8080',
                 'antigravityInvokeEndpoint': _antigravityInvokeEndpoint ?? '/api/v1/agents/invoke',
                 'antigravityPromptEndpoint': _antigravityPromptEndpoint ?? '/api/v1/prompt',
@@ -2535,6 +2554,29 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                           children: [
                             const SizedBox(height: 16),
                             Text('ANTIGRAVITY SDK', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Antigravity Bridge Mode', Icons.settings_ethernet, FormBuilderDropdown<String>(
+                              name: 'antigravityBridgeMode',
+                              decoration: _inputDecoration(),
+                              dropdownColor: AppColors.panelBackground,
+                              initialValue: _antigravityBridgeMode ?? 'sdk',
+                              onChanged: (val) {
+                                _antigravityBridgeMode = val;
+                              },
+                              onSaved: (val) {
+                                _antigravityBridgeMode = val;
+                              },
+                              items: [
+                                DropdownMenuItem(
+                                  value: 'sdk',
+                                  child: Text('Daemon SDK Mode (Local Server + gRPC Subagent)', style: TextStyle(color: AppColors.panelTextPrimary)),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'cli',
+                                  child: Text('CLI / Pasting Mode (IDE Integration + Clipboard + Macro)', style: TextStyle(color: AppColors.panelTextPrimary)),
+                                ),
+                              ],
+                            )),
                             const SizedBox(height: 16),
                             _buildLabeled('Antigravity API Base URL', Icons.cloud, FormBuilderTextField(
                               name: 'antigravityBaseUrl',

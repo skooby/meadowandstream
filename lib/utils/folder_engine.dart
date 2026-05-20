@@ -1,18 +1,20 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:drift/drift.dart' as drift;
 import '../db/app_database.dart';
+import '../scripts/tenant_service.dart';
 
 class FolderEngine {
   /// Resolves the parent ID dynamically based on the target table.
   static Future<int?> _resolveParent(String? parentName, String table, AppDatabase db) async {
       if (parentName == null) return null;
-      if (table == 'assets') {
-          final res = await (db.select(db.assets)..where((t) => t.name.equals(parentName) & t.type.equals('FOLDER'))).getSingleOrNull();
+      final t = table.trim().toLowerCase();
+      if (t == 'assets') {
+          final res = await (db.select(db.assets)..where((x) => x.name.equals(parentName) & x.type.equals('FOLDER'))).getSingleOrNull();
           if (res == null) throw Exception('Parent folder "$parentName" missing in Assets.');
           return res.id;
-      } else if (table == 'strings') {
-          final res = await (db.select(db.strings)..where((t) => t.key.equals(parentName) & t.type.equals('FOLDER'))).getSingleOrNull();
-          if (res == null) throw Exception('Parent folder "$parentName" missing in Strings.');
+      } else if (t == 'strings' || t == 'tags') {
+          final res = await (db.select(db.strings)..where((x) => x.key.equals(parentName) & x.type.equals('FOLDER'))).getSingleOrNull();
+          if (res == null) throw Exception('Parent folder "$parentName" missing in Strings/Tags.');
           return res.id;
       } else {
           throw Exception('Unknown hierarchical engine "$table".');
@@ -30,33 +32,34 @@ class FolderEngine {
       final t = table.trim().toLowerCase();
       final parentId = await _resolveParent(parentName, t, db);
       final slug = name.trim();
+      final tid = TenantService.currentTenantId ?? 1;
       
       if (t == 'assets') {
-          final existing = await (db.select(db.assets)..where((t) => t.name.equals(slug) & t.type.equals('FOLDER'))).getSingleOrNull();
+          final existing = await (db.select(db.assets)..where((x) => x.name.equals(slug) & x.type.equals('FOLDER'))).getSingleOrNull();
           if (existing != null) return false;
           
           final resp = await supabase.from('assets').insert({
-              'tenant_id': 1, 'name': slug, 'type': 'FOLDER', 'parent_id': parentId,
+              'tenant_id': tid, 'name': slug, 'type': 'FOLDER', 'parent_id': parentId,
               'created_at': DateTime.now().millisecondsSinceEpoch, 'updated_at': DateTime.now().millisecondsSinceEpoch
           }).select().single();
           
           await db.into(db.assets).insert(AssetsCompanion(
-             id: drift.Value(resp['id'] as int), tenantId: const drift.Value(1),
+             id: drift.Value(resp['id'] as int), tenantId: drift.Value(tid),
              name: drift.Value(slug), type: const drift.Value('FOLDER'), parentId: drift.Value(parentId),
              createdAt: drift.Value(DateTime.now().millisecondsSinceEpoch), updatedAt: drift.Value(DateTime.now().millisecondsSinceEpoch)
           ));
           return true;
       } 
-      else if (t == 'strings') {
-          final existing = await (db.select(db.strings)..where((t) => t.key.equals(slug) & t.type.equals('FOLDER'))).getSingleOrNull();
+      else if (t == 'strings' || t == 'tags') {
+          final existing = await (db.select(db.strings)..where((x) => x.key.equals(slug) & x.type.equals('FOLDER'))).getSingleOrNull();
           if (existing != null) return false;
           
           final resp = await supabase.from('strings').insert({
-              'tenant_id': 1, 'key': slug, 'type': 'FOLDER', 'parent_id': parentId,
+              'tenant_id': tid, 'key': slug, 'type': 'FOLDER', 'parent_id': parentId,
           }).select().single();
           
           await db.into(db.strings).insert(StringsCompanion(
-             id: drift.Value(resp['id'] as int), tenantId: const drift.Value(1),
+             id: drift.Value(resp['id'] as int), tenantId: drift.Value(tid),
              key: drift.Value(slug), type: const drift.Value('FOLDER'), parentId: drift.Value(parentId),
           ));
           return true;

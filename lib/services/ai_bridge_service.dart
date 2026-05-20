@@ -16,6 +16,9 @@ import 'system_logs_service.dart';
 
 enum UpdateCoverType { hotReload, hotRestart, rebuild }
 
+enum AntigravityBridgeMode { sdk, cli }
+
+
 enum AiTaskStatus { open, inProgress, inTesting, inReview, completed, bug }
 
 enum AiTaskPriority { none, low, medium, high, urgent }
@@ -798,13 +801,28 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     notifyListeners();
   }
 
+  AntigravityBridgeMode _bridgeMode = AntigravityBridgeMode.sdk;
+  AntigravityBridgeMode get bridgeMode => _bridgeMode;
+
+  void setBridgeMode(AntigravityBridgeMode mode) async {
+    _bridgeMode = mode;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('antigravity_bridge_mode', mode.name);
+  }
+
   final List<QueuedPrompt> _pendingPrompts = [];
   final List<QueuedPrompt> _completedPrompts = [];
+  QueuedPrompt? _activePrompt;
 
+  List<QueuedPrompt> get pendingPrompts => _pendingPrompts;
+  List<QueuedPrompt> get completedPrompts => _completedPrompts;
+  QueuedPrompt? get activePrompt => _activePrompt;
 
-  List<QueuedPrompt> get pendingPrompts => [];
-  List<QueuedPrompt> get completedPrompts => [];
-  QueuedPrompt? get activePrompt => null;
+  String? _activeProcessingTaskId;
+  DateTime? _activeProcessingTaskAssignedAt;
+  int _compileErrorLoopCount = 0;
+  bool _isHandlingAgentStatus = false;
 
   final Map<String, SubagentConnection> _activeAgents = {};
   Map<String, SubagentConnection> get activeAgents => Map.unmodifiable(_activeAgents);
@@ -813,18 +831,52 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   List<String> get pipelineTaskIds => [];
   List<String> get completedTaskIds => [];
 
+  void _writeCurrentTaskFile(String taskId) {
+    try {
+      final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
+      if (taskIdx == -1) return;
+      final task = _tasks[taskIdx];
+      final json = task.toJson();
+      File('$_dirPath/current_task.json').writeAsStringSync(jsonEncode(json));
+    } catch (e) {
+      debugPrint('Failed to write current_task.json: $e');
+    }
+  }
+
   Future<void> sendToQueue(String text, bool blockScreen,
       {List<String>? taskIds, bool insertFirst = false}) async {
-    if (taskIds != null && taskIds.isNotEmpty) {
-      await SandboxService.instance.addToSandbox(taskIds);
-      final taskId = taskIds.first;
-      final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
-      if (taskIdx != -1) {
-        await executeTask(_tasks[taskIdx]);
+    if (_bridgeMode == AntigravityBridgeMode.sdk) {
+      if (taskIds != null && taskIds.isNotEmpty) {
+        await SandboxService.instance.addToSandbox(taskIds);
+        final taskId = taskIds.first;
+        final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
+        if (taskIdx != -1) {
+          await executeTask(_tasks[taskIdx]);
+        }
+      } else {
+        await _ensureBackendRunning();
+        await antigravityClient.sendPrompt(text);
       }
     } else {
-      await _ensureBackendRunning();
-      await antigravityClient.sendPrompt(text);
+      if (insertFirst) {
+        _pendingPrompts.insert(0, QueuedPrompt(text, blockScreen, taskIds));
+      } else {
+        _pendingPrompts.add(QueuedPrompt(text, blockScreen, taskIds));
+      }
+
+      if (taskIds != null && taskIds.isNotEmpty) {
+        await SandboxService.instance.addToSandbox(taskIds);
+        if (!insertFirst) {
+          _writeCurrentTaskFile(taskIds.first);
+        }
+      }
+
+      await _saveQueueState();
+      notifyListeners();
+
+      if (_activeProcessingTaskId == null && _activePrompt == null) {
+        await _processQueue();
+      }
     }
   }
 
@@ -846,8 +898,27 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> _sendToAiAgent(String text) async {
-    await _ensureBackendRunning();
-    await antigravityClient.sendPrompt(text);
+    await Clipboard.setData(ClipboardData(text: text));
+    await MacroService.instance.executeTrigger('BridgeConnect');
+
+    final int myPid = pid;
+    final vbsFile = File('$_dirPath/paste.vbs');
+    if (!vbsFile.parent.existsSync()) {
+      vbsFile.parent.createSync(recursive: true);
+    }
+    await vbsFile.writeAsString('''
+Set wshShell = CreateObject("WScript.Shell")
+WScript.Sleep 600
+wshShell.SendKeys "^v"
+WScript.Sleep 200
+wshShell.SendKeys "~"
+WScript.Sleep 300
+wshShell.AppActivate $myPid
+''');
+    await Process.run('wscript', [vbsFile.path]);
+
+    final statusFile = File('$_dirPath/agent_status.txt');
+    await statusFile.writeAsString('BUSY');
   }
 
   String? _lastJsonParseError;
@@ -858,18 +929,152 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     notifyListeners();
   }
 
-  void forceNextQueueItem() {}
+  void forceNextQueueItem() {
+    _activeProcessingTaskId = null;
+    _activeProcessingTaskAssignedAt = null;
+    _activePrompt = null;
+    notifyListeners();
+    _processQueue();
+  }
 
-  Future<void> _saveQueueState() async {}
+  Future<void> _saveQueueState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String> encoded =
+        _pendingPrompts.map((p) => jsonEncode(p.toJson())).toList();
+    await prefs.setStringList('ai_bridge_queue', encoded);
+    final List<String> encodedCompleted =
+        _completedPrompts.map((p) => jsonEncode(p.toJson())).toList();
+    await prefs.setStringList('ai_bridge_completed_queue', encodedCompleted);
+  }
 
-  Future<void> _processQueue() async {}
+  Future<void> _processQueue() async {
+    if (_isQueuePaused) return;
+
+    if (_activeProcessingTaskId != null || _activePrompt != null) {
+      return;
+    }
+
+    if (_pendingPrompts.isNotEmpty) {
+      final nextPrompt = _pendingPrompts.first;
+
+      if (nextPrompt.taskIds != null && nextPrompt.taskIds!.isNotEmpty) {
+        _activeProcessingTaskId = nextPrompt.taskIds!.first;
+        _activeProcessingTaskAssignedAt = DateTime.now();
+
+        try {
+          final task = _tasks.firstWhere((t) => t.id == _activeProcessingTaskId!);
+          if (task.priority == AiTaskPriority.high || task.priority == AiTaskPriority.urgent) {
+             final desc = 'Auto-Checkpoint before ${task.name}';
+             final hash = await VersionControlService.instance.createRestorePoint(desc);
+             if (hash.isNotEmpty && !hash.startsWith('No changes') && !hash.startsWith('Failed') && !hash.startsWith('Local')) {
+               await appendCheckpointToTimeline(desc, hash);
+             }
+          }
+        } catch (_) {}
+      } else {
+        _activeProcessingTaskId = null;
+        _activeProcessingTaskAssignedAt = null;
+      }
+
+      _activePrompt = nextPrompt;
+      _pendingPrompts.removeAt(0);
+      await _saveQueueState();
+      notifyListeners();
+
+      // Natively wait 8 seconds before dispatch to IDE to guarantee the queue settles perfectly and hot reloads reset focus securely
+      await Future.delayed(const Duration(seconds: 8));
+
+      await _sendToAiAgent(nextPrompt.text);
+      setScreenBlockerEnabled(nextPrompt.block);
+    }
+  }
 
   void clearQueue() {
     _activeAgents.clear();
+    _activeProcessingTaskId = null;
+    _activePrompt = null;
+    _pendingPrompts.clear();
+    _completedPrompts.clear();
+    _saveQueueState();
     notifyListeners();
   }
 
-  void removeFromQueue(QueuedPrompt prompt) {}
+  void removeFromQueue(QueuedPrompt prompt) {
+    _pendingPrompts.remove(prompt);
+    _completedPrompts.remove(prompt);
+    _saveQueueState();
+    notifyListeners();
+  }
+
+  Future<void> forceDispatchCompileError(String errorLog) async {
+    try {
+      if (_activeProcessingTaskId != null) {
+        await _absorbOrphanedFiles(_activeProcessingTaskId!);
+      }
+
+      if (_compileErrorLoopCount >= 3) {
+        _isQueuePaused = true;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('ai_queue_paused', true);
+        _compileErrorLoopCount = 0;
+
+        try {
+          File('$_dirPath/bridge_error.txt').writeAsStringSync('CRITICAL: AI failed to fix compile errors 3 times in a row. Queue paused automatically to prevent infinite loop.');
+        } catch (_) {}
+
+        _activeProcessingTaskId = null;
+        _activeProcessingTaskAssignedAt = null;
+        _activePrompt = null;
+        notifyListeners();
+        return;
+      }
+
+      _tasks.removeWhere((t) => t.name.toLowerCase() == 'fix compile errors');
+
+      _compileErrorLoopCount++;
+
+      final task = await addTask(
+        'Fix compile errors',
+        'The recent Hot Reload/Restart resulted in compilation errors. Fix them immediately.',
+        notes: errorLog,
+        status: AiTaskStatus.inProgress,
+      );
+
+      if (_tasks.isNotEmpty && _tasks.first.id != task.id) {
+        await reorderBefore(task.id, _tasks.first.id);
+      }
+
+      _isQueuePaused = false;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('ai_queue_paused', false);
+
+      try {
+        File('$_dirPath/bridge_error.txt').writeAsStringSync(errorLog);
+      } catch (_) {}
+
+      const promptText =
+          '# PRIMARY DIRECTIVES\nVoice: Direct / Robotic\nComplexity: Concise\n\nCRITICAL COMPILER REJECTION! You violently broke the application build! I have natively intercepted your code changes and they failed background validation.\nRead the massive compilation failure log inside .ai_bridge/bridge_error.txt immediately. Patch the syntax errors dynamically and DO NOT push IDLE again until you have structurally verified your fix.';
+
+      final p = QueuedPrompt(promptText, true, [task.id]);
+      _pendingPrompts.insert(0, p);
+      await _saveQueueState();
+
+      _activeProcessingTaskId = null;
+      _activeProcessingTaskAssignedAt = null;
+      _activePrompt = null;
+      notifyListeners();
+
+      await _processQueue();
+    } catch (e, st) {
+      try {
+        File('$_dirPath/bridge_error_debug.txt')
+            .writeAsStringSync('forceDispatchCompileError crashed:\n\n$e\n$st');
+      } catch (_) {}
+    }
+  }
+
+
+
 
   Future<void> _absorbOrphanedFiles(String taskId) async {
     try {
@@ -1044,7 +1249,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   bool get isThinking =>
       _activeAgents.isNotEmpty ||
-      _isAntigravityBusy;
+      _isAntigravityBusy ||
+      _activePrompt != null;
+
 
   void _startWatchingAntigravity() {
     if (kIsWeb || (!Platform.isWindows && !Platform.isMacOS)) return;
@@ -1252,6 +1459,12 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       _isPreviewMode = prefs.getBool('ai_queue_preview_mode') ?? false;
       _isIqMode = prefs.getBool('ai_queue_iq_mode') ?? false;
 
+      final savedBridgeMode = prefs.getString('antigravity_bridge_mode') ?? 'sdk';
+      _bridgeMode = AntigravityBridgeMode.values.firstWhere(
+          (e) => e.name == savedBridgeMode,
+          orElse: () => AntigravityBridgeMode.sdk);
+
+
       final savedQueue = prefs.getStringList('ai_bridge_queue');
       if (savedQueue != null && savedQueue.isNotEmpty) {
         try {
@@ -1336,7 +1549,6 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   bool _isProcessingSuggestion = false;
-  bool _isHandlingAgentStatus = false;
 
   void _startWatching() {
     final dir = Directory(_dirPath);
@@ -1426,19 +1638,375 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
         }
 
         if (normPath.endsWith('agent_status.txt')) {
-          await Future.delayed(const Duration(milliseconds: 100));
-          try {
-            final file = File(event.path);
-            if (await file.exists()) {
-              final content = (await file.readAsString()).trim();
-              if (content == 'IDLE') {
-                _isAntigravityBusy = false;
-                _antigravityLastChangeObservedAt = null;
-                triggerPendingUpdate(force: true);
+          if (_bridgeMode == AntigravityBridgeMode.sdk) {
+            await Future.delayed(const Duration(milliseconds: 100));
+            try {
+              final file = File(event.path);
+              if (await file.exists()) {
+                final content = (await file.readAsString()).trim();
+                if (content == 'IDLE') {
+                  _isAntigravityBusy = false;
+                  _antigravityLastChangeObservedAt = null;
+                  triggerPendingUpdate(force: true);
+                }
               }
+            } catch (_) {}
+          } else {
+            if (_isHandlingAgentStatus) return;
+            _isHandlingAgentStatus = true;
+            try {
+              final statusFile = File(event.path);
+              if (await statusFile.exists()) {
+                final content = (await statusFile.readAsString()).trim();
+                if (content == 'IDLE' || content == 'PREVIEW') {
+                  try {
+                    File('$_dirPath/bridge_debug.txt').writeAsStringSync(
+                        'IDLE/PREVIEW detected! isAntigravityBusy: $_isAntigravityBusy');
+                  } catch (_) {}
+
+                  while (_isAntigravityBusy) {
+                    await Future.delayed(const Duration(milliseconds: 500));
+                  }
+                  await Future.delayed(const Duration(milliseconds: 800));
+
+                  if (content == 'IDLE') {
+                    bool hasCompileError = false;
+                    try {
+                      final res = await Process.run('dart', ['analyze'],
+                          runInShell: true);
+                      final output =
+                          res.stdout.toString() + '\n' + res.stderr.toString();
+                      if (output.contains('error -') ||
+                          output.contains('error •') ||
+                          output.contains('error \u2022')) {
+                        hasCompileError = true;
+                        await forceDispatchCompileError(output);
+                      }
+                    } catch (e) {
+                      debugPrint(
+                          'Failed to run automated dart analyze check: $e');
+                    }
+                    if (hasCompileError) {
+                      _saveQueueState();
+                      notifyListeners();
+                      return;
+                    }
+                  }
+
+                  if (_activeProcessingTaskId != null) {
+                    try {
+                      final taskIdx = _tasks
+                          .indexWhere((t) => t.id == _activeProcessingTaskId);
+                      if (taskIdx != -1) {
+                        bool changed = false;
+
+                        String aiOutput = '';
+                        try {
+                          final String userProfile =
+                              Platform.environment['USERPROFILE'] ?? '';
+                          final brainDir = Directory(
+                              '$userProfile\\.gemini\\antigravity\\brain');
+                          if (brainDir.existsSync()) {
+                            final overviewFiles = brainDir
+                                .listSync(recursive: true, followLinks: false)
+                                .whereType<File>()
+                                .where((f) => f.path.endsWith('overview.txt'))
+                                .toList();
+                            if (overviewFiles.isNotEmpty) {
+                              overviewFiles.sort((a, b) => b
+                                  .lastModifiedSync()
+                                  .compareTo(a.lastModifiedSync()));
+                              final latest = overviewFiles.first;
+                              try {
+                                final lines = latest.readAsLinesSync();
+                                for (int i = lines.length - 1; i >= 0; i--) {
+                                  try {
+                                    final line = lines[i].trim();
+                                    if (line.isEmpty || !line.startsWith('{')) continue;
+                                    final map = jsonDecode(line);
+                                    if (map['content'] != null) {
+                                      String content = map['content'];
+                                      if (content.contains('<bridge_notes>') || 
+                                          content.contains('<preview>') || 
+                                          content.contains('<verification>')) {
+                                        aiOutput = content;
+                                        break;
+                                      }
+                                    }
+                                  } catch (_) {}
+                                }
+                              } catch (_) {}
+                            }
+                          }
+                        } catch (_) {}
+
+                        // 1. Absorb Notes
+                        final notesFile = File('$_dirPath/latest_notes.json');
+                        String notesContent = '';
+                        if (notesFile.existsSync()) {
+                          try {
+                            notesContent = notesFile.readAsStringSync();
+                            notesFile.deleteSync();
+                          } catch (_) {}
+                        }
+                        if (notesContent.trim().isEmpty) {
+                          final notesMatches = RegExp(
+                                  r'<bridge_notes>(.*?)</bridge_notes>',
+                                  dotAll: true)
+                              .allMatches(aiOutput);
+                          if (notesMatches.isNotEmpty) {
+                            notesContent = notesMatches.last.group(1)!;
+                          }
+                        }
+
+                        if (notesContent.trim().isNotEmpty) {
+                          String parsedSummary = '';
+                          String parsedNotes = '';
+                          try {
+                            String content = notesContent;
+                            if (content.trim().isNotEmpty) {
+                              int startIdx = content.indexOf('{');
+                              int endIdx = content.lastIndexOf('}');
+                              if (startIdx != -1 &&
+                                  endIdx != -1 &&
+                                  endIdx > startIdx) {
+                                content = content.substring(startIdx, endIdx + 1);
+                                final Map<String, dynamic> jsonMap =
+                                    jsonDecode(content);
+                                parsedSummary =
+                                    jsonMap['summary']?.toString().trim() ?? '';
+                                parsedNotes =
+                                    jsonMap['notes']?.toString().trim() ?? '';
+                              } else {
+                                parsedNotes = content.trim();
+                              }
+                            }
+                          } catch (e) {
+                            _lastJsonParseError = 'Notes Parse Error: $e';
+                            debugPrint('Error parsing notes json: $e');
+                            parsedNotes = notesContent.trim();
+                          }
+
+                          if (parsedSummary.isNotEmpty) {
+                            _tasks[taskIdx].summary = parsedSummary;
+                            changed = true;
+                          }
+
+                          if (parsedNotes.isNotEmpty) {
+                            final dateStr = DateTime.now()
+                                .toLocal()
+                                .toString()
+                                .substring(0, 16);
+                            final entry =
+                                '### Update - $dateStr\n$parsedNotes\n\n---\n\n';
+
+                            if (_tasks[taskIdx].notes.trim().isNotEmpty) {
+                              _tasks[taskIdx].notes =
+                                  entry + _tasks[taskIdx].notes;
+                            } else {
+                              _tasks[taskIdx].notes = entry.trim();
+                            }
+                            changed = true;
+                          }
+                        }
+
+                        // 2. Absorb Preview
+                        final previewFile = File('$_dirPath/latest_preview.json');
+                        bool generatedPreviewItems = false;
+                        String previewContent = '';
+                        if (previewFile.existsSync()) {
+                          try {
+                            previewContent = previewFile.readAsStringSync();
+                            previewFile.deleteSync();
+                          } catch (_) {}
+                        }
+                        if (previewContent.trim().isEmpty) {
+                          final previewMatches =
+                              RegExp(r'<preview>(.*?)</preview>', dotAll: true)
+                                  .allMatches(aiOutput);
+                          if (previewMatches.isNotEmpty) {
+                            previewContent = previewMatches.last.group(1)!;
+                          }
+                        }
+
+                        if (previewContent.trim().isNotEmpty) {
+                          try {
+                            String content = previewContent;
+                            if (content.trim().isNotEmpty) {
+                              int startIdx = content.indexOf('[');
+                              int endIdx = content.lastIndexOf(']');
+                              if (startIdx != -1 &&
+                                  endIdx != -1 &&
+                                  endIdx > startIdx) {
+                                content = content.substring(startIdx, endIdx + 1);
+                              }
+                              final List<dynamic> jsonList = jsonDecode(content);
+                              final newItems = jsonList
+                                  .map((e) => AiVerificationCriteria(
+                                        description: e['description']?.toString() ?? 'Preview item',
+                                        goal: e['goal']?.toString() ?? '',
+                                        status: AiVerificationStatus.pendingReview,
+                                        isVerified: false,
+                                        isPreview: true,
+                                      ))
+                                  .toList();
+                              _tasks[taskIdx].verificationCriteria.addAll(newItems);
+                              changed = true;
+                              if (newItems.isNotEmpty) {
+                                generatedPreviewItems = true;
+                              }
+                            }
+                          } catch (e) {
+                            _lastJsonParseError = 'Preview Parse Error: $e';
+                            debugPrint('Error parsing preview json: $e');
+                          }
+                        }
+
+                        // 3. Absorb Verification
+                        final verificationFile =
+                            File('$_dirPath/latest_verification.json');
+                        String verificationContent = '';
+                        if (verificationFile.existsSync()) {
+                          try {
+                            verificationContent =
+                                verificationFile.readAsStringSync();
+                            verificationFile.deleteSync();
+                          } catch (_) {}
+                        }
+                        if (verificationContent.trim().isEmpty) {
+                          final verificationMatches = RegExp(
+                                  r'<verification>(.*?)</verification>',
+                                  dotAll: true)
+                              .allMatches(aiOutput);
+                          if (verificationMatches.isNotEmpty) {
+                            verificationContent =
+                                verificationMatches.last.group(1)!;
+                          }
+                        }
+
+                        if (verificationContent.trim().isNotEmpty) {
+                          try {
+                            String content = verificationContent;
+                            if (content.trim().isNotEmpty) {
+                              int startIdx = content.indexOf('[');
+                              int endIdx = content.lastIndexOf(']');
+                              if (startIdx != -1 &&
+                                  endIdx != -1 &&
+                                  endIdx > startIdx) {
+                                content = content.substring(startIdx, endIdx + 1);
+                              }
+                              final List<dynamic> jsonList = jsonDecode(content);
+                              final newItems = jsonList
+                                  .map((e) => AiVerificationCriteria.fromJson(e))
+                                  .toList();
+
+                              final existing = _tasks[taskIdx].verificationCriteria;
+                              for (final newItem in newItems) {
+                                final matchIdx = existing.indexWhere((e) {
+                                  final eDesc = e.description.trim().toLowerCase();
+                                  final nDesc = newItem.description.trim().toLowerCase();
+                                  return nDesc.startsWith(eDesc);
+                                });
+                                if (matchIdx != -1) {
+                                  existing[matchIdx].proof = newItem.proof;
+                                } else {
+                                  newItem.isVerified = false;
+                                  newItem.status = AiVerificationStatus.pendingReview;
+                                  existing.add(newItem);
+                                }
+                              }
+                              changed = true;
+                            }
+                          } catch (e) {
+                            _lastJsonParseError = 'Verification Parse Error: $e';
+                            debugPrint(
+                                'Warning: Could not read latest_verification.json: $e');
+                          }
+                        }
+
+                        // 4. Missing-File Enforcement
+                        if (content == 'IDLE') {
+                          final List<String> missingFiles = [];
+                          final bool hasVerificationCriteria = _tasks[taskIdx].verificationCriteria.isNotEmpty;
+                          final bool notesWereMissing = notesContent.trim().isEmpty;
+                          final bool verificationWasMissing = hasVerificationCriteria && verificationContent.trim().isEmpty;
+
+                          if (notesWereMissing) missingFiles.add('`.ai_bridge/latest_notes.json` (format: {"notes": "...", "summary": "..."})');
+                          if (verificationWasMissing) missingFiles.add('`.ai_bridge/latest_verification.json` (format: [{"description": "...", "isVerified": true, "proof": "..."}])');
+
+                          if (missingFiles.isNotEmpty) {
+                            final missingList = missingFiles.map((f) => '- $f').join('\n');
+                            final correctionPrompt = _missingFilesInstructions.replaceAll('{missingList}', missingList);
+                            debugPrint('[AiBridge] Missing required files after IDLE. Re-queuing correction prompt.');
+                            await sendToQueue(correctionPrompt, false, taskIds: [_tasks[taskIdx].id], insertFirst: true);
+                            File('$_dirPath/agent_status.txt').writeAsStringSync('BUSY');
+                            _saveQueueState();
+                            notifyListeners();
+                            return;
+                          }
+                        }
+
+                        if (content == 'IDLE' && !generatedPreviewItems) {
+                          final prefs = await SharedPreferences.getInstance();
+                          final afterCompleteStr = prefs
+                                  .getString('ai_tasks_bridge_complete_status') ??
+                              'dontChange';
+
+                          if (afterCompleteStr != 'dontChange') {
+                            final targetStatus = AiTaskStatus.values.firstWhere(
+                                    (e) => e.name == afterCompleteStr,
+                                    orElse: () => _tasks[taskIdx].status);
+
+                            if (_tasks[taskIdx].status != targetStatus) {
+                              final oldStatus = _tasks[taskIdx].status;
+                              _tasks[taskIdx].status = targetStatus;
+                              _triggerSandboxMergeIfNeeded(oldStatus, _tasks[taskIdx]);
+                              changed = true;
+                            }
+                          }
+                        }
+                        if (changed) {
+                          await _save();
+                        }
+                      }
+                    } catch (e) {
+                      debugPrint('Failed auto-status transition: $e');
+                    }
+                  }
+
+                  if (content == 'IDLE') {
+                    if (_activePrompt != null) {
+                      _activePrompt!.completedAt = DateTime.now();
+                      _completedPrompts.add(_activePrompt!);
+                    }
+                    _activeProcessingTaskId = null;
+                    _activeProcessingTaskAssignedAt = null;
+                    _activePrompt = null;
+                    _compileErrorLoopCount = 0;
+                    try {
+                      final ctFile = File('$_dirPath/current_task.json');
+                      if (ctFile.existsSync()) ctFile.deleteSync();
+                    } catch (_) {}
+                  }
+                  _saveQueueState();
+                  notifyListeners();
+
+                  if (_pendingUpdateType == null) {
+                    _pendingUpdateType = UpdateCoverType.hotReload;
+                  }
+                  triggerPendingUpdate(force: true);
+
+                  _processQueue();
+                }
+              }
+            } finally {
+              Future.delayed(const Duration(seconds: 2), () {
+                _isHandlingAgentStatus = false;
+              });
             }
-          } catch (_) {}
+          }
         }
+
       });
     }
 

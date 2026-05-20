@@ -20,15 +20,18 @@ class I18nDao extends DatabaseAccessor<AppDatabase> with _$I18nDaoMixin {
     final folderId = await getOrCreateStringFolder('System Languages');
     final strId = await getOrCreateStringId('LANGUAGE_${code.toUpperCase()}', parentId: folderId);
 
-    // Provide localized translation instantly fallbacking code logic
-    await setTranslation(strId, 'en', code.toUpperCase());
-
-    return await into(languages).insert(
+    // Insert the language record first to prevent infinite recursion when setTranslation calls getOrCreateLangId
+    final insertedId = await into(languages).insert(
         LanguagesCompanion(
             code: Value(code), 
             nameStringId: Value(strId)
         )
     );
+
+    // Provide localized translation instantly fallbacking code logic
+    await setTranslation(strId, 'en', code.toUpperCase());
+
+    return insertedId;
   }
 
   Future<int?> _findLangFallbackId(String locale) async {
