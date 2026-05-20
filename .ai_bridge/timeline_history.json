@@ -1,5 +1,16 @@
 [
   {
+    "id": "3cbcccd0-e718-4052-990e-e45d1fb38796",
+    "taskIds": [
+      "1779224338775"
+    ],
+    "title": "2. Integrate Core SDK Client",
+    "summary": "Initialize the Antigravity SDK client in AiBridgeService and replace wscript SendKeys with native API calls.",
+    "commitHash": "51cedbf7e8bfa34fd4440971abf2875638614205",
+    "commitDate": "2026-05-19T15:44:26.429376",
+    "verifiedNotes": "- Add the `antigravity_sdk` dependency to `pubspec.yaml`.\n- Initialize `AntigravityClient` within the `AiBridgeService` constructor.\n- Replace `_sendToAiAgent` logic with `AntigravityClient.sendPrompt(...)` API call."
+  },
+  {
     "id": "03a82b1b-0c48-498f-91a4-344979a93a35",
     "taskIds": [
       "1779224338774"

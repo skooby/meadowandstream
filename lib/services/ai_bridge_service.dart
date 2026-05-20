@@ -11,6 +11,8 @@ import 'macro_service.dart';
 import 'version_control_service.dart';
 import 'sandbox_service.dart';
 import 'package:antigravity_sdk/antigravity_sdk.dart';
+import 'backend_process_manager.dart';
+import 'system_logs_service.dart';
 
 enum UpdateCoverType { hotReload, hotRestart, rebuild }
 
@@ -418,16 +420,144 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   late final AntigravityClient antigravityClient;
 
   AiBridgeService._internal() {
-    antigravityClient = AntigravityClient();
+    _initClient();
+  }
+
+  Future<void> _ensureBackendRunning() async {
+    final prefs = await SharedPreferences.getInstance();
+    final startupCmd = prefs.getString('antigravity_startup_command') ?? 'antigravity-server';
+    final resolvedCmd = BackendProcessManager().getResolvedStartupCommand(startupCmd);
+
+    // Parse port
+    int port = 8080;
+    final portMatch = RegExp(r'--http_server_port\s+([^\s]+)').firstMatch(resolvedCmd);
+    if (portMatch != null) {
+      port = int.tryParse(portMatch.group(1)!.replaceAll('"', '').replaceAll("'", "")) ?? 8080;
+    }
+
+    try {
+      final socket = await Socket.connect('127.0.0.1', port, timeout: const Duration(seconds: 1));
+      socket.destroy();
+      debugPrint('[AiBridgeService] Antigravity daemon is already running on port $port.');
+    } catch (e) {
+      debugPrint('[AiBridgeService] Antigravity daemon unreachable on port $port. Attempting auto-spawn...');
+      try {
+        await BackendProcessManager().spawnBackend(startupCmd);
+        await Future.delayed(const Duration(seconds: 4)); // Wait for server to bind
+      } catch (spawnErr) {
+        debugPrint('[AiBridgeService] Auto-spawn failed: $spawnErr');
+      }
+    }
+  }
+
+  Future<void> _initClient() async {
+    final prefs = await SharedPreferences.getInstance();
+    final binaryPath = prefs.getString('antigravity_binary_path') ?? '';
+    final startupCmd = prefs.getString('antigravity_startup_command') ?? 'antigravity-server';
+    final resolvedCmd = BackendProcessManager().getResolvedStartupCommand(startupCmd);
+
+    // Dynamically parse CSRF token from the startup command
+    String csrfToken = '6c867a8e-96cc-483d-a132-178ab094abe3';
+    final csrfMatch = RegExp(r'--csrf_token\s+([^\s]+)').firstMatch(resolvedCmd);
+    if (csrfMatch != null) {
+      csrfToken = csrfMatch.group(1)!.replaceAll('"', '').replaceAll("'", "");
+    }
+
+    // Dynamically parse address / hostport from preferences or startup command
+    final baseUrl = prefs.getString('antigravity_base_url') ?? 'http://localhost:8080';
+    var lsAddress = baseUrl.replaceFirst(RegExp(r'^https?://'), '');
+    if (lsAddress.endsWith('/')) {
+      lsAddress = lsAddress.substring(0, lsAddress.length - 1);
+    }
+    if (lsAddress.startsWith('localhost')) {
+      lsAddress = lsAddress.replaceFirst('localhost', '127.0.0.1');
+    }
     
-    // Subscribe to artifact updates (Task 3)
+    // If the base url has a host but no port, or if we want to fallback to the parsed port from startup command
+    if (!lsAddress.contains(':')) {
+      final portMatch = RegExp(r'--http_server_port\s+([^\s]+)').firstMatch(resolvedCmd);
+      if (portMatch != null) {
+        final port = portMatch.group(1)!.replaceAll('"', '').replaceAll("'", "");
+        lsAddress = '$lsAddress:$port';
+      } else {
+        lsAddress = '$lsAddress:8080';
+      }
+    }
+
+    // Dynamically resolve the project ID for the current workspace
+    String projectId = '';
+    final envId = Platform.environment['ANTIGRAVITY_PROJECT_ID'];
+    if (envId != null && envId.isNotEmpty) {
+      projectId = envId;
+    } else {
+      try {
+        final userProfile = Platform.environment['USERPROFILE'] ?? '';
+        final projectsDir = Directory('$userProfile\\.gemini\\config\\projects');
+        if (await projectsDir.exists()) {
+          final currentPathNormalized = Directory.current.absolute.path.replaceAll('\\', '/').toLowerCase();
+          await for (final entity in projectsDir.list()) {
+            if (entity is File && entity.path.endsWith('.json')) {
+              try {
+                final content = await entity.readAsString();
+                final json = jsonDecode(content);
+                final id = json['id'] as String?;
+                final resources = json['projectResources']?['resources'] as List?;
+                if (resources != null && id != null) {
+                  for (final res in resources) {
+                    final folderUri = res['gitFolder']?['folderUri'] as String?;
+                    if (folderUri != null) {
+                      final decodedUri = Uri.decodeFull(folderUri).replaceAll('\\', '/').toLowerCase();
+                      if (decodedUri.contains(currentPathNormalized)) {
+                        projectId = id;
+                        break;
+                      }
+                    }
+                  }
+                }
+              } catch (_) {}
+              if (projectId.isNotEmpty) break;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[AiBridgeService] Error scanning projects configuration directory: $e');
+      }
+    }
+
+    debugPrint('[AiBridgeService] Configured Antigravity SDK with address: $lsAddress, token: $csrfToken, projectId: $projectId');
+
+    antigravityClient = AntigravityClient(
+      config: AntigravityConfig(
+        binaryPath: binaryPath,
+        lsAddress: lsAddress,
+        csrfToken: csrfToken,
+        projectId: projectId,
+      ),
+      onLog: (logMessage) {
+        SystemLogsService.instance.addLog(logMessage, category: LogCategory.AI);
+      },
+    );
+
+    // Subscribe to artifact updates
     antigravityClient.onArtifactUpdate.listen((update) {
       final taskIdx = _tasks.indexWhere((t) => t.id == update.taskId);
       if (taskIdx != -1) {
-        _tasks[taskIdx].notes = update.notes;
-        _tasks[taskIdx].summary = update.summary;
+        if (update.notes.isNotEmpty) {
+          final dateStr = DateTime.now().toLocal().toString().substring(0, 16);
+          final entry = '### Update - $dateStr\n${update.notes}\n\n---\n\n';
+          if (_tasks[taskIdx].notes.trim().isNotEmpty) {
+            _tasks[taskIdx].notes = entry + _tasks[taskIdx].notes;
+          } else {
+            _tasks[taskIdx].notes = entry.trim();
+          }
+        }
+        if (update.summary.isNotEmpty) {
+          _tasks[taskIdx].summary = update.summary;
+        }
         if (update.verificationCriteria.isNotEmpty) {
-           _tasks[taskIdx].verificationCriteria = update.verificationCriteria.map((c) => AiVerificationCriteria.fromJson(c)).toList();
+          _tasks[taskIdx].verificationCriteria = update.verificationCriteria
+              .map((c) => AiVerificationCriteria.fromJson(c))
+              .toList();
         }
         _save();
         notifyListeners();
@@ -535,11 +665,13 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
         await executeTask(_tasks[taskIdx]);
       }
     } else {
+      await _ensureBackendRunning();
       await antigravityClient.sendPrompt(text);
     }
   }
 
   Future<void> executeTask(AiTask task) async {
+    await _ensureBackendRunning();
     final connection = await antigravityClient.invokeSubagent(task.toJson());
     _activeAgents[task.id] = connection;
     notifyListeners();
@@ -553,6 +685,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> _sendToAiAgent(String text) async {
+    await _ensureBackendRunning();
     await antigravityClient.sendPrompt(text);
   }
 

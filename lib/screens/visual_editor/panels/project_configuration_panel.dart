@@ -12,6 +12,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../../db/daos/assets_dao.dart';
 import '../../../db/daos/i18n_dao.dart';
 import '../../../db/app_database.dart';
+import 'package:dio/dio.dart';
+import '../../../services/backend_process_manager.dart';
 import '../visual_editor_screen.dart';
 import '../../../constants.dart';
 import '../../../services/version_control_service.dart';
@@ -283,11 +285,16 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   Map<String, List<String>> _windowAvailability = {};
   int _queueClearCompletedMinutes = -1;
   String? _agentRules;
+  String? _antigravityBaseUrl;
+  String? _antigravityInvokeEndpoint;
+  String? _antigravityPromptEndpoint;
+  String? _antigravityStartupCommand;
   String? _versionControlRepoUrl;
   String? _ollamaBaseUrl;
   String? _ollamaModel;
   int _ollamaTimeoutMs = 120000;
 
+  bool _isTestingAntigravity = false;
   bool _isSyncing = false;
   int _syncTotal = 0;
   int _syncProgress = 0;
@@ -395,6 +402,10 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _customActiveTaskHighlightColor = prefs.getInt('ve_activeTaskHighlightColor');
       _queueClearCompletedMinutes = prefs.getInt('queueClearCompletedMinutes') ?? -1;
       _agentRules = prefs.getString('project_agent_rules');
+      _antigravityBaseUrl = prefs.getString('antigravity_base_url');
+      _antigravityInvokeEndpoint = prefs.getString('antigravity_invoke_endpoint');
+      _antigravityPromptEndpoint = prefs.getString('antigravity_prompt_endpoint');
+      _antigravityStartupCommand = prefs.getString('antigravity_startup_command');
       _versionControlRepoUrl = prefs.getString('project_version_control_repo_url');
       _ollamaBaseUrl = prefs.getString('ollamaBaseUrl');
       _ollamaModel = prefs.getString('ollamaModel');
@@ -796,6 +807,34 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           await prefs.remove('project_agent_rules');
       }
 
+      final newAntigravityBaseUrl = values.containsKey('antigravityBaseUrl') ? values['antigravityBaseUrl'] as String? : _antigravityBaseUrl;
+      if (newAntigravityBaseUrl != null && newAntigravityBaseUrl.trim().isNotEmpty) {
+          await prefs.setString('antigravity_base_url', newAntigravityBaseUrl.trim());
+      } else {
+          await prefs.remove('antigravity_base_url');
+      }
+
+      final newAntigravityInvokeEndpoint = values.containsKey('antigravityInvokeEndpoint') ? values['antigravityInvokeEndpoint'] as String? : _antigravityInvokeEndpoint;
+      if (newAntigravityInvokeEndpoint != null && newAntigravityInvokeEndpoint.trim().isNotEmpty) {
+          await prefs.setString('antigravity_invoke_endpoint', newAntigravityInvokeEndpoint.trim());
+      } else {
+          await prefs.remove('antigravity_invoke_endpoint');
+      }
+
+      final newAntigravityPromptEndpoint = values.containsKey('antigravityPromptEndpoint') ? values['antigravityPromptEndpoint'] as String? : _antigravityPromptEndpoint;
+      if (newAntigravityPromptEndpoint != null && newAntigravityPromptEndpoint.trim().isNotEmpty) {
+          await prefs.setString('antigravity_prompt_endpoint', newAntigravityPromptEndpoint.trim());
+      } else {
+          await prefs.remove('antigravity_prompt_endpoint');
+      }
+
+      final newAntigravityStartupCommand = values.containsKey('antigravityStartupCommand') ? values['antigravityStartupCommand'] as String? : _antigravityStartupCommand;
+      if (newAntigravityStartupCommand != null && newAntigravityStartupCommand.trim().isNotEmpty) {
+          await prefs.setString('antigravity_startup_command', newAntigravityStartupCommand.trim());
+      } else {
+          await prefs.remove('antigravity_startup_command');
+      }
+
       if (mounted) {
          setState(() {
             _primaryStorageUrl = newUrl;
@@ -833,6 +872,10 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             AppUIConfig.windowBorderWidth = newBorderWidth;
             _queueClearCompletedMinutes = newClearCompleted;
             _agentRules = newAgentRules;
+            _antigravityBaseUrl = newAntigravityBaseUrl;
+            _antigravityInvokeEndpoint = newAntigravityInvokeEndpoint;
+            _antigravityPromptEndpoint = newAntigravityPromptEndpoint;
+            _antigravityStartupCommand = newAntigravityStartupCommand;
             _versionControlRepoUrl = newVersionControlRepoUrl;
             _ollamaBaseUrl = newOllamaBaseUrl;
             _ollamaModel = newOllamaModel;
@@ -1119,6 +1162,55 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
     );
   }
 
+  Future<void> _testAntigravityConnection() async {
+    _formKey.currentState?.saveAndValidate();
+    final url = _formKey.currentState?.value['antigravityBaseUrl'] ?? _antigravityBaseUrl ?? 'http://localhost:8080';
+    final startupCmd = _formKey.currentState?.value['antigravityStartupCommand'] ?? _antigravityStartupCommand ?? 'antigravity-server';
+    setState(() => _isTestingAntigravity = true);
+    final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 5), receiveTimeout: const Duration(seconds: 5)));
+    
+    try {
+      final response = await dio.get(url);
+      if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Connection Successful: \${response.statusCode}'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      // Auto-spawn backend on connection failure
+      if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connection Refused. Spawning backend...'), backgroundColor: Colors.orange));
+      }
+      
+      try {
+        await BackendProcessManager().spawnBackend(startupCmd);
+        await Future.delayed(const Duration(seconds: 4)); // Wait for server to bind
+        
+        final retryResponse = await dio.get(url);
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backend Started & Connected: \${retryResponse.statusCode}'), backgroundColor: Colors.green));
+        }
+      } catch (retryError) {
+        if (mounted) {
+           final errorString = 'Failed to connect after spawning: $retryError';
+           Clipboard.setData(ClipboardData(text: errorString));
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+             content: Text('$errorString (Copied to Clipboard)'), 
+             backgroundColor: Colors.red,
+             duration: const Duration(seconds: 5),
+             action: SnackBarAction(
+               label: 'Copy',
+               textColor: Colors.white,
+               onPressed: () {
+                 Clipboard.setData(ClipboardData(text: errorString));
+               },
+             ),
+           ));
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isTestingAntigravity = false);
+    }
+  }
+
   Widget _buildLabeled(String label, IconData icon, Widget child) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1238,11 +1330,12 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                 'iconOutlineWidth': _iconOutlineWidth.toString(),
                 'textOutlineWidth': _textOutlineWidth.toString(),
                 'queueClearCompletedMinutes': _queueClearCompletedMinutes.toString(),
-                'versionControlRepoUrl': _versionControlRepoUrl ?? '',
-                'ollamaBaseUrl': _ollamaBaseUrl ?? 'http://localhost:11434',
-                'ollamaModel': _ollamaModel ?? 'qwen2.5:3b',
-                'ollamaTimeoutMs': _ollamaTimeoutMs.toString(),
                 'agentRules': _agentRules ?? 'Role: Senior Systems Architect.\nCommunication Style: Minimalist. No greetings, no "I hope this helps," no conversational filler. Output only technical plans, code, or critical status alerts.\nOperational Protocol:\nAlways prioritize Planning Mode before Acting.\nUse the /terminal to verify assumptions; do not guess file structures.\nIf a task is ambiguous, list 3 specific questions and stop.\n\nThe "Focus & Drift" Monitor:\nBefore every task, state the current objective in one sentence.\nIf the current task deviates from the PROJECT_SUMMARY.md goals, flag a "Context Drift Alert" and request realignment.\nError Reduction: Run a "Red Team" check on every code block for null pointers and race conditions before presenting.\n\nThe "State Persistence" Workflow:\nCreate a workflow /sync that:\nScans the last 10 interactions.\nUpdates PROJECT_SUMMARY.md with:\n[Current Architecture]\n[Resolved Blockers]\n[Pending Critical Tasks].\nUpdates BRIDGE_LOGS.md with any API or connectivity changes.\nDeletes outdated \'TODO\' comments in the codebase.\n\nThe "New Chat" Handover:\nGenerate a Handover Manifest. Summarize the current technical state, the specific logic of the AI Bridge we just built, and the exact next step. Format this so I can paste it into a fresh chat to give the new agent 100% context instantly.\n\nAutomated Summary Maintenance:\nUpon completion of any file write or terminal command, automatically append a 1-sentence summary of the change to the CHANGELOG.md and verify it against the PROJECT_SUMMARY.md for consistency.',
+                'antigravityBaseUrl': _antigravityBaseUrl ?? 'http://localhost:8080',
+                'antigravityInvokeEndpoint': _antigravityInvokeEndpoint ?? '/api/v1/agents/invoke',
+                'antigravityPromptEndpoint': _antigravityPromptEndpoint ?? '/api/v1/prompt',
+                'antigravityStartupCommand': _antigravityStartupCommand ?? 'antigravity-server',
+                'versionControlRepoUrl': _versionControlRepoUrl ?? '',
               },
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1262,6 +1355,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                           _buildTabBtn(8, 'Agentic\nMastery'),
                           _buildTabBtn(9, 'Version\nControl'),
                           _buildTabBtn(10, 'AI\nAssistant'),
+                          _buildTabBtn(11, 'Antigravity\nSDK'),
                         ],
                       )
                     ),
@@ -2384,6 +2478,49 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                               child: Text(
                                 'Configure connection details for the Local AI Assistant. The LocalAiService binds natively to this Ollama instance.',
                                 style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+                              ),
+                            ),
+                          ],
+                        ),
+                        ListView(key: const PageStorageKey('config_tab_11'),
+                          padding: const EdgeInsets.only(right: 16),
+                          children: [
+                            const SizedBox(height: 16),
+                            Text('ANTIGRAVITY SDK', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Antigravity API Base URL', Icons.cloud, FormBuilderTextField(
+                              name: 'antigravityBaseUrl',
+                              style: TextStyle(color: AppColors.panelTextPrimary),
+                              decoration: _inputDecoration(),
+                            )),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Antigravity Invoke Endpoint', Icons.api, FormBuilderTextField(
+                              name: 'antigravityInvokeEndpoint',
+                              style: TextStyle(color: AppColors.panelTextPrimary),
+                              decoration: _inputDecoration(),
+                            )),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Antigravity Prompt Endpoint', Icons.send, FormBuilderTextField(
+                              name: 'antigravityPromptEndpoint',
+                              style: TextStyle(color: AppColors.panelTextPrimary),
+                              decoration: _inputDecoration(),
+                            )),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Antigravity Startup Command', Icons.terminal, FormBuilderTextField(
+                              name: 'antigravityStartupCommand',
+                              style: TextStyle(color: AppColors.panelTextPrimary),
+                              decoration: _inputDecoration(),
+                            )),
+                            const SizedBox(height: 32),
+                            ElevatedButton.icon(
+                              onPressed: _isTestingAntigravity ? null : _testAntigravityConnection,
+                              icon: _isTestingAntigravity ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
+                              label: Text('Test Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2A2A2A),
+                                foregroundColor: Colors.deepPurpleAccent,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                side: const BorderSide(color: Colors.deepPurpleAccent, width: 1)
                               ),
                             ),
                           ],
