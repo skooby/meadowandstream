@@ -158,14 +158,56 @@ class _VisualEditorScreenState extends State<VisualEditorScreen> {
       final int myPid = pid;
       final psScript = '''
 \$wshell = New-Object -ComObject wscript.shell;
-\$titles = @('flutter run', 'Windows PowerShell', 'Command Prompt', 'Terminal');
-foreach (\$title in \$titles) {
-    if (\$wshell.AppActivate(\$title)) {
-        Start-Sleep -Milliseconds 50;
-        \$wshell.SendKeys('r');
-        Start-Sleep -Milliseconds 800;
-        \$wshell.AppActivate($myPid);
-        break;
+\$activated = \$false;
+
+# 1. Traversal of ancestor processes
+\$curr = $myPid;
+\$proc = Get-CimInstance Win32_Process -Filter "ProcessId = \$curr";
+if (\$proc -and \$proc.ParentProcessId) {
+    \$curr = \$proc.ParentProcessId;
+} else {
+    \$curr = 0;
+}
+
+\$shells = @('dart', 'cmd', 'powershell', 'pwsh', 'wt', 'conhost', 'bash', 'wsl', 'windowsterminal', 'terminal', 'code', 'idea', 'studio', 'devenv');
+
+while (\$curr -and -not \$activated) {
+    \$proc = Get-CimInstance Win32_Process -Filter "ProcessId = \$curr";
+    if (-not \$proc) { break; }
+    
+    \$name = \$proc.Name.ToLower();
+    \$isShell = \$false;
+    foreach (\$s in \$shells) {
+        if (\$name.Contains(\$s)) {
+            \$isShell = \$true;
+            break;
+        }
+    }
+    
+    if (\$isShell) {
+        if (\$wshell.AppActivate(\$proc.ProcessId)) {
+            \$activated = \$true;
+            Start-Sleep -Milliseconds 50;
+            \$wshell.SendKeys('r');
+            Start-Sleep -Milliseconds 800;
+            \$wshell.AppActivate($myPid);
+            break;
+        }
+    }
+    \$curr = \$proc.ParentProcessId;
+}
+
+# 2. Fallback to title-based matching
+if (-not \$activated) {
+    \$titles = @('flutter run', 'Windows PowerShell', 'Command Prompt', 'Terminal');
+    foreach (\$title in \$titles) {
+        if (\$wshell.AppActivate(\$title)) {
+            Start-Sleep -Milliseconds 50;
+            \$wshell.SendKeys('r');
+            Start-Sleep -Milliseconds 800;
+            \$wshell.AppActivate($myPid);
+            break;
+        }
     }
 }
 ''';
@@ -199,14 +241,56 @@ foreach (\$title in \$titles) {
       final int myPid = pid;
       final psScript = '''
 \$wshell = New-Object -ComObject wscript.shell;
-\$titles = @('flutter run', 'Windows PowerShell', 'Command Prompt', 'Terminal');
-foreach (\$title in \$titles) {
-    if (\$wshell.AppActivate(\$title)) {
-        Start-Sleep -Milliseconds 50;
-        \$wshell.SendKeys('+r');
-        Start-Sleep -Milliseconds 1200;
-        \$wshell.AppActivate($myPid);
-        break;
+\$activated = \$false;
+
+# 1. Traversal of ancestor processes
+\$curr = $myPid;
+\$proc = Get-CimInstance Win32_Process -Filter "ProcessId = \$curr";
+if (\$proc -and \$proc.ParentProcessId) {
+    \$curr = \$proc.ParentProcessId;
+} else {
+    \$curr = 0;
+}
+
+\$shells = @('dart', 'cmd', 'powershell', 'pwsh', 'wt', 'conhost', 'bash', 'wsl', 'windowsterminal', 'terminal', 'code', 'idea', 'studio', 'devenv');
+
+while (\$curr -and -not \$activated) {
+    \$proc = Get-CimInstance Win32_Process -Filter "ProcessId = \$curr";
+    if (-not \$proc) { break; }
+    
+    \$name = \$proc.Name.ToLower();
+    \$isShell = \$false;
+    foreach (\$s in \$shells) {
+        if (\$name.Contains(\$s)) {
+            \$isShell = \$true;
+            break;
+        }
+    }
+    
+    if (\$isShell) {
+        if (\$wshell.AppActivate(\$proc.ProcessId)) {
+            \$activated = \$true;
+            Start-Sleep -Milliseconds 50;
+            \$wshell.SendKeys('+r');
+            Start-Sleep -Milliseconds 1200;
+            \$wshell.AppActivate($myPid);
+            break;
+        }
+    }
+    \$curr = \$proc.ParentProcessId;
+}
+
+# 2. Fallback to title-based matching
+if (-not \$activated) {
+    \$titles = @('flutter run', 'Windows PowerShell', 'Command Prompt', 'Terminal');
+    foreach (\$title in \$titles) {
+        if (\$wshell.AppActivate(\$title)) {
+            Start-Sleep -Milliseconds 50;
+            \$wshell.SendKeys('+r');
+            Start-Sleep -Milliseconds 1200;
+            \$wshell.AppActivate($myPid);
+            break;
+        }
     }
 }
 ''';

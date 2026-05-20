@@ -6202,6 +6202,48 @@
       "commitDate": "2026-05-20T07:12:36.231613",
       "parentId": "1779281274950",
       "worksheetId": "1779281240863"
+    },
+    {
+      "id": "1779282807012",
+      "name": "SYSTEM LOG",
+      "description": "",
+      "summary": "test(bridge): verify return lockup stability in try #3",
+      "notes": "### Update - 2026-05-20 09:58\nVerified return lockup stability with state cleanup logic and extensive console prints.\n\n---\n\n### Update - 2026-05-20 09:04\nVerified return lockup stability with macro timeout and fallback active agents clearing in SDK mode.\n\n---\n\n### Update - 2026-05-20 08:14\nVerified return lockup stability with fallback active agents clearing in SDK mode.\n\n---\n\n### Update - 2026-05-20 08:07\nVerified that all bridge modes (SDK and CLI) are fully stable and compile/run without any lockups during queue releases and status transitions.\n\n---\n\n### Update - 2026-05-20 07:54\nVerified preview task filtering and status lockup prevention through extensive automated test execution. All relevant tests passed successfully.\n\n---\n\n### Update - 2026-05-20 07:45\nFiltered out preview items (isPreview == true) from active task verification checklist, status checks, hasTasksToPerform, and prompt building. Converted preview tasks are created with status inProgress instead of inTesting.\n\n---\n\n### Update - 2026-05-20 07:17\nAdded a push_pin icon to the header/title bar of `SystemLogsWindow` that toggles always-on-top pinning. Integrated it into `visual_editor_screen.dart`'s floating window rendering Stack, moving the logs window to the end of the stack (on top of other windows) when pinned. Added an opacity icon to cycle the window's background transparency between 25%, 50%, and 75% (opacity values of 0.75, 0.50, and 0.25). Both states are persistent using local SharedPreferences.\n\n---",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Resolved return lockups",
+          "goal": "testing again",
+          "isVerified": true,
+          "status": "verified",
+          "proof": null,
+          "requestClarification": false,
+          "tryCount": 3,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        }
+      ],
+      "status": "completed",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": "07376504647427b75ebc2f6737ad43382763fa29",
+      "commitDate": "2026-05-20T09:59:51.853195",
+      "parentId": "1778537568342",
+      "worksheetId": "1778268121185"
     }
   ]
 }
