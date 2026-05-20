@@ -1,5 +1,16 @@
 [
   {
+    "id": "140cb346-439f-4918-90b4-bc3bd028661c",
+    "taskIds": [
+      "1779299719063"
+    ],
+    "title": "TASK MANAGER [style(ui): update Add Folder and Add Task header icon sizes and colors]",
+    "summary": "",
+    "commitHash": "5033a0124caaae101a6709d0fbef448d9af4fefd",
+    "commitDate": "2026-05-20T12:39:09.040576",
+    "verifiedNotes": "- To the right of the worksheet button bar move the Do Work button, make it look like the Send to AI Bridge icon in Task Editor\n- In the Header of Task Manager to the right of Add Folder, have an Add Task icon, which will add a task in the root of the current worksheet\n- Lets show the folder as yellow and match the folder and + with the task list versions (size and color)"
+  },
+  {
     "id": "569d3e95-8950-4057-a73a-a927f04c2907",
     "taskIds": [
       "1779299719063"
