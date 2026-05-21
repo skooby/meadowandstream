@@ -676,54 +676,6 @@ class VersionControlService {
       SystemLogsService.instance.addLog('Failed to merge remote timeline history: $e', category: LogCategory.VC);
     }
 
-    try {
-      // 2. Fetch remote content of tasks.json
-      final remoteTasksResult = await Process.run(
-        'git',
-        ['show', 'origin/$branchName:.ai_bridge/tasks.json'],
-        workingDirectory: path,
-        runInShell: true,
-      );
-      if (remoteTasksResult.exitCode == 0) {
-        final remoteContent = remoteTasksResult.stdout.toString().trim();
-        final localFile = File('$path/.ai_bridge/tasks.json');
-        if (remoteContent.isNotEmpty && await localFile.exists()) {
-          final localContent = await localFile.readAsString();
-          final localMap = jsonDecode(localContent) as Map<String, dynamic>;
-          final remoteMap = jsonDecode(remoteContent) as Map<String, dynamic>;
 
-          final List<dynamic> localTasks = localMap['tasks'] ?? [];
-          final List<dynamic> remoteTasks = remoteMap['tasks'] ?? [];
-
-          final Map<String, dynamic> mergedTasksMap = {};
-          for (var task in remoteTasks) {
-            final id = task['id'] ?? '';
-            if (id.isNotEmpty) {
-              mergedTasksMap[id] = task;
-            }
-          }
-
-          for (var task in localTasks) {
-            final id = task['id'] ?? '';
-            if (id.isNotEmpty) {
-              mergedTasksMap[id] = task;
-            }
-          }
-
-          localMap['tasks'] = mergedTasksMap.values.toList();
-          
-          if (localMap['primaryDirectives'] == null || localMap['primaryDirectives'].toString().isEmpty) {
-            localMap['primaryDirectives'] = remoteMap['primaryDirectives'];
-          }
-          if (localMap['instructions'] == null || localMap['instructions'].toString().isEmpty) {
-            localMap['instructions'] = remoteMap['instructions'];
-          }
-
-          await localFile.writeAsString(const JsonEncoder.withIndent('  ').convert(localMap));
-        }
-      }
-    } catch (e) {
-      SystemLogsService.instance.addLog('Failed to merge remote tasks: $e', category: LogCategory.VC);
-    }
   }
 }

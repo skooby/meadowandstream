@@ -5019,48 +5019,6 @@
       "worksheetId": "1778268121185"
     },
     {
-      "id": "1779295760360",
-      "name": "System Logs",
-      "description": "Updates for system logs",
-      "summary": "feat(logs): implement auto-scroll and manual scroll override for system logs",
-      "notes": "### Update - 2026-05-20 10:55\nAdded ScrollController and scroll listeners to SystemLogsWindow. Automatically scrolls to the bottom on new logs. Disables auto-scroll if the user manually scrolls up, and re-enables it if they scroll back to the bottom. Wrapped the list view in a Scrollbar using the same controller.\n\n---",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "verificationCriteria": [
-        {
-          "description": "Have the scrollbar set to scroll to bottom to always see the latest messages, if we try to scroll then disable the automatic scroll to bottom",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "Added ScrollController to SystemLogsWindow. Registered scroll listener that detects when user scrolls up (disabling auto-scroll) or scrolls back to the bottom (re-enabling auto-scroll). Attached Scrollbar and controller to ListView.builder.",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": true,
-          "isPreview": false
-        }
-      ],
-      "status": "completed",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": "a461cb6362c66b6a248eb1ec38404f7b10b5f18a",
-      "commitDate": "2026-05-20T11:00:01.968462",
-      "parentId": "1778537568342",
-      "worksheetId": "1778268121185"
-    },
-    {
       "id": "1779299719063",
       "name": "TASK MANAGER",
       "description": "",
@@ -5243,48 +5201,6 @@
       "commitHash": "08f9eb65243fe8e6daa77680f53ef9a1fde6af8d",
       "commitDate": "2026-05-20T13:26:11.903577",
       "parentId": "1778865514716",
-      "worksheetId": "1778268121185"
-    },
-    {
-      "id": "1779154106804",
-      "name": "Spell Checker",
-      "description": "Lets add a simple spell checker",
-      "summary": "",
-      "notes": "",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "verificationCriteria": [
-        {
-          "description": "Contractions working like let's don't... not getting flagged as incorrect",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": null,
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": true,
-          "isPreview": false
-        }
-      ],
-      "status": "completed",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": "52a7b679452cbdafa24a352612f9661937cdcf58",
-      "commitDate": "2026-05-20T23:14:52.096104",
-      "parentId": "1778537568342",
       "worksheetId": "1778268121185"
     }
   ]

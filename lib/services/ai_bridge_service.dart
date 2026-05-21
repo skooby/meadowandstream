@@ -2405,7 +2405,7 @@ wshShell.AppActivate $myPid
           }
 
           if (requiresSave) {
-            _save();
+            // _save();
           } else {
             _processQueue();
           }
