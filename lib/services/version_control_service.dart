@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'system_logs_service.dart';
 import 'sandbox_service.dart';
 import 'ai_bridge_service.dart';
+import 'github_service.dart';
+import 'package:http/http.dart' as http;
 
 class VersionControlService {
   static final VersionControlService instance = VersionControlService._internal();
@@ -116,9 +118,6 @@ class VersionControlService {
 
     // 1. Fetch latest changes from remote branch
     await Process.run('git', ['fetch', 'origin', currentBranch], workingDirectory: path, runInShell: true);
-
-    // 2. Programmatically merge remote state files to avoid git conflicts
-    await _mergeRemoteStateFiles(path, currentBranch);
 
     await _scrubTemporaryFiles(path);
 
@@ -618,64 +617,125 @@ class VersionControlService {
     return utf8.decode(bytes, allowMalformed: true);
   }
 
-  Future<void> _mergeRemoteStateFiles(String path, String branchName) async {
-    try {
-      // 1. Fetch remote content of timeline_history.json
-      final remoteTimelineResult = await Process.run(
-        'git',
-        ['show', 'origin/$branchName:.ai_bridge/timeline_history.json'],
-        workingDirectory: path,
-        runInShell: true,
-      );
-      if (remoteTimelineResult.exitCode == 0) {
-        final remoteContent = remoteTimelineResult.stdout.toString().trim();
-        final localFile = File('$path/.ai_bridge/timeline_history.json');
-        if (remoteContent.isNotEmpty && await localFile.exists()) {
-          final localContent = await localFile.readAsString();
-          final List<dynamic> localList = jsonDecode(localContent);
-          final List<dynamic> remoteList = jsonDecode(remoteContent);
-
-          // Merge by commitHash or id
-          final Map<String, dynamic> mergedMap = {};
-          
-          String getKey(dynamic commit) {
-            final hash = commit['commitHash'] ?? '';
-            if (hash.isNotEmpty && hash != 'No Git Changes') {
-              return hash;
-            }
-            return commit['id'] ?? '';
-          }
-
-          for (var commit in remoteList) {
-            final key = getKey(commit);
-            if (key.isNotEmpty) {
-              mergedMap[key] = commit;
-            }
-          }
-
-          for (var commit in localList) {
-            final key = getKey(commit);
-            if (key.isNotEmpty) {
-              // Local changes overwrite remote details for matching commits
-              mergedMap[key] = commit;
-            }
-          }
-
-          // Sort by commitDate descending
-          final mergedList = mergedMap.values.toList();
-          mergedList.sort((a, b) {
-            final dateA = DateTime.tryParse(a['commitDate'] ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
-            final dateB = DateTime.tryParse(b['commitDate'] ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
-            return dateB.compareTo(dateA); // Descending (newest first)
-          });
-
-          await localFile.writeAsString(const JsonEncoder.withIndent('  ').convert(mergedList));
-        }
+  TimelineCommit parseCommitMessage({
+    required String hash,
+    required String date,
+    required String author,
+    required String message,
+  }) {
+    final List<String> taskIds = [];
+    final regex = RegExp(r'Task ID:\s*([^\s]+)', caseSensitive: false);
+    for (var match in regex.allMatches(message)) {
+      final id = match.group(1);
+      if (id != null && !taskIds.contains(id)) {
+        taskIds.add(id);
       }
-    } catch (e) {
-      SystemLogsService.instance.addLog('Failed to merge remote timeline history: $e', category: LogCategory.VC);
     }
 
+    final lines = message.split('\n');
+    String title = lines.isNotEmpty ? lines[0].trim() : '';
 
+    String summary = '';
+    String verifiedNotes = '';
+
+    final verifiedItemsIndex = message.indexOf(RegExp(r'Verified Items:', caseSensitive: false));
+    if (verifiedItemsIndex != -1) {
+      verifiedNotes = message.substring(verifiedItemsIndex + 'Verified Items:'.length).trim();
+      final beforeVerified = message.substring(0, verifiedItemsIndex).trim();
+      final beforeLines = beforeVerified.split('\n');
+      if (beforeLines.length > 1) {
+        summary = beforeLines.sublist(1).where((line) {
+          return !line.trim().startsWith(RegExp(r'Task ID:', caseSensitive: false));
+        }).join('\n').trim();
+      }
+    } else {
+      if (lines.length > 1) {
+        summary = lines.sublist(1).where((line) {
+          return !line.trim().startsWith(RegExp(r'Task ID:', caseSensitive: false));
+        }).join('\n').trim();
+      }
+    }
+
+    if (title.isEmpty) {
+      title = 'Commit ${hash.length > 7 ? hash.substring(0, 7) : hash}';
+    }
+
+    return TimelineCommit(
+      id: hash,
+      taskIds: taskIds,
+      title: title,
+      summary: summary,
+      commitHash: hash,
+      commitDate: date,
+      verifiedNotes: verifiedNotes,
+    );
+  }
+
+  Future<List<TimelineCommit>> fetchTimelineHistory() async {
+    final path = await getLocalRepositoryPath();
+    if (path == null || path.isEmpty) {
+      return [];
+    }
+
+    final branch = await getCurrentBranch();
+
+    // 1. Try fetching from GitHub API first
+    try {
+      final hasConfig = await hasValidConfig();
+      if (hasConfig) {
+        final rawCommits = await GithubService.instance.fetchRepositoryCommits(branch);
+        final commits = rawCommits.map((c) => parseCommitMessage(
+          hash: c['hash'] ?? '',
+          date: c['date'] ?? '',
+          author: c['author'] ?? '',
+          message: c['message'] ?? '',
+        )).toList();
+        return commits;
+      }
+    } catch (e) {
+      SystemLogsService.instance.addLog('Failed to fetch timeline history from GitHub API: $e. Falling back to local git log.', category: LogCategory.VC);
+    }
+
+    // 2. Fallback to local git log
+    try {
+      final result = await Process.run(
+        'git',
+        ['log', branch, '--format=%H***%an***%ad***%B***COMMIT_SEP***', '--date=iso-strict'],
+        workingDirectory: path,
+        runInShell: false,
+        stdoutEncoding: null,
+        stderrEncoding: null,
+      );
+
+      if (result.exitCode == 0) {
+        final bytes = result.stdout as List<int>;
+        final out = utf8.decode(bytes, allowMalformed: true).trim();
+        if (out.isEmpty) return [];
+        final blocks = out.split('***COMMIT_SEP***');
+        final List<TimelineCommit> commits = [];
+        for (var block in blocks) {
+          final cleanBlock = block.trim();
+          if (cleanBlock.isEmpty) continue;
+          final parts = cleanBlock.split('***');
+          if (parts.length >= 4) {
+            final hash = parts[0].trim();
+            final author = parts[1].trim();
+            final date = parts[2].trim();
+            final message = parts.sublist(3).join('***').trim();
+            commits.add(parseCommitMessage(
+              hash: hash,
+              date: date,
+              author: author,
+              message: message,
+            ));
+          }
+        }
+        return commits;
+      }
+    } catch (e) {
+      SystemLogsService.instance.addLog('Failed to fetch local git log: $e', category: LogCategory.VC);
+    }
+
+    return [];
   }
 }

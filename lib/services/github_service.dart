@@ -106,6 +106,39 @@ class GithubService {
     }).toList();
   }
 
+  /// Fetches the commit history of the repository/branch from GitHub API.
+  Future<List<Map<String, String>>> fetchRepositoryCommits(String branch) async {
+    final remoteUrl = await getRemoteUrl();
+    if (remoteUrl == null) throw Exception('No remote URL configured.');
+
+    final parsed = parseGithubUrl(remoteUrl);
+    if (parsed == null) throw Exception('Failed to parse owner and repo from remote URL: $remoteUrl');
+
+    final owner = parsed['owner']!;
+    final repo = parsed['repo']!;
+    
+    final apiUrl = Uri.parse('https://api.github.com/repos/$owner/$repo/commits?sha=$branch');
+    final headers = await getRequestHeaders();
+
+    final response = await http.get(apiUrl, headers: headers);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to fetch commits from GitHub API: ${response.statusCode} - ${response.body}');
+    }
+
+    final List<dynamic> data = jsonDecode(response.body);
+    return data.map((item) {
+      final commit = item['commit'] ?? {};
+      final authorObj = commit['author'] ?? {};
+      return {
+        'sha': (item['sha'] ?? '').toString(),
+        'hash': (item['sha'] ?? '').toString(),
+        'date': (authorObj['date'] ?? '').toString(),
+        'author': (authorObj['name'] ?? '').toString(),
+        'message': (commit['message'] ?? '').toString(),
+      };
+    }).toList();
+  }
+
   /// Pulls the raw text of the file at the specified commit SHA.
   Future<String> fetchFileContent(String filePath, String commitSha) async {
     final remoteUrl = await getRemoteUrl();

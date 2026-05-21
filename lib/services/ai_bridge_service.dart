@@ -2405,7 +2405,7 @@ wshShell.AppActivate $myPid
           }
 
           if (requiresSave) {
-            // _save();
+            _save();
           } else {
             _processQueue();
           }
@@ -2811,17 +2811,7 @@ wshShell.AppActivate $myPid
                           }
                        } catch (_) {}
                     }
-                    _timelineHistory.insert(0, TimelineCommit(
-                       id: const Uuid().v4(),
-                       taskIds: tasksToCommit,
-                       title: allNames,
-                       summary: allDescriptions,
-                       commitHash: actualHash,
-                       commitDate: commitDateStr,
-                       verifiedNotes: finalVerifiedNotes,
-                    ));
-                    await _save(); // Save again to persist the commit hash
-                    notifyListeners();
+                    await reloadTimelineHistory();
                  }
              } catch (_) {}
         }
@@ -2870,21 +2860,21 @@ wshShell.AppActivate $myPid
            }
          }
          
-         _timelineHistory.insert(0, TimelineCommit(
-            id: const Uuid().v4(),
-            taskIds: taskIds,
-            title: commitName,
-            summary: allDescriptions,
-            commitHash: actualHash,
-            commitDate: commitDateStr,
-            verifiedNotes: notesToCommit,
-         ));
-         await _save();
-         notifyListeners();
+         await reloadTimelineHistory();
          return true;
       }
     } catch (_) {}
     return false;
+  }
+
+  Future<void> reloadTimelineHistory() async {
+    try {
+      final commits = await VersionControlService.instance.fetchTimelineHistory();
+      _timelineHistory = commits;
+      await _save();
+    } catch (e) {
+      debugPrint('[AiBridge] Error reloading timeline history: $e');
+    }
   }
 
   Future<void> deleteTimelineCommit(String commitId) async {
@@ -2893,15 +2883,7 @@ wshShell.AppActivate $myPid
   }
 
   Future<void> appendCheckpointToTimeline(String description, String commitHash, {List<String>? taskIds}) async {
-    _timelineHistory.insert(0, TimelineCommit(
-      id: const Uuid().v4(),
-      taskIds: taskIds ?? [],
-      title: 'Checkpoint',
-      summary: description,
-      commitHash: commitHash,
-      commitDate: DateTime.now().toIso8601String(),
-    ));
-    await _save();
+    await reloadTimelineHistory();
   }
 
   Future<void> applyTimelineCleanup(int keepCount, Map<String, String> newHashes) async {

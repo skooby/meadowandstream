@@ -60,6 +60,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     SandboxService.instance.init();
+    AiBridgeService.instance.reloadTimelineHistory();
     VersionControlWindow.highlightedTaskId.addListener(_scrollToHighlightedTask);
     _loadPreferences();
     _loadExplorerFiles();
@@ -91,6 +92,32 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
       return '$datePart $hour:$minute'.trim();
     }
     return d;
+  }
+
+  String _formatRelativeTime(String dateStr) {
+    final dt = DateTime.tryParse(dateStr)?.toLocal();
+    if (dt == null) return dateStr;
+    final now = DateTime.now();
+    final difference = now.difference(dt);
+
+    if (difference.inDays >= 365) {
+      final years = (difference.inDays / 365).floor();
+      return 'committed $years ${years == 1 ? "year" : "years"} ago';
+    } else if (difference.inDays >= 30) {
+      final months = (difference.inDays / 30).floor();
+      return 'committed $months ${months == 1 ? "month" : "months"} ago';
+    } else if (difference.inDays >= 7) {
+      final weeks = (difference.inDays / 7).floor();
+      return 'committed $weeks ${weeks == 1 ? "week" : "weeks"} ago';
+    } else if (difference.inDays >= 1) {
+      return 'committed ${difference.inDays} ${difference.inDays == 1 ? "day" : "days"} ago';
+    } else if (difference.inHours >= 1) {
+      return 'committed ${difference.inHours} ${difference.inHours == 1 ? "hour" : "hours"} ago';
+    } else if (difference.inMinutes >= 1) {
+      return 'committed ${difference.inMinutes} ${difference.inMinutes == 1 ? "minute" : "minutes"} ago';
+    } else {
+      return 'committed just now';
+    }
   }
 
   String _getBasename(String path) {
@@ -197,6 +224,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
           _commitFutures.clear();
         });
         await SandboxService.instance.reload();
+        await AiBridgeService.instance.reloadTimelineHistory();
       }
     } catch (e) {
       if (mounted) {
@@ -396,6 +424,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                           _commitFutures.clear();
                         });
                         SandboxService.instance.reload();
+                        AiBridgeService.instance.reloadTimelineHistory();
                       },
                     ),
                   ),
@@ -856,6 +885,8 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                               Expanded(
                                 child: Text(
                                   c.summary,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: AppUIConfig.rootFontSize),
                                 ),
                               ),
@@ -863,7 +894,9 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                           ),
                           const SizedBox(height: 2),
                           Text(
-                             _formatDateStr(c.commitDate),
+                             _formatRelativeTime(c.commitDate),
+                             maxLines: 1,
+                             overflow: TextOverflow.ellipsis,
                              style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize * 0.85),
                           ),
                         ],
@@ -892,8 +925,8 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
             c.commitHash != 'No Git Changes' &&
             !c.commitHash.startsWith('No changes');
         final subtitleText = isRealHash
-            ? '$shortHash  ·  ${_formatDateStr(c.commitDate)}'
-            : _formatDateStr(c.commitDate);
+            ? '$shortHash  ·  ${_formatRelativeTime(c.commitDate)}'
+            : _formatRelativeTime(c.commitDate);
 
         result.add(
           ValueListenableBuilder<String?>(
@@ -928,6 +961,8 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                             children: [
                               Text(
                                 c.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize),
                               ),
                               Text(
