@@ -4455,48 +4455,6 @@
       "parentId": "1778537568342"
     },
     {
-      "id": "1779154106804",
-      "name": "Spell Checker",
-      "description": "Lets add a simple spell checker",
-      "summary": "",
-      "notes": "",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "verificationCriteria": [
-        {
-          "description": "Contractions working like let's don't... not getting flagged as incorrect",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": null,
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false,
-          "isPreview": false
-        }
-      ],
-      "status": "inProgress",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": "d486a6b4a2bc7d0b139b4ff2ed830095aad16dd8",
-      "commitDate": "2026-05-18T20:04:27.855020",
-      "parentId": "1778537568342",
-      "worksheetId": "1778268121185"
-    },
-    {
       "id": "1775069020512",
       "name": "Implement Primary Directives Injection",
       "description": "",
