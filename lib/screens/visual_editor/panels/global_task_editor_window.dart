@@ -190,6 +190,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
   bool applyLocksToChildren = false;
   bool isReadOnly = false;
   bool isIgnored = false;
+  bool isLocked = false;
   String llmPromptStyleOverride = 'Use Default';
 
   bool isCustomizationExpanded = false;
@@ -415,6 +416,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     if (_shadowTask!.applyLocksToChildren != applyLocksToChildren) return 'applyLocksToChildren';
     if (_shadowTask!.isReadOnly != isReadOnly) return 'isReadOnly';
     if (_shadowTask!.isIgnored != isIgnored) return 'isIgnored';
+    if (_shadowTask!.isLocked != isLocked) return 'isLocked';
     if (_shadowTask!.llmPromptStyleOverride != llmPromptStyleOverride) return 'llmPromptStyleOverride';
     if (originalStatus != _shadowTask!.status) return 'status';
     if (fileAttachments.join(',') != _shadowTask!.fileAttachments.join(',')) return 'fileAttachments';
@@ -523,6 +525,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     existingTask!.applyLocksToChildren = applyLocksToChildren;
     existingTask!.isReadOnly = isReadOnly;
     existingTask!.isIgnored = isIgnored;
+    existingTask!.isLocked = isLocked;
     existingTask!.llmPromptStyleOverride = llmPromptStyleOverride;
 
     // Compute didCompleteChecklist BEFORE rebuilding shadow so we compare
@@ -588,6 +591,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
         applyLocksToChildren: applyLocksToChildren,
         isReadOnly: isReadOnly,
         isIgnored: isIgnored,
+        isLocked: isLocked,
         llmPromptStyleOverride: llmPromptStyleOverride,
         iconCodePoint: customIconCode,
         clearIcon: customIconCode == null,
@@ -836,6 +840,8 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
             if (originalIconCode != customIconCode) reason += 'iconCode; ';
             if (existingTask!.preventDeletion != preventDeletion)
               reason += 'preventDeletion; ';
+            if (existingTask!.isLocked != isLocked)
+              reason += 'isLocked; ';
 
             File('.ai_bridge/bridge_debug.txt').writeAsStringSync(
                 'hasUnsavedEdits is TRUE! Reason: $reason\n',
@@ -989,6 +995,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
       applyLocksToChildren = (existingTask?.applyLocksToChildren) ?? false;
       isReadOnly = (existingTask?.isReadOnly) ?? false;
       isIgnored = (existingTask?.isIgnored) ?? false;
+      isLocked = (existingTask?.isLocked) ?? false;
       llmPromptStyleOverride =
           (existingTask?.llmPromptStyleOverride) ?? 'Use Default';
 
@@ -2261,6 +2268,31 @@ verificationCriteriaList[i].isCommitted = false;
                                         } else {
                                           SandboxService.instance.addToSandbox([existingTask!.id]);
                                         }
+                                      },
+                                    ),
+                                  ),
+                                  Container(
+                                    margin: const EdgeInsets.only(left: 8),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                          color: isLocked ? Colors.redAccent.withOpacity(0.5) : Colors.transparent,
+                                          width: 1.5),
+                                    ),
+                                    child: IconButton(
+                                      icon: Icon(
+                                        isLocked ? Icons.lock : Icons.lock_open,
+                                        size: 20,
+                                      ),
+                                      tooltip: isLocked ? "Locked (Won't commit to GitHub)" : "Unlocked (Can commit to GitHub)",
+                                      color: isLocked ? Colors.redAccent : AppColors.textMuted,
+                                      padding: const EdgeInsets.all(6),
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () {
+                                        setStateBuilder(() {
+                                          isLocked = !isLocked;
+                                        });
+                                        _executeAutoSave();
                                       },
                                     ),
                                   ),

@@ -475,33 +475,16 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                         return;
                       }
                       
-                      final commitNameController = TextEditingController(text: activeTasks.length == 1 ? activeTasks.first.name : 'Merged Checkpoint');
-                      final bool? confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          backgroundColor: AppColors.panelBackground,
-                          title: const Text('Verify Commit Name', style: TextStyle(color: Colors.white)),
-                          content: TextField(
-                            controller: commitNameController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'Commit Name',
-                              labelStyle: TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: AppColors.textMuted))),
-                            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Commit', style: TextStyle(color: Colors.blueAccent))),
-                          ],
-                        ),
-                      );
+                      final defaultCommitName = activeTasks.length == 1
+                          ? (activeTasks.first.summary.isNotEmpty ? activeTasks.first.summary : activeTasks.first.name)
+                          : (activeTasks.any((t) => t.summary.isNotEmpty)
+                              ? activeTasks.where((t) => t.summary.isNotEmpty).map((t) => t.summary).join(' | ')
+                              : 'Merged Checkpoint');
                       
-                      if (confirm == true) {
-                        final taskIds = activeTasks.map((t) => t.id).toList();
-                        final success = await AiBridgeService.instance.performManualCommitAll(taskIds, commitNameController.text);
-                        if (success && mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tasks committed successfully.')));
-                        }
+                      final taskIds = activeTasks.map((t) => t.id).toList();
+                      final success = await AiBridgeService.instance.performManualCommitAll(taskIds, defaultCommitName);
+                      if (success && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tasks committed successfully.')));
                       }
                     },
                   ),

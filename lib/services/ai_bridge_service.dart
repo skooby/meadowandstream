@@ -187,6 +187,7 @@ class AiTask {
   bool applyLocksToChildren;
   bool isReadOnly;
   bool isIgnored;
+  bool isLocked;
   String llmPromptStyleOverride;
   AiTask? proposedChanges;
   List<String> fileAttachments;
@@ -222,6 +223,7 @@ class AiTask {
     this.applyLocksToChildren = false,
     this.isReadOnly = false,
     this.isIgnored = false,
+    this.isLocked = false,
     this.llmPromptStyleOverride = 'Use Default',
     this.proposedChanges,
     this.commitHash,
@@ -256,6 +258,7 @@ class AiTask {
       'applyLocksToChildren': applyLocksToChildren,
       'isReadOnly': isReadOnly,
       'isIgnored': isIgnored,
+      'isLocked': isLocked,
       'llmPromptStyleOverride': llmPromptStyleOverride,
       'fileAttachments': fileAttachments,
       'hyperlinks': hyperlinks,
@@ -313,6 +316,7 @@ class AiTask {
       applyLocksToChildren: json['applyLocksToChildren'] ?? false,
       isReadOnly: json['isReadOnly'] ?? false,
       isIgnored: json['isIgnored'] ?? false,
+      isLocked: json['isLocked'] ?? false,
       llmPromptStyleOverride: json['llmPromptStyleOverride'] ?? 'Use Default',
       proposedChanges: json['proposedChanges'] != null
           ? AiTask.fromJson(json['proposedChanges'])
@@ -2545,7 +2549,8 @@ wshShell.AppActivate $myPid
       String? commitHash,
       bool? isFolder,
       bool? isNote,
-      bool? isKnowledgeSummary}) async {
+      bool? isKnowledgeSummary,
+      bool? isLocked}) async {
     final index = _tasks.indexWhere((t) => t.id == id);
     if (index != -1) {
       if (_tasks[index].id.isEmpty) {
@@ -2630,6 +2635,9 @@ wshShell.AppActivate $myPid
         _tasks[index].isKnowledgeSummary = isKnowledgeSummary;
         hasChanges = true;
       }
+      if (isLocked != null && _tasks[index].isLocked != isLocked) {
+        hasChanges = true;
+      }
       if (clearParentId && _tasks[index].parentId != null) {
         hasChanges = true;
       } else if (!clearParentId &&
@@ -2667,6 +2675,9 @@ wshShell.AppActivate $myPid
           _tasks[index].verificationCriteria = verificationCriteria;
 
           bool shouldCommit = didCompleteChecklist ?? (verificationCriteria.isNotEmpty && !newHasUnverified && _tasks[index].status != AiTaskStatus.completed);
+          if (isLocked ?? _tasks[index].isLocked) {
+            shouldCommit = false;
+          }
           try { File('.ai_bridge/bridge_commit_debug.txt').writeAsStringSync('shouldCommit: $shouldCommit, didCompleteChecklist: $didCompleteChecklist, newHasUnverified: $newHasUnverified, status: ${_tasks[index].status}\n', mode: FileMode.append); } catch (_) {}
 
           if (shouldCommit) {
@@ -2718,6 +2729,7 @@ wshShell.AppActivate $myPid
           _tasks[index].applyLocksToChildren = applyLocksToChildren;
         if (isReadOnly != null) _tasks[index].isReadOnly = isReadOnly;
         if (isIgnored != null) _tasks[index].isIgnored = isIgnored;
+        if (isLocked != null) _tasks[index].isLocked = isLocked;
         if (llmPromptStyleOverride != null)
           _tasks[index].llmPromptStyleOverride = llmPromptStyleOverride;
         if (commitHash != null)
@@ -2804,6 +2816,7 @@ wshShell.AppActivate $myPid
                           t.commitHash = actualHash;
                           t.commitDate = commitDateStr;
                           t.status = AiTaskStatus.completed;
+                          t.isLocked = false;
                           for (var vc in t.verificationCriteria) {
                             if (vc.status == AiVerificationStatus.verified) {
                               vc.isCommitted = true;
@@ -2853,6 +2866,7 @@ wshShell.AppActivate $myPid
            task.commitHash = actualHash;
            task.commitDate = commitDateStr;
            task.status = AiTaskStatus.completed;
+           task.isLocked = false;
            for (var vc in task.verificationCriteria) {
              if (vc.status == AiVerificationStatus.verified) {
                vc.isCommitted = true;
