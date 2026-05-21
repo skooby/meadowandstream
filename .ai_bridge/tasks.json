@@ -5408,6 +5408,73 @@
       "commitDate": "2026-05-20T13:26:11.903577",
       "parentId": "1778865514716",
       "worksheetId": "1778268121185"
+    },
+    {
+      "id": "1779063155069",
+      "name": "Task Editor",
+      "description": "Improvements and enhancements",
+      "summary": "ui: Add task lock toggle button to prevent auto-committing to GitHub",
+      "notes": "### Update - 2026-05-21 06:47\nAdded a lock button to the top icon area next to the Add to Active Tasks button. The lock button allows users to toggle task locking state, which sets `isLocked` to true on the task and blocks auto-committing the task to GitHub when the checklist is completed.\n\n---\n\n### Update - 2026-05-21 06:36\nModified lib/screens/visual_editor/panels/global_task_editor_window.dart to: \n1. Render the committed verification checkmark with a green accent (Colors.green.withOpacity(0.8)) instead of red.\n2. Wrap the checklist ReorderableListView in a Flexible widget instead of Expanded and enable shrinkWrap: true so that the 'Add new task...' row sits immediately below the last checklist entry.\n\n---",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Show our committed checkmark as green not red",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Changed the checkmark Icon color at line 1784 of lib/screens/visual_editor/panels/global_task_editor_window.dart from Colors.red.withOpacity(0.8) to Colors.green.withOpacity(0.8).",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        },
+        {
+          "description": "Modify the add new task location to be just below the last entry in the checklist.. it is popping to the bottom",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Changed the layout wrapper of the checklist ReorderableListView in lib/screens/visual_editor/panels/global_task_editor_window.dart at lines 1253-1255 from Expanded to Flexible and enabled shrinkWrap: true. This allows the checklist list view to wrap its contents, placing the 'Add new task...' text field and action button immediately below the last checklist entry.",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        },
+        {
+          "description": "Next to our top icon area \"Add to active tasks\" lets include a LOCK icon that we can select that when locked it won't commit to github until we are ready.",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Added an IconButton with a lock/lock_open icon inside global_task_editor_window.dart. Wired up this icon button to toggle the task's isLocked property, update the unsavedReason checking, save it to the existing task structure, and call updateTaskDetails. In the service layer, when isLocked is true, it overrides shouldCommit to false, successfully preventing GitHub auto-commit.",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        }
+      ],
+      "status": "completed",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "isLocked": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": "ab4b053d0f80dbf1e02df491c96fb186cc339296",
+      "commitDate": "2026-05-21T07:01:38.640446",
+      "parentId": "1778559529935",
+      "worksheetId": "1778268121185"
     }
   ]
 }

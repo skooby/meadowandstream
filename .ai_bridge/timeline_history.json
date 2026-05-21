@@ -1,5 +1,17 @@
 [
   {
+    "id": "ab4b053d0f80dbf1e02df491c96fb186cc339296",
+    "taskIds": [
+      "1778869915153",
+      "1779063155069"
+    ],
+    "title": "ui: Bypass name dialog in Commit Tasks button and directly commit | ui: Add task lock toggle button to prevent auto-committing to GitHub",
+    "summary": "Version Control System improvements and tasks\n\nImprovements and enhancements",
+    "commitHash": "ab4b053d0f80dbf1e02df491c96fb186cc339296",
+    "commitDate": "2026-05-21T07:01:38-06:00",
+    "verifiedNotes": "- Have the \"Commit Tasks\" auto populate with the name that we have pre-defined\n- Lets have the Commit Tasks button just allow the automatic version to proceed. No need for a new name, since it should be doing that automatically in the other portion. It will bypass any locks on a task. But it should continue to flag if not all tasks have not been resolved.\n- Show our committed checkmark as green not red\n- Modify the add new task location to be just below the last entry in the checklist.. it is popping to the bottom\n- Next to our top icon area \"Add to active tasks\" lets include a LOCK icon that we can select that when locked it won't commit to github until we are ready."
+  },
+  {
     "id": "ed2fb94c34ba3f22ebe5c6d7a28b616b3ca0429b",
     "taskIds": [
       "1779063155069"

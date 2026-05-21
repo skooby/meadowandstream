@@ -475,11 +475,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                         return;
                       }
                       
-                      final defaultCommitName = activeTasks.length == 1
-                          ? (activeTasks.first.summary.isNotEmpty ? activeTasks.first.summary : activeTasks.first.name)
-                          : (activeTasks.any((t) => t.summary.isNotEmpty)
-                              ? activeTasks.where((t) => t.summary.isNotEmpty).map((t) => t.summary).join(' | ')
-                              : 'Merged Checkpoint');
+                      final defaultCommitName = AiBridgeService.instance.generateCommitName(activeTasks);
                       
                       final taskIds = activeTasks.map((t) => t.id).toList();
                       final success = await AiBridgeService.instance.performManualCommitAll(taskIds, defaultCommitName);

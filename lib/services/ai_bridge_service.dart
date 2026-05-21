@@ -2771,13 +2771,14 @@ wshShell.AppActivate $myPid
         
         if (performSandboxCommit) {
              try { File('.ai_bridge/bridge_commit_debug.txt').writeAsStringSync('performSandboxCommit is TRUE, getting names and descriptions...\n', mode: FileMode.append); } catch (_) {}
-             final allNames = tasksToCommit.map((id) {
-               try { 
-                 final task = _tasks.firstWhere((t) => t.id == id);
-                 final summaryStr = task.summary.isNotEmpty ? ' [${task.summary}]' : '';
-                 return '${task.name}$summaryStr';
-               } catch (_) { return ''; }
-             }).where((n) => n.isNotEmpty).join(' | ');
+             final tasksList = tasksToCommit.map((id) {
+               try {
+                 return _tasks.firstWhere((t) => t.id == id);
+               } catch (_) {
+                 return null;
+               }
+             }).whereType<AiTask>().toList();
+             final allNames = generateCommitName(tasksList);
 
              final allDescriptions = tasksToCommit.map((id) {
                try { 
@@ -2830,6 +2831,13 @@ wshShell.AppActivate $myPid
         }
       }
     }
+  }
+
+  String generateCommitName(List<AiTask> tasks) {
+    return tasks.map((task) {
+      final summaryStr = task.summary.isNotEmpty ? ' [${task.summary}]' : '';
+      return '${task.name}$summaryStr';
+    }).where((n) => n.isNotEmpty).join(' | ');
   }
 
   Future<bool> performManualCommitAll(List<String> taskIds, String commitName) async {
