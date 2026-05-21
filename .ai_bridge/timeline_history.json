@@ -1,5 +1,14 @@
 [
   {
+    "id": "d5ca4c45ad67312713ad4e54be13e61f6be952e6",
+    "taskIds": [],
+    "title": "Checkpoint",
+    "summary": "Timeline and Version Control",
+    "commitHash": "d5ca4c45ad67312713ad4e54be13e61f6be952e6",
+    "commitDate": "2026-05-21T07:18:25-06:00",
+    "verifiedNotes": ""
+  },
+  {
     "id": "eda904e197909553c6008829eefc55e48cac8011",
     "taskIds": [
       "1778869915153"
@@ -145,8 +154,8 @@
   {
     "id": "ac7836896ee21168dc23b7218af73ce095e724cf",
     "taskIds": [],
-    "title": "[CHECKPOINT] - Manual Checkpoint: Before GitHub Connection",
-    "summary": "",
+    "title": "Checkpoint",
+    "summary": "Before GitHub Connection",
     "commitHash": "ac7836896ee21168dc23b7218af73ce095e724cf",
     "commitDate": "2026-05-20T13:20:34-06:00",
     "verifiedNotes": ""
@@ -354,8 +363,8 @@
   {
     "id": "92ed3dcb8ee0102e96c90797b59f266142df9010",
     "taskIds": [],
-    "title": "[CHECKPOINT] - Manual Checkpoint: Before Antigravity SDK",
-    "summary": "",
+    "title": "Checkpoint",
+    "summary": "Before Antigravity SDK",
     "commitHash": "92ed3dcb8ee0102e96c90797b59f266142df9010",
     "commitDate": "2026-05-19T15:07:32-06:00",
     "verifiedNotes": ""
@@ -419,8 +428,8 @@
   {
     "id": "d87e5897da88e86c7291cf5b9cb27ec46f7c55d8",
     "taskIds": [],
-    "title": "[CHECKPOINT] - Manual Checkpoint: Before AI ASSISTANT Stuff",
-    "summary": "",
+    "title": "Checkpoint",
+    "summary": "Before AI ASSISTANT Stuff",
     "commitHash": "d87e5897da88e86c7291cf5b9cb27ec46f7c55d8",
     "commitDate": "2026-05-19T06:19:55-06:00",
     "verifiedNotes": ""
@@ -462,8 +471,8 @@
   {
     "id": "462ce9e9e4d4b39acf817719ea98ff7b49d9b210",
     "taskIds": [],
-    "title": "[CHECKPOINT] - Manual Checkpoint: BEFORE CHANGES PRIME DIRECTIVES METHOD",
-    "summary": "",
+    "title": "Checkpoint",
+    "summary": "BEFORE CHANGES PRIME DIRECTIVES METHOD",
     "commitHash": "462ce9e9e4d4b39acf817719ea98ff7b49d9b210",
     "commitDate": "2026-05-19T05:00:55-06:00",
     "verifiedNotes": ""
@@ -528,8 +537,8 @@
   {
     "id": "2232dce2a9c2b479090fe4a986fc1168c7c292e5",
     "taskIds": [],
-    "title": "[CHECKPOINT] - Manual Checkpoint: After the nightware of locked waiting cycles",
-    "summary": "",
+    "title": "Checkpoint",
+    "summary": "After the nightware of locked waiting cycles",
     "commitHash": "2232dce2a9c2b479090fe4a986fc1168c7c292e5",
     "commitDate": "2026-05-18T18:53:49-06:00",
     "verifiedNotes": ""

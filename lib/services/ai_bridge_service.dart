@@ -1018,8 +1018,14 @@ wshShell.AppActivate $myPid
       await _saveQueueState();
       notifyListeners();
 
-      // Natively wait 8 seconds before dispatch to IDE to guarantee the queue settles perfectly and hot reloads reset focus securely
-      await Future.delayed(const Duration(seconds: 8));
+      // Natively wait configured seconds before dispatch to IDE to guarantee the queue settles perfectly and hot reloads reset focus securely
+      final prefs = await SharedPreferences.getInstance();
+      final delayVal = prefs.get('ai_tasks_delay_seconds');
+      double delaySeconds = 5.0;
+      if (delayVal != null && delayVal is num) {
+        delaySeconds = delayVal.toDouble().clamp(0.0, 5.0);
+      }
+      await Future.delayed(Duration(milliseconds: (delaySeconds * 1000).round()));
 
       await _sendToAiAgent(nextPrompt.text);
       setScreenBlockerEnabled(nextPrompt.block);

@@ -648,9 +648,12 @@ class VersionControlService {
     String verifiedNotes = '';
 
     if (title.startsWith('[CHECKPOINT]')) {
-      final checkpointText = title.substring('[CHECKPOINT]'.length).trim().replaceFirst(RegExp(r'^-\s*'), '');
+      var checkpointText = title.substring('[CHECKPOINT]'.length).trim().replaceFirst(RegExp(r'^-\s*'), '');
+      checkpointText = checkpointText
+          .replaceFirst(RegExp(r'^Manual Checkpoint:\s*', caseSensitive: false), '')
+          .replaceFirst(RegExp(r'^Auto-Checkpoint before\s*', caseSensitive: false), '');
       title = 'Checkpoint';
-      summary = checkpointText.isNotEmpty ? checkpointText : 'Manual Checkpoint';
+      summary = checkpointText.isNotEmpty ? checkpointText : 'Checkpoint';
     } else {
       final verifiedItemsIndex = message.indexOf(RegExp(r'Verified Items:', caseSensitive: false));
       if (verifiedItemsIndex != -1) {

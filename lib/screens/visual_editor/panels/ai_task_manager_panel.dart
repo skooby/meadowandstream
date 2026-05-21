@@ -1681,6 +1681,11 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     final complexityStr =
         prefs.getString('ai_tasks_bridge_complexity') ?? 'Default';
     String selectedComplexity = complexityStr;
+    final delayVal = prefs.get('ai_tasks_delay_seconds');
+    double delaySeconds = 5.0;
+    if (delayVal != null && delayVal is num) {
+      delaySeconds = delayVal.toDouble().clamp(0.0, 5.0);
+    }
 
     AiTaskStatus? afterEditStatus = afterEditStr == 'dontChange'
         ? null
@@ -1709,6 +1714,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                 await prefs.setString('ai_tasks_bridge_voice', selectedVoice);
                 await prefs.setString(
                     'ai_tasks_bridge_complexity', selectedComplexity);
+                await prefs.setDouble('ai_tasks_delay_seconds', delaySeconds);
                 await prefs.setBool('ai_tasks_block_copy', _blockOnCopy);
                 await prefs.setBool('ai_tasks_block_review', _blockOnReview);
                 await prefs.setBool(
@@ -1772,22 +1778,22 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                 }
               }
 
-              TableRow buildConfigHeader() {
+               TableRow buildConfigHeader() {
                 Widget th(String text) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(text,
+                      child: Text(text.toUpperCase(),
                           style: TextStyle(
-                              color: AppColors.panelTextSecondary,
+                              color: AppColors.accent,
                               fontSize: AppUIConfig.rootFontSize,
                               fontWeight: FontWeight.bold),
                           textAlign: TextAlign.center),
                     );
                 return TableRow(children: [
                   Padding(
-                    padding: EdgeInsets.only(bottom: 12),
-                    child: Text('Type',
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text('TYPE:',
                         style: TextStyle(
-                            color: AppColors.panelTextSecondary,
+                            color: AppColors.accent,
                             fontSize: AppUIConfig.rootFontSize,
                             fontWeight: FontWeight.bold)),
                   ),
@@ -1833,14 +1839,18 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                           }));
                 }
 
+                final formattedTitle = title.toUpperCase().trim().endsWith(':')
+                    ? title.toUpperCase().trim()
+                    : '${title.toUpperCase().trim()}:';
+
                 return TableRow(children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(title,
+                    child: Text(formattedTitle,
                         style: TextStyle(
-                            color: AppColors.panelTextSecondary,
+                            color: AppColors.accent,
                             fontSize: AppUIConfig.rootFontSize,
-                            fontWeight: FontWeight.w500)),
+                            fontWeight: FontWeight.bold)),
                   ),
                   buildCb(showVal, onShow),
                   buildCb(upperVal, onUpper),
@@ -1905,20 +1915,31 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                           child: InkWell(
                                 onTap: () {
                                   GlobalPickerState.instance.requestColor(
-  initialColor: colorVal != null ? Color(colorVal) : Colors.white,
-  onColorSelected: (c) {
-                                        if (onColor != null && c != null) {
-                                          ss(() => onColor(c.value));
-                                          save();
-                                        }
-                                      },
-);
-showColorPickerWindow(context);
+                                    initialColor: colorVal != null ? Color(colorVal) : Colors.white,
+                                    onColorSelected: (c) {
+                                      if (onColor != null && c != null) {
+                                        ss(() => onColor(c.value));
+                                        save();
+                                      }
+                                    },
+                                  );
+                                  showColorPickerWindow(context);
                                 },
                                 child: Container(
-                                  width: 24, height: 16,
-                                  color: colorVal != null ? Color(colorVal) : Colors.transparent,
-                                  child: Center(child: Icon(Icons.palette, size: 12, color: AppColors.panelTextSecondary)),
+                                  width: 24,
+                                  height: 16,
+                                  decoration: BoxDecoration(
+                                    color: Color(colorVal),
+                                    border: Border.all(color: AppColors.borderSubtle, width: 1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.palette,
+                                      size: 12,
+                                      color: Color(colorVal).computeLuminance() > 0.5 ? Colors.black87 : Colors.white70,
+                                    ),
+                                  ),
                                 )
                               ))),
                   if (linesCtrl != null && onLines != null)
@@ -1949,6 +1970,121 @@ showColorPickerWindow(context);
                             ))),
                   if (linesCtrl == null) const SizedBox(),
                 ]);
+              }
+
+              Widget buildDropdownSettingRow({
+                required String labelText,
+                required Widget dropdown,
+              }) {
+                final formattedLabel = labelText.toUpperCase().trim().endsWith(':')
+                    ? labelText.toUpperCase().trim()
+                    : '${labelText.toUpperCase().trim()}:';
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        formattedLabel,
+                        style: TextStyle(
+                          color: AppColors.accent,
+                          fontSize: AppUIConfig.rootFontSize,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.overlaySubtle,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.borderSubtle, width: 1),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: dropdown,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              Widget buildSliderSettingRow({
+                required String labelText,
+                required Widget slider,
+                required Widget valueText,
+              }) {
+                final formattedLabel = labelText.toUpperCase().trim().endsWith(':')
+                    ? labelText.toUpperCase().trim()
+                    : '${labelText.toUpperCase().trim()}:';
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        formattedLabel,
+                        style: TextStyle(
+                          color: AppColors.accent,
+                          fontSize: AppUIConfig.rootFontSize,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.overlaySubtle,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.borderSubtle, width: 1),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(child: slider),
+                            const SizedBox(width: 8),
+                            valueText,
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              Widget buildChipsSettingRow({
+                required String labelText,
+                required Widget chips,
+              }) {
+                final formattedLabel = labelText.toUpperCase().trim().endsWith(':')
+                    ? labelText.toUpperCase().trim()
+                    : '${labelText.toUpperCase().trim()}:';
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        formattedLabel,
+                        style: TextStyle(
+                          color: AppColors.accent,
+                          fontSize: AppUIConfig.rootFontSize,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.overlaySubtle,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.borderSubtle, width: 1),
+                        ),
+                        child: chips,
+                      ),
+                    ],
+                  ),
+                );
               }
 
               return Theme(
@@ -1996,211 +2132,211 @@ showColorPickerWindow(context);
                                           CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Text('Statuses To Process:', style: TextStyle(
-                                                color: AppColors.panelTextSecondary,
-                                                fontSize: AppUIConfig.rootFontSize,
-                                                fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 8),
-                                        Wrap(
+                                        buildChipsSettingRow(
+                                          labelText: 'Statuses To Process',
+                                          chips: Wrap(
                                             spacing: 8,
-                                            children:
-                                                AiTaskStatus.values.map((s) {
+                                            runSpacing: 8,
+                                            children: AiTaskStatus.values.map((s) {
+                                              final isSelected = selectedStatuses.contains(s);
                                               return FilterChip(
                                                 label: Text(
-                                                    _formatStatusName(s)
-                                                        .toUpperCase(),
+                                                    _formatStatusName(s).toUpperCase(),
                                                     style: TextStyle(
                                                         fontSize: AppUIConfig.smallFontSize,
-                                                        color: selectedStatuses
-                                                                .contains(s)
-                                                            ? Colors.black
+                                                        color: isSelected
+                                                            ? Colors.white
                                                             : AppColors.panelTextSecondary,
-                                                        fontWeight:
-                                                            selectedStatuses
-                                                                    .contains(s)
-                                                                ? FontWeight
-                                                                    .bold
-                                                                : FontWeight
-                                                                    .normal)),
-                                                selected: selectedStatuses
-                                                    .contains(s),
+                                                        fontWeight: isSelected
+                                                            ? FontWeight.bold
+                                                            : FontWeight.normal)),
+                                                selected: isSelected,
                                                 showCheckmark: false,
                                                 onSelected: (val) {
                                                   setStateBuilder(() {
                                                     if (val) {
                                                       selectedStatuses.add(s);
                                                     } else {
-                                                      selectedStatuses
-                                                          .remove(s);
+                                                      selectedStatuses.remove(s);
                                                     }
                                                   });
                                                   saveSettings();
                                                 },
                                                 backgroundColor: AppColors.panelBackground,
-                                                selectedColor: AppColors.panelTextPrimary,
+                                                selectedColor: AppColors.accent,
                                                 side: BorderSide(
-                                                    color: AppColors.overlaySubtle),
+                                                    color: AppColors.borderSubtle),
                                               );
-                                            }).toList()),
-                                        const SizedBox(height: 16),
-                                        Text(
-                                            'Default Status For New Tasks:',
-                                            style: TextStyle(
-                                                color: AppColors.panelTextSecondary,
-                                                fontSize: AppUIConfig.rootFontSize,
-                                                fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 8),
-                                        DropdownButton<AiTaskStatus>(
-                                          value: newTargetStatus,
-                                          dropdownColor:
-                                              AppColors.panelBackground,
-                                          style: TextStyle(
-                                              color: AppColors.panelTextPrimary),
-                                          underline: Container(
-                                              height: 1, color: AppColors.borderSubtle),
-                                          items: AiTaskStatus.values
-                                              .map((s) => DropdownMenuItem(
-                                                  value: s,
-                                                  child: Text(
-                                                      _formatStatusName(s))))
-                                              .toList(),
-                                          onChanged: (val) {
-                                            if (val != null) {
-                                              setStateBuilder(
-                                                  () => newTargetStatus = val);
-                                              saveSettings();
-                                            }
-                                          },
+                                            }).toList(),
+                                          ),
                                         ),
-                                        const SizedBox(height: 24),
-                                        Text(
-                                            'Change Status After Bridge Edit:',
-                                            style: TextStyle(
-                                                color: AppColors.panelTextSecondary,
-                                                fontSize: AppUIConfig.rootFontSize,
-                                                fontWeight: FontWeight.bold)),
                                         const SizedBox(height: 8),
-                                        DropdownButton<AiTaskStatus?>(
-                                          value: afterEditStatus,
-                                          dropdownColor:
-                                              AppColors.panelBackground,
-                                          style: TextStyle(
-                                              color: AppColors.panelTextPrimary),
-                                          underline: Container(
-                                              height: 1, color: AppColors.borderSubtle),
-                                          items: [
-                                            const DropdownMenuItem(
-                                                value: null,
-                                                child: Text('DON\'T CHANGE')),
-                                            ...AiTaskStatus.values.map((s) =>
-                                                DropdownMenuItem(
-                                                    value: s,
-                                                    child: Text(
-                                                        _formatStatusName(s)
-                                                            .toUpperCase())))
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: buildDropdownSettingRow(
+                                                labelText: 'Default Status For New Tasks',
+                                                dropdown: DropdownButton<AiTaskStatus>(
+                                                  value: newTargetStatus,
+                                                  isExpanded: true,
+                                                  dropdownColor: AppColors.panelBackground,
+                                                  style: TextStyle(color: AppColors.panelTextPrimary),
+                                                  items: AiTaskStatus.values
+                                                      .map((s) => DropdownMenuItem(
+                                                          value: s,
+                                                          child: Text(_formatStatusName(s).toUpperCase())))
+                                                      .toList(),
+                                                  onChanged: (val) {
+                                                    if (val != null) {
+                                                      setStateBuilder(() => newTargetStatus = val);
+                                                      saveSettings();
+                                                    }
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: buildDropdownSettingRow(
+                                                labelText: 'Change Status After Bridge Edit',
+                                                dropdown: DropdownButton<AiTaskStatus?>(
+                                                  value: afterEditStatus,
+                                                  isExpanded: true,
+                                                  dropdownColor: AppColors.panelBackground,
+                                                  style: TextStyle(color: AppColors.panelTextPrimary),
+                                                  items: [
+                                                    const DropdownMenuItem(
+                                                        value: null,
+                                                        child: Text('DON\'T CHANGE')),
+                                                    ...AiTaskStatus.values.map((s) => DropdownMenuItem(
+                                                        value: s,
+                                                        child: Text(_formatStatusName(s).toUpperCase())))
+                                                  ],
+                                                  onChanged: (val) {
+                                                    setStateBuilder(() => afterEditStatus = val);
+                                                    saveSettings();
+                                                  },
+                                                ),
+                                              ),
+                                            ),
                                           ],
-                                          onChanged: (val) {
-                                            setStateBuilder(
-                                                () => afterEditStatus = val);
-                                            saveSettings();
-                                          },
                                         ),
-                                        const SizedBox(height: 16),
-                                        Text(
-                                            'Change Status After Bridge Completed:',
-                                            style: TextStyle(
-                                                color: AppColors.panelTextSecondary,
-                                                fontSize: AppUIConfig.rootFontSize,
-                                                fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 8),
-                                        DropdownButton<AiTaskStatus?>(
-                                          value: afterCompleteStatus,
-                                          dropdownColor:
-                                              AppColors.panelBackground,
-                                          style: TextStyle(
-                                              color: AppColors.panelTextPrimary),
-                                          underline: Container(
-                                              height: 1, color: AppColors.borderSubtle),
-                                          items: [
-                                            const DropdownMenuItem(
-                                                value: null,
-                                                child: Text('DON\'T CHANGE')),
-                                            ...AiTaskStatus.values.map((s) =>
-                                                DropdownMenuItem(
-                                                    value: s,
-                                                    child: Text(
-                                                        _formatStatusName(s)
-                                                            .toUpperCase())))
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: buildDropdownSettingRow(
+                                                labelText: 'Change Status After Bridge Completed',
+                                                dropdown: DropdownButton<AiTaskStatus?>(
+                                                  value: afterCompleteStatus,
+                                                  isExpanded: true,
+                                                  dropdownColor: AppColors.panelBackground,
+                                                  style: TextStyle(color: AppColors.panelTextPrimary),
+                                                  items: [
+                                                    const DropdownMenuItem(
+                                                        value: null,
+                                                        child: Text('DON\'T CHANGE')),
+                                                    ...AiTaskStatus.values.map((s) => DropdownMenuItem(
+                                                        value: s,
+                                                        child: Text(_formatStatusName(s).toUpperCase())))
+                                                  ],
+                                                  onChanged: (val) {
+                                                    setStateBuilder(() => afterCompleteStatus = val);
+                                                    saveSettings();
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: buildDropdownSettingRow(
+                                                labelText: 'LLM Voice Profile',
+                                                dropdown: DropdownButton<String>(
+                                                  value: selectedVoice,
+                                                  isExpanded: true,
+                                                  dropdownColor: AppColors.panelBackground,
+                                                  style: TextStyle(color: AppColors.panelTextPrimary),
+                                                  items: [
+                                                    'Default',
+                                                    'Conversational',
+                                                    'Technical / Code Heavy',
+                                                    'Direct / Robotic'
+                                                  ]
+                                                      .map((s) => DropdownMenuItem(
+                                                          value: s,
+                                                          child: Text(s.toUpperCase())))
+                                                      .toList(),
+                                                  onChanged: (val) {
+                                                    if (val != null) {
+                                                      setStateBuilder(() => selectedVoice = val);
+                                                      saveSettings();
+                                                    }
+                                                  },
+                                                ),
+                                              ),
+                                            ),
                                           ],
-                                          onChanged: (val) {
-                                            setStateBuilder(() =>
-                                                afterCompleteStatus = val);
-                                            saveSettings();
-                                          },
                                         ),
-                                        const SizedBox(height: 16),
-                                        Text('LLM Voice Profile:', style: TextStyle(
-                                                color: AppColors.panelTextSecondary,
-                                                fontSize: AppUIConfig.rootFontSize,
-                                                fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 8),
-                                        DropdownButton<String>(
-                                          value: selectedVoice,
-                                          dropdownColor:
-                                              AppColors.panelBackground,
-                                          style: TextStyle(
-                                              color: AppColors.panelTextPrimary),
-                                          underline: Container(
-                                              height: 1, color: AppColors.borderSubtle),
-                                          items: [
-                                            'Default',
-                                            'Conversational',
-                                            'Technical / Code Heavy',
-                                            'Direct / Robotic'
-                                          ]
-                                              .map((s) => DropdownMenuItem(
-                                                  value: s,
-                                                  child: Text(s.toUpperCase())))
-                                              .toList(),
-                                          onChanged: (val) {
-                                            if (val != null) {
-                                              setStateBuilder(
-                                                  () => selectedVoice = val);
-                                              saveSettings();
-                                            }
-                                          },
-                                        ),
-                                        const SizedBox(height: 16),
-                                        Text('LLM Conceptual Complexity:', style: TextStyle(
-                                                color: AppColors.panelTextSecondary,
-                                                fontSize: AppUIConfig.rootFontSize,
-                                                fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 8),
-                                        DropdownButton<String>(
-                                          value: selectedComplexity,
-                                          dropdownColor:
-                                              AppColors.panelBackground,
-                                          style: TextStyle(
-                                              color: AppColors.panelTextPrimary),
-                                          underline: Container(
-                                              height: 1, color: AppColors.borderSubtle),
-                                          items: [
-                                            'Default',
-                                            'Concise',
-                                            'Verbose',
-                                            'Step-by-Step'
-                                          ]
-                                              .map((s) => DropdownMenuItem(
-                                                  value: s,
-                                                  child: Text(s.toUpperCase())))
-                                              .toList(),
-                                          onChanged: (val) {
-                                            if (val != null) {
-                                              setStateBuilder(() =>
-                                                  selectedComplexity = val);
-                                              saveSettings();
-                                            }
-                                          },
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: buildDropdownSettingRow(
+                                                labelText: 'LLM Conceptual Complexity',
+                                                dropdown: DropdownButton<String>(
+                                                  value: selectedComplexity,
+                                                  isExpanded: true,
+                                                  dropdownColor: AppColors.panelBackground,
+                                                  style: TextStyle(color: AppColors.panelTextPrimary),
+                                                  items: [
+                                                    'Default',
+                                                    'Concise',
+                                                    'Verbose',
+                                                    'Step-by-Step'
+                                                  ]
+                                                      .map((s) => DropdownMenuItem(
+                                                          value: s,
+                                                          child: Text(s.toUpperCase())))
+                                                      .toList(),
+                                                  onChanged: (val) {
+                                                    if (val != null) {
+                                                      setStateBuilder(() => selectedComplexity = val);
+                                                      saveSettings();
+                                                    }
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: buildSliderSettingRow(
+                                                labelText: 'AI Bridge Dispatch Delay (Seconds)',
+                                                slider: Slider(
+                                                  value: delaySeconds,
+                                                  min: 0,
+                                                  max: 5,
+                                                  divisions: 10,
+                                                  label: '${delaySeconds.toStringAsFixed(1)} s',
+                                                  activeColor: AppColors.accent,
+                                                  inactiveColor: AppColors.overlaySubtle,
+                                                  onChanged: (val) {
+                                                    setStateBuilder(() {
+                                                      delaySeconds = val;
+                                                    });
+                                                  },
+                                                  onChangeEnd: (val) {
+                                                    saveSettings();
+                                                  },
+                                                ),
+                                                valueText: Text(
+                                                  '${delaySeconds.toStringAsFixed(1)} s',
+                                                  style: TextStyle(
+                                                    color: AppColors.panelTextPrimary,
+                                                    fontSize: AppUIConfig.rootFontSize,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ])),
                               // TAB 2: PROMPTS & RULES
@@ -2218,74 +2354,86 @@ showColorPickerWindow(context);
                                               String hintText,
                                               Function(String) onChanged,
                                               Color activeColor) {
+                                            final formattedTitle = title.toUpperCase().trim().endsWith(':')
+                                                ? title.toUpperCase().trim()
+                                                : '${title.toUpperCase().trim()}:';
                                             return Padding(
                                               padding: const EdgeInsets.only(
                                                   bottom: 8.0),
-                                              child: Theme(
-                                                data: Theme.of(ctx).copyWith(
-                                                    dividerColor:
-                                                        Colors.transparent),
-                                                child: ExpansionTile(
-                                                  title: Text(title,
-                                                      style: TextStyle(
-                                                          color: AppColors.panelTextSecondary,
-                                                          fontSize: AppUIConfig.rootFontSize,
-                                                          fontWeight:
-                                                              FontWeight.bold)),
-                                                  iconColor: AppColors.panelTextSecondary,
-                                                  collapsedIconColor:
-                                                      AppColors.panelTextSecondary,
-                                                  tilePadding: EdgeInsets.zero,
-                                                  childrenPadding:
-                                                      const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 4.0,
-                                                          vertical: 8.0),
-                                                  children: [
-                                                    TextField(
-                                                      controller: controller,
-                                                      style: TextStyle(
-                                                          color: AppColors.panelTextSecondary,
-                                                          fontSize: AppUIConfig.rootFontSize,
-                                                          fontFamily:
-                                                              'monospace'),
-                                                      maxLines: null,
-                                                      minLines: 2,
-                                                      keyboardType:
-                                                          TextInputType
-                                                              .multiline,
-                                                      decoration:
-                                                          InputDecoration(
-                                                        hintText: hintText,
-                                                        hintStyle:
-                                                            const TextStyle(
-                                                                color: Colors
-                                                                    .white24),
-                                                        filled: true,
-                                                        fillColor:
-                                                            Colors.black12,
-                                                        border: OutlineInputBorder(
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        4),
-                                                            borderSide:
-                                                                const BorderSide(
-                                                                    color: Colors
-                                                                        .white12)),
-                                                        enabledBorder: OutlineInputBorder(
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        4),
-                                                            borderSide:
-                                                                const BorderSide(
-                                                                    color: Colors
-                                                                        .white12)),
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.overlaySubtle,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                                                ),
+                                                child: Theme(
+                                                  data: Theme.of(ctx).copyWith(
+                                                      dividerColor:
+                                                          Colors.transparent),
+                                                  child: ExpansionTile(
+                                                    title: Text(formattedTitle,
+                                                        style: TextStyle(
+                                                            color: AppColors.accent,
+                                                            fontSize: AppUIConfig.rootFontSize,
+                                                            fontWeight:
+                                                                FontWeight.bold)),
+                                                    iconColor: AppColors.accent,
+                                                    collapsedIconColor:
+                                                        AppColors.accent,
+                                                    tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                                                    childrenPadding:
+                                                        const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
+                                                    children: [
+                                                      TextField(
+                                                        controller: controller,
+                                                        style: TextStyle(
+                                                            color: AppColors.panelTextPrimary,
+                                                            fontSize: AppUIConfig.rootFontSize,
+                                                            fontFamily:
+                                                                'monospace'),
+                                                        maxLines: null,
+                                                        minLines: 2,
+                                                        keyboardType:
+                                                            TextInputType
+                                                                .multiline,
+                                                        decoration:
+                                                            InputDecoration(
+                                                          hintText: hintText,
+                                                          hintStyle:
+                                                              TextStyle(
+                                                                  color: AppColors.panelTextSecondary.withOpacity(0.5)),
+                                                          filled: true,
+                                                          fillColor:
+                                                              AppColors.panelBackground,
+                                                          border: OutlineInputBorder(
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          4),
+                                                              borderSide:
+                                                                  BorderSide(
+                                                                      color: AppColors.borderSubtle)),
+                                                          enabledBorder: OutlineInputBorder(
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          4),
+                                                              borderSide:
+                                                                  BorderSide(
+                                                                      color: AppColors.borderSubtle)),
+                                                          focusedBorder: OutlineInputBorder(
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          4),
+                                                              borderSide:
+                                                                  BorderSide(
+                                                                      color: AppColors.accent)),
+                                                        ),
+                                                        onChanged: onChanged,
                                                       ),
-                                                      onChanged: onChanged,
-                                                    ),
-                                                  ],
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
                                             );
@@ -2418,128 +2566,135 @@ showColorPickerWindow(context);
                                       children: [
                                         Align(
                                             alignment: Alignment.centerLeft,
-                                            child: Table(
-                                                columnWidths: const {
-                                                  0: FixedColumnWidth(140),
-                                                  1: FixedColumnWidth(70),
-                                                  2: FixedColumnWidth(90),
-                                                  3: FixedColumnWidth(60),
-                                                  4: FixedColumnWidth(
-                                                      80), // Size
-                                                  5: FixedColumnWidth(
-                                                      60), // Color
-                                                  6: FixedColumnWidth(
-                                                      60), // MaxLines
-                                                },
-                                                defaultVerticalAlignment:
-                                                    TableCellVerticalAlignment
-                                                        .middle,
-                                                children: [
-                                                  buildConfigHeader(),
-                                                  buildConfigTableRow(
-                                                      setStateBuilder,
-                                                      saveSettings,
-                                                      'Folder Name',
-                                                      null,
-                                                      null,
-                                                      _foldersUppercase,
-                                                      (v) =>
-                                                          _foldersUppercase = v,
-                                                      _foldersBold,
-                                                      (v) => _foldersBold = v,
-                                                      _fsController,
-                                                      (v) =>
-                                                          _fontSizeFolderName =
-                                                              v,
-                                                      _colorFolderName,
-                                                      (v) =>
-                                                          _colorFolderName = v,
-                                                      _flsController,
-                                                      (v) =>
-                                                          _foldersMaxLines = v),
-                                                  buildConfigTableRow(
-                                                      setStateBuilder,
-                                                      saveSettings,
-                                                      'Task Name',
-                                                      null,
-                                                      null,
-                                                      _tasksUppercase,
-                                                      (v) =>
-                                                          _tasksUppercase = v,
-                                                      _tasksBold,
-                                                      (v) => _tasksBold = v,
-                                                      _tsController,
-                                                      (v) =>
-                                                          _fontSizeTaskName = v,
-                                                      _colorTaskName,
-                                                      (v) => _colorTaskName = v,
-                                                      _tlsController,
-                                                      (v) =>
-                                                          _tasksMaxLines = v),
-                                                  buildConfigTableRow(
-                                                      setStateBuilder,
-                                                      saveSettings,
-                                                      'Description',
-                                                      _showDescription,
-                                                      (v) =>
-                                                          _showDescription = v,
-                                                      _uppercaseDescription,
-                                                      (v) =>
-                                                          _uppercaseDescription =
-                                                              v,
-                                                      _descriptionBold,
-                                                      (v) =>
-                                                          _descriptionBold = v,
-                                                      _dsController,
-                                                      (v) =>
-                                                          _fontSizeDescription =
-                                                              v,
-                                                      _colorDescription,
-                                                      (v) =>
-                                                          _colorDescription = v,
-                                                      _dlsController,
-                                                      (v) => _descMaxLines = v),
-                                                  buildConfigTableRow(
-                                                      setStateBuilder,
-                                                      saveSettings,
-                                                      'Notes',
-                                                      _showNotes,
-                                                      (v) => _showNotes = v,
-                                                      _uppercaseNotes,
-                                                      (v) =>
-                                                          _uppercaseNotes = v,
-                                                      _notesBold,
-                                                      (v) => _notesBold = v,
-                                                      _nsController,
-                                                      (v) => _fontSizeNotes = v,
-                                                      _colorNotes,
-                                                      (v) => _colorNotes = v,
-                                                      _nlsController,
-                                                      (v) =>
-                                                          _notesMaxLines = v),
-                                                  buildConfigTableRow(
-                                                      setStateBuilder,
-                                                      saveSettings,
-                                                      'Question',
-                                                      _showImplementationQuestion,
-                                                      (v) =>
-                                                          _showImplementationQuestion =
-                                                              v,
-                                                      _uppercaseQuestion,
-                                                      (v) =>
-                                                          _uppercaseQuestion =
-                                                              v,
-                                                      _questionBold,
-                                                      (v) => _questionBold = v,
-                                                      _qsController,
-                                                      (v) =>
-                                                          _fontSizeQuestion = v,
-                                                      _colorQuestion,
-                                                      (v) => _colorQuestion = v,
-                                                      _qlsController,
-                                                      (v) => _questionMaxLines =
-                                                          v),
-                                                ])),
+                                            child: Container(
+                                                padding: const EdgeInsets.all(12),
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.overlaySubtle,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                                                ),
+                                                child: Table(
+                                                    columnWidths: const {
+                                                      0: FixedColumnWidth(140),
+                                                      1: FixedColumnWidth(70),
+                                                      2: FixedColumnWidth(90),
+                                                      3: FixedColumnWidth(60),
+                                                      4: FixedColumnWidth(
+                                                          80), // Size
+                                                      5: FixedColumnWidth(
+                                                          60), // Color
+                                                      6: FixedColumnWidth(
+                                                          60), // MaxLines
+                                                    },
+                                                    defaultVerticalAlignment:
+                                                        TableCellVerticalAlignment
+                                                            .middle,
+                                                    children: [
+                                                      buildConfigHeader(),
+                                                      buildConfigTableRow(
+                                                          setStateBuilder,
+                                                          saveSettings,
+                                                          'Folder Name',
+                                                          null,
+                                                          null,
+                                                          _foldersUppercase,
+                                                          (v) =>
+                                                              _foldersUppercase = v,
+                                                          _foldersBold,
+                                                          (v) => _foldersBold = v,
+                                                          _fsController,
+                                                          (v) =>
+                                                              _fontSizeFolderName =
+                                                                  v,
+                                                          _colorFolderName,
+                                                          (v) =>
+                                                              _colorFolderName = v,
+                                                          _flsController,
+                                                          (v) =>
+                                                              _foldersMaxLines = v),
+                                                      buildConfigTableRow(
+                                                          setStateBuilder,
+                                                          saveSettings,
+                                                          'Task Name',
+                                                          null,
+                                                          null,
+                                                          _tasksUppercase,
+                                                          (v) =>
+                                                              _tasksUppercase = v,
+                                                          _tasksBold,
+                                                          (v) => _tasksBold = v,
+                                                          _tsController,
+                                                          (v) =>
+                                                              _fontSizeTaskName = v,
+                                                          _colorTaskName,
+                                                          (v) => _colorTaskName = v,
+                                                          _tlsController,
+                                                          (v) =>
+                                                              _tasksMaxLines = v),
+                                                      buildConfigTableRow(
+                                                          setStateBuilder,
+                                                          saveSettings,
+                                                          'Description',
+                                                          _showDescription,
+                                                          (v) =>
+                                                              _showDescription = v,
+                                                          _uppercaseDescription,
+                                                          (v) =>
+                                                              _uppercaseDescription =
+                                                                  v,
+                                                          _descriptionBold,
+                                                          (v) =>
+                                                              _descriptionBold = v,
+                                                          _dsController,
+                                                          (v) =>
+                                                              _fontSizeDescription =
+                                                                  v,
+                                                          _colorDescription,
+                                                          (v) =>
+                                                              _colorDescription = v,
+                                                          _dlsController,
+                                                          (v) => _descMaxLines = v),
+                                                      buildConfigTableRow(
+                                                          setStateBuilder,
+                                                          saveSettings,
+                                                          'Notes',
+                                                          _showNotes,
+                                                          (v) => _showNotes = v,
+                                                          _uppercaseNotes,
+                                                          (v) =>
+                                                              _uppercaseNotes = v,
+                                                          _notesBold,
+                                                          (v) => _notesBold = v,
+                                                          _nsController,
+                                                          (v) => _fontSizeNotes = v,
+                                                          _colorNotes,
+                                                          (v) => _colorNotes = v,
+                                                          _nlsController,
+                                                          (v) =>
+                                                              _notesMaxLines = v),
+                                                      buildConfigTableRow(
+                                                          setStateBuilder,
+                                                          saveSettings,
+                                                          'Question',
+                                                          _showImplementationQuestion,
+                                                          (v) =>
+                                                              _showImplementationQuestion =
+                                                                  v,
+                                                          _uppercaseQuestion,
+                                                          (v) =>
+                                                              _uppercaseQuestion =
+                                                                  v,
+                                                          _questionBold,
+                                                          (v) => _questionBold = v,
+                                                          _qsController,
+                                                          (v) =>
+                                                              _fontSizeQuestion = v,
+                                                          _colorQuestion,
+                                                          (v) => _colorQuestion = v,
+                                                          _qlsController,
+                                                          (v) => _questionMaxLines =
+                                                              v),
+                                                    ]))),
                                         const SizedBox(height: 16),
                                         Text(
                                             '*Lines attribute: 0 = Unlimited*',

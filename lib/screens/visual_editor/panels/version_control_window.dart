@@ -43,7 +43,6 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
   late TabController _tabController;
 
   bool _isLoaded = false;
-  bool _isSyncing = false;
   double _width = 500;
   double _height = 400;
   double _bgOpacity = 0.8;
@@ -187,57 +186,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
     }
   }
 
-  Future<void> _handleSync() async {
-    final prefs = await SharedPreferences.getInstance();
-    final url = prefs.getString('project_version_control_repo_url')?.trim() ?? '';
-    if (url.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please configure your GitHub Repository URL first in Project Configuration.')),
-        );
-      }
-      return;
-    }
-    final missing = await VersionControlService.instance.getMissingConfigMessage();
-    if (missing.isNotEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(missing)),
-        );
-      }
-      return;
-    }
 
-    setState(() => _isSyncing = true);
-    try {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Syncing with GitHub...')),
-        );
-      }
-      final res = await VersionControlService.instance.syncRepository(url);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res), backgroundColor: Colors.green),
-        );
-        setState(() {
-          _commitFutures.clear();
-        });
-        await SandboxService.instance.reload();
-        await AiBridgeService.instance.reloadTimelineHistory();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sync failed: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSyncing = false);
-      }
-    }
-  }
 
 
   Future<void> _savePreferences() async {
@@ -428,26 +377,6 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                       },
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Tooltip(
-                    message: 'Sync with GitHub',
-                    child: _isSyncing
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.blueAccent,
-                            ),
-                          )
-                        : IconButton(
-                            icon: const Icon(Icons.sync, size: 16),
-                            color: Colors.blueAccent,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            onPressed: _handleSync,
-                          ),
-                  ),
                   const Spacer(),
                   TextButton.icon(
                     icon: const Icon(Icons.commit, size: 14, color: Colors.blueAccent),
@@ -519,7 +448,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                       if (note == null || note.isEmpty) return;
 
                       try {
-                        final desc = 'Manual Checkpoint: $note';
+                        final desc = note;
                         final hash = await VersionControlService.instance.createRestorePoint(desc);
                         
                         if (hash.isNotEmpty && !hash.startsWith('No changes') && !hash.startsWith('Failed') && !hash.startsWith('Local')) {
@@ -809,17 +738,15 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
               }
             },
           ),
-          if (c.title != 'Checkpoint') ...[
-            IconButton(
-              icon: const Icon(Icons.open_in_browser, size: 14, color: Colors.blueAccent),
-              tooltip: 'Open in GitHub',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-              onPressed: () async {
-                await VersionControlService.instance.openGithubCommit(c.commitHash);
-              },
-            ),
-          ],
+          IconButton(
+            icon: const Icon(Icons.open_in_browser, size: 14, color: Colors.blueAccent),
+            tooltip: 'Open in GitHub',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+            onPressed: () async {
+              await VersionControlService.instance.openGithubCommit(c.commitHash);
+            },
+          ),
         ],
       );
 
@@ -857,19 +784,11 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.flag, color: Colors.orangeAccent, size: 13),
-                              const SizedBox(width: 5),
-                              Expanded(
-                                child: Text(
-                                  c.summary,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: AppUIConfig.rootFontSize),
-                                ),
-                              ),
-                            ],
+                          Text(
+                            c.summary,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: AppUIConfig.rootFontSize),
                           ),
                           const SizedBox(height: 2),
                           Text(
