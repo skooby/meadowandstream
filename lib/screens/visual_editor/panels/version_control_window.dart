@@ -885,7 +885,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                               Expanded(
                                 child: Text(
                                   c.summary,
-                                  maxLines: 1,
+                                  maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: AppUIConfig.rootFontSize),
                                 ),
@@ -961,7 +961,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                             children: [
                               Text(
                                 c.title,
-                                maxLines: 1,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize),
                               ),
