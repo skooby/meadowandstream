@@ -1,5 +1,18 @@
 [
   {
+    "id": "12726c774266d8f7aa72de2eb9710b078761e0cd",
+    "taskIds": [
+      "1779370649980",
+      "1778722257125",
+      "1778869915153"
+    ],
+    "title": "PROMPT HELPER SETTINGS [refactor: Fix Slider Sluggishness and Limit Dispatch Delay to Max 5s] | CONNECTION [Make AI Bridge dispatch delay configurable in Task Manager Settings] | VERSION CONTROL [style(vc): match checkpoint actions to commits, clean titles, and remove flag icon]",
+    "summary": "Tasks for Prompt Helper\n\nConnection test 2.0 passed.\n\nVersion Control System improvements and tasks",
+    "commitHash": "12726c774266d8f7aa72de2eb9710b078761e0cd",
+    "commitDate": "2026-05-21T07:56:34-06:00",
+    "verifiedNotes": "- Show the titles for each with standard text sizes and UPPERCASE, use theme colors, move colon at end of each label. Make it not so ugly\n- Lets have the Dispatch Delay be more granular. 0, .5, 1, 1.5, etc\n- Have the Dispatch Delay max out at 5 seconds\n- Slider is very sluggish... why?\n\n- There is a long pause after we hit the \"Send to AI Bridge\" button. Lets have the delay be defined in our Task Manager Settings at the bottom of Workflow\n\n- Checkpoints can now match other commits with a open in GitHub icon, lets match these up\n- We don't need the title of \"Manual Checkpoint\" since these visually stand out... and loose the flag icon"
+  },
+  {
     "id": "d5ca4c45ad67312713ad4e54be13e61f6be952e6",
     "taskIds": [],
     "title": "Checkpoint",

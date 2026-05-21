@@ -825,6 +825,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   String? _activeProcessingTaskId;
   DateTime? _activeProcessingTaskAssignedAt;
+
+  String? get activeProcessingTaskId => _activeProcessingTaskId;
+  DateTime? get activeProcessingTaskAssignedAt => _activeProcessingTaskAssignedAt;
   int _compileErrorLoopCount = 0;
   bool _isHandlingAgentStatus = false;
 

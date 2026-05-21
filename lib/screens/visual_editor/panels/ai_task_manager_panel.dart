@@ -3215,6 +3215,142 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     );
   }
 
+  Widget _buildActiveTaskItem(String taskId, QueuedPrompt prompt) {
+    final taskList = AiBridgeService.instance.tasks.where((t) => t.id == taskId).toList();
+    final displayTitle = taskList.isNotEmpty ? taskList.first.name.toUpperCase() : 'ACTIVE TASK';
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.overlaySubtle)),
+        color: AppColors.accent.withOpacity(0.1),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.autorenew, color: AppColors.accent, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayTitle,
+                  style: TextStyle(
+                    color: AppColors.panelTextPrimary,
+                    fontSize: AppUIConfig.rootFontSize,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                AnimatedDotsText(
+                  text: 'Processing...',
+                  style: TextStyle(
+                    color: AppColors.panelTextSecondary,
+                    fontSize: 10,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActivePromptItem(QueuedPrompt prompt) {
+    final displayTitle = 'ACTIVE MAIN PROMPT';
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.overlaySubtle)),
+        color: AppColors.accent.withOpacity(0.1),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.autorenew, color: AppColors.accent, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayTitle,
+                  style: TextStyle(
+                    color: AppColors.panelTextPrimary,
+                    fontSize: AppUIConfig.rootFontSize,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  prompt.text,
+                  style: TextStyle(
+                    color: AppColors.panelTextSecondary,
+                    fontSize: 10,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingPromptItem(QueuedPrompt prompt, int index) {
+    String displayTitle = 'QUEUED PROMPT #${index + 1}';
+    if (prompt.taskIds != null && prompt.taskIds!.isNotEmpty) {
+      final taskId = prompt.taskIds!.first;
+      final taskList = AiBridgeService.instance.tasks.where((t) => t.id == taskId).toList();
+      if (taskList.isNotEmpty) {
+        displayTitle = 'QUEUED: ${taskList.first.name.toUpperCase()}';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.overlaySubtle)),
+        color: AppColors.windowBackground,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.queue, color: AppColors.panelTextSecondary, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayTitle,
+                  style: TextStyle(
+                    color: AppColors.panelTextSecondary,
+                    fontSize: AppUIConfig.rootFontSize,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, size: 14, color: AppColors.error),
+            onPressed: () => AiBridgeService.instance.removeFromQueue(prompt),
+            tooltip: 'Remove from Queue',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -3595,7 +3731,12 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                               controller: _queueScrollController,
                               shrinkWrap: true,
                               children: [
+                                if (AiBridgeService.instance.activeProcessingTaskId != null && AiBridgeService.instance.activePrompt != null)
+                                  _buildActiveTaskItem(AiBridgeService.instance.activeProcessingTaskId!, AiBridgeService.instance.activePrompt!),
+                                if (AiBridgeService.instance.activeProcessingTaskId == null && AiBridgeService.instance.activePrompt != null)
+                                  _buildActivePromptItem(AiBridgeService.instance.activePrompt!),
                                 ...AiBridgeService.instance.activeAgents.entries.map((entry) => _buildSubagentItem(entry.key, entry.value)),
+                                ...AiBridgeService.instance.pendingPrompts.asMap().entries.map((entry) => _buildPendingPromptItem(entry.value, entry.key)),
                               ],
                             ),
                           ),
