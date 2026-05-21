@@ -160,6 +160,58 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
     }
   }
 
+  Future<void> _handleSync() async {
+    final prefs = await SharedPreferences.getInstance();
+    final url = prefs.getString('project_version_control_repo_url')?.trim() ?? '';
+    if (url.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please configure your GitHub Repository URL first in Project Configuration.')),
+        );
+      }
+      return;
+    }
+    final missing = await VersionControlService.instance.getMissingConfigMessage();
+    if (missing.isNotEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(missing)),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isSyncing = true);
+    try {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Syncing with GitHub...')),
+        );
+      }
+      final res = await VersionControlService.instance.syncRepository(url);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res), backgroundColor: Colors.green),
+        );
+        setState(() {
+          _commitFutures.clear();
+        });
+        await SandboxService.instance.reload();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sync failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSyncing = false);
+      }
+    }
+  }
+
+
   Future<void> _savePreferences() async {
     if (widget.isDocked) return;
     final prefs = await SharedPreferences.getInstance();
@@ -346,6 +398,26 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                         SandboxService.instance.reload();
                       },
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: 'Sync with GitHub',
+                    child: _isSyncing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.blueAccent,
+                            ),
+                          )
+                        : IconButton(
+                            icon: const Icon(Icons.sync, size: 16),
+                            color: Colors.blueAccent,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: _handleSync,
+                          ),
                   ),
                   const Spacer(),
                   TextButton.icon(

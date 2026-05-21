@@ -3535,35 +3535,7 @@ verificationCriteriaList[i].isCommitted = false;
                                      color: AppColors.titleBarTextPrimary,
                                      fontSize: AppUIConfig.windowTitleFontSize,
                                      fontWeight: AppUIConfig.windowTitleFontWeight)),
-                             if (existingTask != null) ...[
-                               const SizedBox(width: 12),
-                               TextButton.icon(
-                                 style: TextButton.styleFrom(
-                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                   minimumSize: Size.zero,
-                                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                   shape: RoundedRectangleBorder(
-                                     borderRadius: BorderRadius.circular(4),
-                                     side: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.4)),
-                                   ),
-                                   backgroundColor: Colors.blueAccent.withValues(alpha: 0.1),
-                                 ),
-                                 icon: const Icon(Icons.timeline, size: 14, color: Colors.blueAccent),
-                                 label: const Text(
-                                   'View in Timeline',
-                                   style: TextStyle(
-                                     fontSize: 11,
-                                     color: Colors.blueAccent,
-                                     fontWeight: FontWeight.bold,
-                                   ),
-                                 ),
-                                 onPressed: () {
-                                   showVersionControlWindow(context);
-                                   VersionControlWindow.highlightedTaskId.value = existingTask!.id;
-                                 },
-                               ),
-                             ],
- 
+
                              Expanded(child: const SizedBox()),
                              ..._buildCustomizationButtons(context),
                             const SizedBox(width: 16),

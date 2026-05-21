@@ -94,6 +94,8 @@ class VersionControlService {
       await dir.create(recursive: true);
     }
 
+    final currentBranch = await getCurrentBranch();
+
     final checkRepo = await Process.run('git', ['rev-parse', '--is-inside-work-tree'], workingDirectory: path, runInShell: true);
     if (checkRepo.exitCode != 0) {
       // It's a new local repo. Let's make sure the remote is empty before we push to it.
@@ -112,14 +114,34 @@ class VersionControlService {
       if (remote.exitCode != 0) throw Exception('Failed to add remote origin:\n${remote.stderr}');
     }
 
+    // 1. Fetch latest changes from remote branch
+    await Process.run('git', ['fetch', 'origin', currentBranch], workingDirectory: path, runInShell: true);
+
+    // 2. Programmatically merge remote state files to avoid git conflicts
+    await _mergeRemoteStateFiles(path, currentBranch);
+
     await _scrubTemporaryFiles(path);
 
     final add = await Process.run('git', ['add', '.'], workingDirectory: path, runInShell: true);
     if (add.exitCode != 0) throw Exception('Failed to add files:\n${add.stderr}');
 
-    final commit = await Process.run('git', ['commit', '-m', 'Auto-sync from Antigravity Visual Editor'], workingDirectory: path, runInShell: true);
-    
-    final push = await Process.run('git', ['push', '-u', 'origin', 'HEAD'], workingDirectory: path, runInShell: true);
+    final status = await Process.run('git', ['status', '--porcelain'], workingDirectory: path, runInShell: true);
+    if (status.stdout.toString().trim().isNotEmpty) {
+      final commit = await Process.run('git', ['commit', '-m', 'Auto-sync from Antigravity Visual Editor'], workingDirectory: path, runInShell: true);
+      if (commit.exitCode != 0) {
+        throw Exception('Failed to commit local changes:\n${commit.stderr}');
+      }
+    }
+
+    // 3. Pull/rebase to integrate remote changes
+    final pull = await Process.run('git', ['pull', '--rebase', 'origin', currentBranch], workingDirectory: path, runInShell: true);
+    if (pull.exitCode != 0) {
+      await Process.run('git', ['rebase', '--abort'], workingDirectory: path, runInShell: true);
+      throw Exception('Failed to pull remote changes due to git conflicts. Please merge/rebase manually.\n${pull.stderr}');
+    }
+
+    // 4. Push to remote
+    final push = await Process.run('git', ['push', '-u', 'origin', currentBranch], workingDirectory: path, runInShell: true);
     if (push.exitCode != 0) {
       throw Exception('Failed to push changes:\n${push.stderr}');
     }
@@ -594,5 +616,114 @@ class VersionControlService {
     }
     final bytes = result.stdout as List<int>;
     return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  Future<void> _mergeRemoteStateFiles(String path, String branchName) async {
+    try {
+      // 1. Fetch remote content of timeline_history.json
+      final remoteTimelineResult = await Process.run(
+        'git',
+        ['show', 'origin/$branchName:.ai_bridge/timeline_history.json'],
+        workingDirectory: path,
+        runInShell: true,
+      );
+      if (remoteTimelineResult.exitCode == 0) {
+        final remoteContent = remoteTimelineResult.stdout.toString().trim();
+        final localFile = File('$path/.ai_bridge/timeline_history.json');
+        if (remoteContent.isNotEmpty && await localFile.exists()) {
+          final localContent = await localFile.readAsString();
+          final List<dynamic> localList = jsonDecode(localContent);
+          final List<dynamic> remoteList = jsonDecode(remoteContent);
+
+          // Merge by commitHash or id
+          final Map<String, dynamic> mergedMap = {};
+          
+          String getKey(dynamic commit) {
+            final hash = commit['commitHash'] ?? '';
+            if (hash.isNotEmpty && hash != 'No Git Changes') {
+              return hash;
+            }
+            return commit['id'] ?? '';
+          }
+
+          for (var commit in remoteList) {
+            final key = getKey(commit);
+            if (key.isNotEmpty) {
+              mergedMap[key] = commit;
+            }
+          }
+
+          for (var commit in localList) {
+            final key = getKey(commit);
+            if (key.isNotEmpty) {
+              // Local changes overwrite remote details for matching commits
+              mergedMap[key] = commit;
+            }
+          }
+
+          // Sort by commitDate descending
+          final mergedList = mergedMap.values.toList();
+          mergedList.sort((a, b) {
+            final dateA = DateTime.tryParse(a['commitDate'] ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+            final dateB = DateTime.tryParse(b['commitDate'] ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+            return dateB.compareTo(dateA); // Descending (newest first)
+          });
+
+          await localFile.writeAsString(const JsonEncoder.withIndent('  ').convert(mergedList));
+        }
+      }
+    } catch (e) {
+      SystemLogsService.instance.addLog('Failed to merge remote timeline history: $e', category: LogCategory.VC);
+    }
+
+    try {
+      // 2. Fetch remote content of tasks.json
+      final remoteTasksResult = await Process.run(
+        'git',
+        ['show', 'origin/$branchName:.ai_bridge/tasks.json'],
+        workingDirectory: path,
+        runInShell: true,
+      );
+      if (remoteTasksResult.exitCode == 0) {
+        final remoteContent = remoteTasksResult.stdout.toString().trim();
+        final localFile = File('$path/.ai_bridge/tasks.json');
+        if (remoteContent.isNotEmpty && await localFile.exists()) {
+          final localContent = await localFile.readAsString();
+          final localMap = jsonDecode(localContent) as Map<String, dynamic>;
+          final remoteMap = jsonDecode(remoteContent) as Map<String, dynamic>;
+
+          final List<dynamic> localTasks = localMap['tasks'] ?? [];
+          final List<dynamic> remoteTasks = remoteMap['tasks'] ?? [];
+
+          final Map<String, dynamic> mergedTasksMap = {};
+          for (var task in remoteTasks) {
+            final id = task['id'] ?? '';
+            if (id.isNotEmpty) {
+              mergedTasksMap[id] = task;
+            }
+          }
+
+          for (var task in localTasks) {
+            final id = task['id'] ?? '';
+            if (id.isNotEmpty) {
+              mergedTasksMap[id] = task;
+            }
+          }
+
+          localMap['tasks'] = mergedTasksMap.values.toList();
+          
+          if (localMap['primaryDirectives'] == null || localMap['primaryDirectives'].toString().isEmpty) {
+            localMap['primaryDirectives'] = remoteMap['primaryDirectives'];
+          }
+          if (localMap['instructions'] == null || localMap['instructions'].toString().isEmpty) {
+            localMap['instructions'] = remoteMap['instructions'];
+          }
+
+          await localFile.writeAsString(const JsonEncoder.withIndent('  ').convert(localMap));
+        }
+      }
+    } catch (e) {
+      SystemLogsService.instance.addLog('Failed to merge remote tasks: $e', category: LogCategory.VC);
+    }
   }
 }
