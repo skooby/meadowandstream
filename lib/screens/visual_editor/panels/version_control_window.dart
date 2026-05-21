@@ -9,6 +9,8 @@ import '../../../services/ai_bridge_service.dart';
 import '../../../services/sandbox_service.dart';
 import 'global_task_editor_window.dart';
 import '../../../state/global_task_editor_state.dart';
+import '../components/folder_hierarchy_view.dart';
+import 'file_history_dialog.dart';
 
 final ValueNotifier<bool> showVersionControlNotifier = ValueNotifier(false);
 
@@ -47,15 +49,24 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
   double _bgOpacity = 0.8;
   Offset _offset = const Offset(200, 200);
 
+  Directory? _currentExplorerFolder;
+  List<Directory> _explorerFolderPath = [];
+  List<FileSystemEntity> _explorerItems = [];
+  FileSystemEntity? _selectedExplorerItem;
+  bool _isExplorerLoading = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     SandboxService.instance.init();
     VersionControlWindow.highlightedTaskId.addListener(_scrollToHighlightedTask);
     _loadPreferences();
+    _loadExplorerFiles();
     VisualEditorScreen.currentWorkspace.addListener(_loadPreferences);
+    VisualEditorScreen.currentWorkspace.addListener(_loadExplorerFiles);
     VisualEditorScreen.configRefreshNotifier.addListener(_loadPreferences);
+    VisualEditorScreen.configRefreshNotifier.addListener(_loadExplorerFiles);
     VisualEditorScreen.activeWindowNotifier.addListener(_onActiveWindowChanged);
   }
 
@@ -64,7 +75,9 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
     _tabController.dispose();
     VersionControlWindow.highlightedTaskId.removeListener(_scrollToHighlightedTask);
     VisualEditorScreen.currentWorkspace.removeListener(_loadPreferences);
+    VisualEditorScreen.currentWorkspace.removeListener(_loadExplorerFiles);
     VisualEditorScreen.configRefreshNotifier.removeListener(_loadPreferences);
+    VisualEditorScreen.configRefreshNotifier.removeListener(_loadExplorerFiles);
     VisualEditorScreen.activeWindowNotifier.removeListener(_onActiveWindowChanged);
     super.dispose();
   }
@@ -78,6 +91,22 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
       return '$datePart $hour:$minute'.trim();
     }
     return d;
+  }
+
+  String _getBasename(String path) {
+    var p = path.replaceAll('\\', '/');
+    while (p.endsWith('/') && p.length > 1) {
+      p = p.substring(0, p.length - 1);
+    }
+    return p.split('/').last;
+  }
+
+  String _normalizePath(String path) {
+    var p = path.replaceAll('\\', '/').toLowerCase();
+    while (p.endsWith('/') && p.length > 1) {
+      p = p.substring(0, p.length - 1);
+    }
+    return p;
   }
 
   void _scrollToHighlightedTask() {
@@ -142,6 +171,15 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
 
   @override
   Widget build(BuildContext context) {
+    if (_tabController.length != 3) {
+      final oldIndex = _tabController.index;
+      _tabController.dispose();
+      _tabController = TabController(
+        length: 3,
+        vsync: this,
+        initialIndex: oldIndex < 3 ? oldIndex : 0,
+      );
+    }
     if (!_isLoaded) return const SizedBox.shrink();
 
     Widget contentWidget = _buildContent();
@@ -433,10 +471,11 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                     labelColor: Colors.blueAccent,
                     unselectedLabelColor: AppColors.textMuted,
                     indicatorColor: Colors.blueAccent,
-                    labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.1),
+                    labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.0),
                     tabs: [
                       Tab(text: 'ACTIVE TASKS'),
                       Tab(text: 'TIMELINE HISTORY'),
+                      Tab(text: 'EXPLORER'),
                     ],
                   ),
                   Expanded(
@@ -574,6 +613,8 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                 children: _buildTimelineNodes(context, timelineCommits),
                               ),
                             ),
+                        // TAB 3: FILES EXPLORER
+                        _buildExplorerTab(context),
                       ],
                     ),
                   ),
@@ -843,6 +884,287 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
       }
     }
     return result;
+  }
+
+  Future<void> _loadExplorerFiles() async {
+    final repoPath = await VersionControlService.instance.getLocalRepositoryPath();
+    if (repoPath == null || repoPath.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _explorerItems = [];
+          _isExplorerLoading = false;
+        });
+      }
+      return;
+    }
+
+    if (_isExplorerLoading == false && _explorerItems.isEmpty) {
+      setState(() {
+        _isExplorerLoading = true;
+      });
+    }
+
+    try {
+      final targetDir = _currentExplorerFolder ?? Directory(repoPath);
+      if (await targetDir.exists()) {
+        final list = await targetDir.list().toList();
+        final filteredList = list.where((entity) {
+          final name = _getBasename(entity.path);
+          if (name == '.git') return false;
+          if (name == 'build' || name == 'node_modules') return false;
+          return true;
+        }).toList();
+
+        filteredList.sort((a, b) {
+          final aIsDir = a is Directory;
+          final bIsDir = b is Directory;
+          if (aIsDir && !bIsDir) return -1;
+          if (!aIsDir && bIsDir) return 1;
+          return a.path.compareTo(b.path);
+        });
+
+        if (mounted) {
+          setState(() {
+            _explorerItems = filteredList;
+            _isExplorerLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _explorerItems = [];
+            _isExplorerLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading explorer files: $e');
+      if (mounted) {
+        setState(() {
+          _explorerItems = [];
+          _isExplorerLoading = false;
+        });
+      }
+    }
+  }
+
+  void _navigateExplorerToFolder(Directory? folder) async {
+    final repoPathRaw = await VersionControlService.instance.getLocalRepositoryPath();
+    if (repoPathRaw == null || repoPathRaw.isEmpty) return;
+    final repoPath = _normalizePath(repoPathRaw);
+
+    List<Directory> newPath = [];
+    if (folder != null) {
+      var current = folder;
+      while (_normalizePath(current.path) != repoPath && current.parent.path != current.path) {
+        newPath.insert(0, current);
+        final parent = current.parent;
+        if (parent.path == current.path) break;
+        current = parent;
+      }
+    }
+
+    setState(() {
+      _currentExplorerFolder = folder;
+      _explorerFolderPath = newPath;
+      _selectedExplorerItem = null;
+    });
+
+    _loadExplorerFiles();
+  }
+
+  void _openRestoreGitForLocalFile(FileSystemEntity file) {
+    showDialog(
+      context: context,
+      builder: (context) => FileHistoryDialog(
+        filePath: file.path,
+        fileName: _getBasename(file.path),
+        isGithub: false,
+      ),
+    );
+  }
+
+  void _openRestoreGithubForLocalFile(FileSystemEntity file) {
+    showDialog(
+      context: context,
+      builder: (context) => FileHistoryDialog(
+        filePath: file.path,
+        fileName: _getBasename(file.path),
+        isGithub: true,
+      ),
+    );
+  }
+
+  Widget _buildExplorerTab(BuildContext context) {
+    if (_isExplorerLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_explorerItems.isEmpty && _explorerFolderPath.isEmpty) {
+      return FutureBuilder<String?>(
+        future: VersionControlService.instance.getLocalRepositoryPath(),
+        builder: (context, snapshot) {
+          final path = snapshot.data;
+          if (path == null || path.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Local Repository Path is not configured.\nPlease set it in Project Configuration.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                ),
+              ),
+            );
+          }
+          return Center(
+            child: Text(
+              'No files found in repository.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+            ),
+          );
+        },
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: FolderHierarchyView<FileSystemEntity, Directory>(
+            currentPath: _explorerFolderPath,
+            currentFolder: _currentExplorerFolder,
+            getFolderId: (dir) => dir.path,
+            getFolderName: (dir) => _getBasename(dir.path),
+            rootName: 'Repository Root',
+            items: _explorerItems,
+            selectedItem: _selectedExplorerItem,
+            isItemFolder: (entity) => entity is Directory,
+            getItemId: (entity) => entity.path,
+            itemPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            buildItemName: (entity) {
+              final name = _getBasename(entity.path);
+              return Text(
+                name,
+                style: TextStyle(
+                  color: AppColors.panelTextPrimary,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 11,
+                ),
+              );
+            },
+            getItemSubtitle: (entity) => null,
+            getItemColor: (entity) => entity is Directory
+                ? Colors.amberAccent
+                : AppColors.accent,
+            isItemSelected: (entity) => _selectedExplorerItem?.path == entity.path,
+            getItemLeading: (entity) => Icon(
+              entity is Directory ? Icons.folder : Icons.insert_drive_file,
+              color: entity is Directory ? Colors.amberAccent : AppColors.panelTextSecondary,
+              size: 18,
+            ),
+            getItemTrailing: (entity) {
+              if (entity is! File) return const SizedBox.shrink();
+              String sizeStr = '';
+              try {
+                final len = entity.lengthSync();
+                if (len < 1024) {
+                  sizeStr = '$len B';
+                } else if (len < 1024 * 1024) {
+                  sizeStr = '${(len / 1024).toStringAsFixed(1)} KB';
+                } else {
+                  sizeStr = '${(len / (1024 * 1024)).toStringAsFixed(1)} MB';
+                }
+              } catch (_) {}
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (sizeStr.isNotEmpty) ...[
+                    Text(
+                      sizeStr,
+                      style: TextStyle(
+                        color: AppColors.panelTextSecondary,
+                        fontSize: 10,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  IconButton(
+                    icon: const Icon(Icons.history, color: Colors.blueAccent, size: 16),
+                    tooltip: 'Restore from Git',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                    onPressed: () => _openRestoreGitForLocalFile(entity),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.cloud_download, color: Colors.tealAccent, size: 16),
+                    tooltip: 'Restore from GitHub',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                    onPressed: () => _openRestoreGithubForLocalFile(entity),
+                  ),
+                ],
+              );
+            },
+            onItemSecondaryTap: (entity, details) {
+              if (entity is! File) return;
+              showMenu<String>(
+                context: context,
+                color: AppColors.panelBackground,
+                position: RelativeRect.fromLTRB(
+                  details.globalPosition.dx,
+                  details.globalPosition.dy,
+                  details.globalPosition.dx,
+                  details.globalPosition.dy,
+                ),
+                items: [
+                  PopupMenuItem(
+                    value: 'restore_git',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.history, color: Colors.blueAccent, size: 16),
+                        const SizedBox(width: 8),
+                        Text('Restore from Git', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'restore_github',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.cloud_download, color: Colors.tealAccent, size: 16),
+                        const SizedBox(width: 8),
+                        Text('Restore from GitHub', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ],
+              ).then((value) {
+                if (value == 'restore_git') {
+                  _openRestoreGitForLocalFile(entity);
+                } else if (value == 'restore_github') {
+                  _openRestoreGithubForLocalFile(entity);
+                }
+              });
+            },
+            onNavigateToFolder: (dir) => _navigateExplorerToFolder(dir),
+            onNavigateToItemFolder: (entity) {
+              if (entity is Directory) {
+                _navigateExplorerToFolder(entity as Directory);
+              }
+            },
+            onSelectItem: (entity) {
+              setState(() {
+                _selectedExplorerItem = entity;
+              });
+              if (entity is Directory) {
+                _navigateExplorerToFolder(entity);
+              }
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 

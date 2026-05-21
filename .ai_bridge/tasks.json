@@ -5404,33 +5404,6 @@
       "commitDate": "2026-05-20T13:26:11.903577",
       "parentId": "1778865514716",
       "worksheetId": "1778268121185"
-    },
-    {
-      "id": "1779305418041",
-      "name": "Fix compile errors",
-      "description": "The recent Hot Reload/Restart resulted in compilation errors. Fix them immediately.",
-      "summary": "",
-      "notes": "",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "verificationCriteria": [],
-      "status": "inTesting",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": null,
-      "commitDate": null
     }
   ]
 }

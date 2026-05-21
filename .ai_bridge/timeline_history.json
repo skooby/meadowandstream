@@ -1,5 +1,16 @@
 [
   {
+    "id": "bc54fd1c-87e8-466c-aa93-b3d1541bc229",
+    "taskIds": [
+      "1779304030000"
+    ],
+    "title": "[3/3] Version Control Window Explorer Action Integration",
+    "summary": "Integrate context menu options and hover actions in the sidebar explorer and connect it with the safety restore flow.",
+    "commitHash": "398d17d30ad501441260357bb9d8a85486a798ea",
+    "commitDate": "2026-05-20T13:38:10.087868",
+    "verifiedNotes": "- Add a 'Restore from GitHub' action icon and context menu option next to files in the Version Control explorer tree.\n- Implement safe overwrite sequence (create pre-restore backup using AutoBackupService, overwrite local file, trigger file system listeners).\n- Verify editor pane refreshes dynamically showing the restored file state without app restart.\n- Implement safe overwrite sequence (create pre-restore backup using AutoBackupService, fetch raw file from GitHub, overwrite local file, trigger file system listeners).\n- Add a 'Restore from Git' action icon and context menu option next to files in the Version Control explorer tree.\n- Implement safe overwrite sequence (create pre-restore backup using AutoBackupService, fetch raw file from git show, overwrite local file, trigger file system listeners)."
+  },
+  {
     "id": "3acbbfb5-d0c3-474f-8dce-bac406605dd8",
     "taskIds": [
       "1779304020000"

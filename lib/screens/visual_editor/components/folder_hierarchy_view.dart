@@ -33,6 +33,7 @@ class FolderHierarchyView<T, F> extends StatelessWidget {
   final Widget? loadingWidget;
   final Widget? emptyWidget;
   final void Function(T item, TapDownDetails details)? onItemSecondaryTap;
+  final EdgeInsetsGeometry? itemPadding;
 
   const FolderHierarchyView({
     super.key,
@@ -60,6 +61,7 @@ class FolderHierarchyView<T, F> extends StatelessWidget {
     this.loadingWidget,
     this.emptyWidget,
     this.onItemSecondaryTap,
+    this.itemPadding,
   });
 
   @override
@@ -102,11 +104,11 @@ class FolderHierarchyView<T, F> extends StatelessWidget {
                 ),
                 for (var i = 0; i < currentPath.length; i++)
                   Padding(
-                    padding: EdgeInsets.only(left: 16.0 + (i * 12.0), top: 8),
+                    padding: const EdgeInsets.only(left: 8.0, top: 8),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.subdirectory_arrow_right, size: 16, color: AppColors.textSecondary),
+                        Icon(Icons.chevron_right, size: 16, color: AppColors.textSecondary),
                         const SizedBox(width: 4),
                         _buildBreadcrumbDropTarget(
                           context,
@@ -132,11 +134,11 @@ class FolderHierarchyView<T, F> extends StatelessWidget {
                   ),
                 if (selectedItem != null && !isItemFolder(selectedItem as T))
                   Padding(
-                    padding: EdgeInsets.only(left: 16.0 + (currentPath.length * 12.0), top: 8),
+                    padding: const EdgeInsets.only(left: 8.0, top: 8),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.subdirectory_arrow_right, size: 16, color: AppColors.accent),
+                        Icon(Icons.chevron_right, size: 16, color: AppColors.accent),
                         const SizedBox(width: 4),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -229,7 +231,9 @@ class FolderHierarchyView<T, F> extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onSecondaryTapDown: onItemSecondaryTap == null
             ? null
-            : (details) => onItemSecondaryTap!(item, details),
+            : (details) {
+                onItemSecondaryTap!(item, details);
+              },
         child: InkWell(
            onTap: () {
                onSelectItem(item);
@@ -238,7 +242,7 @@ class FolderHierarchyView<T, F> extends StatelessWidget {
                if (folder) onNavigateToItemFolder(item);
            },
            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: itemPadding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                  color: isSelected ? const Color(0xFF37373D) : Colors.transparent,
                  border: Border(left: BorderSide(
