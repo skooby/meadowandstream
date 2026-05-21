@@ -499,7 +499,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                             controller: controller,
                             style: const TextStyle(color: Colors.white),
                             decoration: const InputDecoration(
-                              hintText: 'Enter a note or description...',
+                              hintText: 'Enter restore point name...',
                               hintStyle: TextStyle(color: Colors.white54),
                             ),
                           ),

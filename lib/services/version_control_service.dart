@@ -424,7 +424,16 @@ class VersionControlService {
     }
     
     final revResult = await Process.run('git', ['rev-parse', 'HEAD'], workingDirectory: path, runInShell: true);
-    return revResult.stdout.toString().trim();
+    final commitHash = revResult.exitCode == 0 ? revResult.stdout.toString().trim() : '';
+
+    if (commitHash.isNotEmpty) {
+      final currentBranch = await getCurrentBranch();
+      Process.run('git', ['push', 'origin', currentBranch], workingDirectory: path, runInShell: true).then((_) {
+         SystemLogsService.instance.addLog('Pushed checkpoint to origin.', category: LogCategory.VC);
+      }).catchError((_) {});
+    }
+
+    return commitHash;
   }
 
   Future<void> restoreToCommit(String commitHash) async {
@@ -638,21 +647,27 @@ class VersionControlService {
     String summary = '';
     String verifiedNotes = '';
 
-    final verifiedItemsIndex = message.indexOf(RegExp(r'Verified Items:', caseSensitive: false));
-    if (verifiedItemsIndex != -1) {
-      verifiedNotes = message.substring(verifiedItemsIndex + 'Verified Items:'.length).trim();
-      final beforeVerified = message.substring(0, verifiedItemsIndex).trim();
-      final beforeLines = beforeVerified.split('\n');
-      if (beforeLines.length > 1) {
-        summary = beforeLines.sublist(1).where((line) {
-          return !line.trim().startsWith(RegExp(r'Task ID:', caseSensitive: false));
-        }).join('\n').trim();
-      }
+    if (title.startsWith('[CHECKPOINT]')) {
+      final checkpointText = title.substring('[CHECKPOINT]'.length).trim().replaceFirst(RegExp(r'^-\s*'), '');
+      title = 'Checkpoint';
+      summary = checkpointText.isNotEmpty ? checkpointText : 'Manual Checkpoint';
     } else {
-      if (lines.length > 1) {
-        summary = lines.sublist(1).where((line) {
-          return !line.trim().startsWith(RegExp(r'Task ID:', caseSensitive: false));
-        }).join('\n').trim();
+      final verifiedItemsIndex = message.indexOf(RegExp(r'Verified Items:', caseSensitive: false));
+      if (verifiedItemsIndex != -1) {
+        verifiedNotes = message.substring(verifiedItemsIndex + 'Verified Items:'.length).trim();
+        final beforeVerified = message.substring(0, verifiedItemsIndex).trim();
+        final beforeLines = beforeVerified.split('\n');
+        if (beforeLines.length > 1) {
+          summary = beforeLines.sublist(1).where((line) {
+            return !line.trim().startsWith(RegExp(r'Task ID:', caseSensitive: false));
+          }).join('\n').trim();
+        }
+      } else {
+        if (lines.length > 1) {
+          summary = lines.sublist(1).where((line) {
+            return !line.trim().startsWith(RegExp(r'Task ID:', caseSensitive: false));
+          }).join('\n').trim();
+        }
       }
     }
 

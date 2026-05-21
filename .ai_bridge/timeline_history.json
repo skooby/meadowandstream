@@ -1,5 +1,16 @@
 [
   {
+    "id": "eda904e197909553c6008829eefc55e48cac8011",
+    "taskIds": [
+      "1778869915153"
+    ],
+    "title": "VERSION CONTROL [refactor(vc): unify auto and manual commit naming logic via shared generateCommitName helper]",
+    "summary": "Version Control System improvements and tasks",
+    "commitHash": "eda904e197909553c6008829eefc55e48cac8011",
+    "commitDate": "2026-05-21T07:05:13-06:00",
+    "verifiedNotes": "- Have the \"Commit Tasks\" auto populate with the name that we have pre-defined\n- Lets have the Commit Tasks button just allow the automatic version to proceed. No need for a new name, since it should be doing that automatically in the other portion. It will bypass any locks on a task. But it should continue to flag if not all tasks have not been resolved.\n- Name is wrong... it should be using the same as the automatic version... have that call a common function between the two... sheesh"
+  },
+  {
     "id": "ab4b053d0f80dbf1e02df491c96fb186cc339296",
     "taskIds": [
       "1778869915153",
