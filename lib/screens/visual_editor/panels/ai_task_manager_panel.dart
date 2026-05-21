@@ -145,6 +145,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   final TextEditingController _previewRejectedInstController = TextEditingController();
   final TextEditingController _systemHooksInstController = TextEditingController();
   final TextEditingController _missingFilesInstController = TextEditingController();
+  final TextEditingController _syncErrorInstController = TextEditingController();
 
   bool _blockOnCopy = false;
   bool _blockOnReview = false;
@@ -211,6 +212,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     _previewRejectedInstController.text = AiBridgeService.instance.previewRejectedInstructions;
     _systemHooksInstController.text = AiBridgeService.instance.systemHooksInstructions;
     _missingFilesInstController.text = AiBridgeService.instance.missingFilesInstructions;
+    _syncErrorInstController.text = AiBridgeService.instance.syncErrorInstructions;
     AiBridgeService.instance.addListener(_syncInstructions);
     AiBridgeService.instance.addListener(_syncUnassignedState);
     AiBridgeService.instance.addListener(_checkRestoreActiveTask);
@@ -315,7 +317,20 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
       if (!_systemHooksInstController.value.selection.isValid ||
           _systemHooksInstController.text.isEmpty) {
         _systemHooksInstController.text = AiBridgeService.instance.systemHooksInstructions;
-    _missingFilesInstController.text = AiBridgeService.instance.missingFilesInstructions;
+      }
+    }
+    if (_missingFilesInstController.text !=
+        AiBridgeService.instance.missingFilesInstructions) {
+      if (!_missingFilesInstController.value.selection.isValid ||
+          _missingFilesInstController.text.isEmpty) {
+        _missingFilesInstController.text = AiBridgeService.instance.missingFilesInstructions;
+      }
+    }
+    if (_syncErrorInstController.text !=
+        AiBridgeService.instance.syncErrorInstructions) {
+      if (!_syncErrorInstController.value.selection.isValid ||
+          _syncErrorInstController.text.isEmpty) {
+        _syncErrorInstController.text = AiBridgeService.instance.syncErrorInstructions;
       }
     }
   }
@@ -334,6 +349,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     _previewApprovedInstController.dispose();
     _previewRejectedInstController.dispose();
     _systemHooksInstController.dispose();
+    _missingFilesInstController.dispose();
+    _syncErrorInstController.dispose();
     _tsController.dispose();
     _fsController.dispose();
     _dsController.dispose();
@@ -2448,7 +2465,16 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                 'Primary Directives Helper:',
                                                 _primaryDirectivesController,
                                                 'Global constraints and absolute directives...',
-                                                (val) => AiBridgeService.instance.updateInstructions(val, _instController.text, _quickInstController.text, _previewModeInstController.text, _previewApprovedInstController.text, _previewRejectedInstController.text, _systemHooksInstController.text, _missingFilesInstController.text),
+                                                (val) => AiBridgeService.instance.updateInstructions(
+                                                    val,
+                                                    _instController.text,
+                                                    _quickInstController.text,
+                                                    _previewModeInstController.text,
+                                                    _previewApprovedInstController.text,
+                                                    _previewRejectedInstController.text,
+                                                    _systemHooksInstController.text,
+                                                    _missingFilesInstController.text,
+                                                    _syncErrorInstController.text),
                                                 AppColors.error,
                                               ),
                                               buildRule(
@@ -2465,7 +2491,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewApprovedInstController.text,
                                                         _previewRejectedInstController.text,
                                                         _systemHooksInstController.text,
-                                                        _missingFilesInstController.text),
+                                                        _missingFilesInstController.text,
+                                                        _syncErrorInstController.text),
                                                 AppColors.folder,
                                               ),
                                               buildRule(
@@ -2482,7 +2509,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewApprovedInstController.text,
                                                         _previewRejectedInstController.text,
                                                         _systemHooksInstController.text,
-                                                        _missingFilesInstController.text),
+                                                        _missingFilesInstController.text,
+                                                        _syncErrorInstController.text),
                                                 Colors.purpleAccent,
                                               ),
                                               buildRule(
@@ -2499,7 +2527,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewApprovedInstController.text,
                                                         _previewRejectedInstController.text,
                                                         _systemHooksInstController.text,
-                                                        _missingFilesInstController.text),
+                                                        _missingFilesInstController.text,
+                                                        _syncErrorInstController.text),
                                                 AppColors.accent,
                                               ),
                                               buildRule(
@@ -2516,7 +2545,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         val,
                                                         _previewRejectedInstController.text,
                                                         _systemHooksInstController.text,
-                                                        _missingFilesInstController.text),
+                                                        _missingFilesInstController.text,
+                                                        _syncErrorInstController.text),
                                                 Colors.greenAccent,
                                               ),
                                               buildRule(
@@ -2533,7 +2563,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewApprovedInstController.text,
                                                         val,
                                                         _systemHooksInstController.text,
-                                                        _missingFilesInstController.text),
+                                                        _missingFilesInstController.text,
+                                                        _syncErrorInstController.text),
                                                 AppColors.error,
                                               ),
                                               buildRule(
@@ -2550,8 +2581,45 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewApprovedInstController.text,
                                                         _previewRejectedInstController.text,
                                                         val,
-                                                        _missingFilesInstController.text),
+                                                        _missingFilesInstController.text,
+                                                        _syncErrorInstController.text),
                                                 AppColors.summary,
+                                              ),
+                                              buildRule(
+                                                'Missing Files Directives Helper:',
+                                                _missingFilesInstController,
+                                                'Rules defining warnings for missing task files...',
+                                                (val) => AiBridgeService
+                                                    .instance
+                                                    .updateInstructions(
+                                                        _primaryDirectivesController.text,
+                                                        _instController.text,
+                                                        _quickInstController.text,
+                                                        _previewModeInstController.text,
+                                                        _previewApprovedInstController.text,
+                                                        _previewRejectedInstController.text,
+                                                        _systemHooksInstController.text,
+                                                        val,
+                                                        _syncErrorInstController.text),
+                                                AppColors.folder,
+                                              ),
+                                              buildRule(
+                                                'AI Bridge Sync Error Helper:',
+                                                _syncErrorInstController,
+                                                'Rules to get the bridge unstuck during a sync error...',
+                                                (val) => AiBridgeService
+                                                    .instance
+                                                    .updateInstructions(
+                                                        _primaryDirectivesController.text,
+                                                        _instController.text,
+                                                        _quickInstController.text,
+                                                        _previewModeInstController.text,
+                                                        _previewApprovedInstController.text,
+                                                        _previewRejectedInstController.text,
+                                                        _systemHooksInstController.text,
+                                                        _missingFilesInstController.text,
+                                                        val),
+                                                AppColors.error,
                                               ),
                                             ],
                                           );
@@ -3260,6 +3328,125 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     );
   }
 
+  Widget _buildSyncErrorBanner(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.redAccent.withOpacity(0.15),
+            Colors.orangeAccent.withOpacity(0.15),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(
+          color: Colors.redAccent.withOpacity(0.4),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orangeAccent,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'AI BRIDGE SYNC ERROR DETECTED',
+                  style: TextStyle(
+                    color: Colors.redAccent,
+                    fontSize: AppUIConfig.rootFontSize + 1,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'The system is waiting to return from the AI Bridge. The AI might be outputting info to the console instead of writing output files, causing it to get stuck.',
+            style: TextStyle(
+              color: AppColors.panelTextPrimary,
+              fontSize: AppUIConfig.rootFontSize - 1,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () {
+                  AiBridgeService.instance.dismissSyncError();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.panelTextSecondary,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  'DISMISS',
+                  style: TextStyle(
+                    fontSize: AppUIConfig.rootFontSize - 1,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () {
+                  AiBridgeService.instance.forceDispatchSyncError();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bolt, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      'UNSTICK BRIDGE',
+                      style: TextStyle(
+                        fontSize: AppUIConfig.rootFontSize - 1,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildActivePromptItem(QueuedPrompt prompt) {
     final displayTitle = 'ACTIVE MAIN PROMPT';
     return Container(
@@ -3731,6 +3918,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                               controller: _queueScrollController,
                               shrinkWrap: true,
                               children: [
+                                if (AiBridgeService.instance.isSyncErrorDetected)
+                                  _buildSyncErrorBanner(context),
                                 if (AiBridgeService.instance.activeProcessingTaskId != null && AiBridgeService.instance.activePrompt != null)
                                   _buildActiveTaskItem(AiBridgeService.instance.activeProcessingTaskId!, AiBridgeService.instance.activePrompt!),
                                 if (AiBridgeService.instance.activeProcessingTaskId == null && AiBridgeService.instance.activePrompt != null)

@@ -13,6 +13,7 @@ import 'sandbox_service.dart';
 import 'package:antigravity_sdk/antigravity_sdk.dart';
 import 'backend_process_manager.dart';
 import 'system_logs_service.dart';
+import 'error_scanner.dart';
 
 enum UpdateCoverType { hotReload, hotRestart, rebuild }
 
@@ -739,10 +740,15 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   StreamSubscription<FileSystemEvent>? _libWatchSubscription;
   StreamSubscription<FileSystemEvent>? _rootWatchSubscription;
   bool _isSavingLocally = false;
+  int _lastProcessedLogIndex = 0;
+  Timer? _errorDebounceTimer;
+  final List<DetectedError> _errorBuffer = [];
 
   @override
   void dispose() {
     windowManager.removeListener(this);
+    SystemLogsService.instance.removeListener(_handleSystemLogsChanged);
+    _errorDebounceTimer?.cancel();
     _watchSubscription?.cancel();
     _libWatchSubscription?.cancel();
     _rootWatchSubscription?.cancel();
@@ -920,6 +926,8 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   Future<void> executeTask(AiTask task) async {
     await _ensureBackendRunning();
+    await compilePrimaryDirectivesFile();
+    _antigravityLastChangeObservedAt = DateTime.now();
     final json = task.toJson();
     json['name'] = _buildTaskPathName(task);
     final connection = await antigravityClient.invokeSubagent(json);
@@ -938,6 +946,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> _sendToAiAgent(String text) async {
+    _antigravityLastChangeObservedAt = DateTime.now();
     await Clipboard.setData(ClipboardData(text: text));
     await MacroService.instance.executeTrigger('BridgeConnect');
 
@@ -1119,6 +1128,108 @@ wshShell.AppActivate $myPid
     }
   }
 
+  Future<void> forceDispatchSyncError() async {
+    _isSyncErrorDetected = false;
+    notifyListeners();
+    if (_bridgeMode == AntigravityBridgeMode.cli) {
+      await _sendToAiAgent(_syncErrorInstructions);
+    } else {
+      await antigravityClient.sendPrompt(_syncErrorInstructions);
+    }
+  }
+
+  void _handleSystemLogsChanged() {
+    final logs = SystemLogsService.instance.logs;
+    if (logs.length <= _lastProcessedLogIndex) {
+      _lastProcessedLogIndex = logs.length;
+      return;
+    }
+
+    final newEntries = logs.sublist(_lastProcessedLogIndex);
+    _lastProcessedLogIndex = logs.length;
+
+    for (final entry in newEntries) {
+      final detected = ErrorScanner.scan(entry.message);
+      if (detected != null) {
+        _handleDetectedError(detected);
+      }
+    }
+  }
+
+  void _handleDetectedError(DetectedError error) {
+    if (!isThinking) return;
+
+    _errorBuffer.add(error);
+
+    _errorDebounceTimer?.cancel();
+    _errorDebounceTimer = Timer(const Duration(milliseconds: 1500), () {
+      _dispatchBufferedErrors();
+    });
+  }
+
+  Future<void> _dispatchBufferedErrors() async {
+    if (_errorBuffer.isEmpty) return;
+
+    final errorsToDispatch = List<DetectedError>.from(_errorBuffer);
+    _errorBuffer.clear();
+
+    final sb = StringBuffer();
+    sb.writeln('=== RUNTIME/LAYOUT ERRORS DETECTED ===');
+    for (final err in errorsToDispatch) {
+      sb.writeln('[${err.timestamp}] [${err.category.name.toUpperCase()}] ${err.message}');
+    }
+
+    await dispatchRuntimeError(sb.toString());
+  }
+
+  Future<void> dispatchRuntimeError(String errorLog) async {
+    try {
+      if (_activeProcessingTaskId != null) {
+        await _absorbOrphanedFiles(_activeProcessingTaskId!);
+      }
+
+      _tasks.removeWhere((t) => t.name.toLowerCase() == 'fix runtime errors');
+
+      final task = await addTask(
+        'Fix runtime errors',
+        'The application encountered runtime/layout/test/dependency errors during execution. Fix them immediately.',
+        notes: errorLog,
+        status: AiTaskStatus.inProgress,
+      );
+
+      if (_tasks.isNotEmpty && _tasks.first.id != task.id) {
+        await reorderBefore(task.id, _tasks.first.id);
+      }
+
+      _isQueuePaused = false;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('ai_queue_paused', false);
+
+      try {
+        File('$_dirPath/bridge_error.txt').writeAsStringSync(errorLog);
+      } catch (_) {}
+
+      final promptText =
+          '# PRIMARY DIRECTIVES\nVoice: Direct / Robotic\nComplexity: Concise\n\nCRITICAL RUNTIME ERROR DETECTED! The application encountered runtime/layout/test/dependency errors during execution.\nRead the error log inside .ai_bridge/bridge_error.txt immediately. Fix the issue dynamically and DO NOT push IDLE again until you have structurally verified your fix.';
+
+      final p = QueuedPrompt(promptText, true, [task.id]);
+      _pendingPrompts.insert(0, p);
+      await _saveQueueState();
+
+      _activeProcessingTaskId = null;
+      _activeProcessingTaskAssignedAt = null;
+      _activePrompt = null;
+      notifyListeners();
+
+      await _processQueue();
+    } catch (e, st) {
+      try {
+        File('$_dirPath/bridge_error_debug.txt')
+            .writeAsStringSync('dispatchRuntimeError crashed:\n\n$e\n$st');
+      } catch (_) {}
+    }
+  }
+
 
 
 
@@ -1286,6 +1397,11 @@ wshShell.AppActivate $myPid
       _isAntigravityBusy ||
       _activePrompt != null;
 
+  @visibleForTesting
+  void setAntigravityBusyForTesting(bool busy) {
+    _isAntigravityBusy = busy;
+  }
+
 
   void _startWatchingAntigravity() {
     if (kIsWeb || (!Platform.isWindows && !Platform.isMacOS)) return;
@@ -1327,6 +1443,9 @@ wshShell.AppActivate $myPid
             triggerPendingUpdate();
           }
         }
+
+        // Detect AI Bridge Sync Error
+        await checkForSyncError();
       } catch (_) {}
     });
   }
@@ -1408,6 +1527,77 @@ wshShell.AppActivate $myPid
   String _missingFilesInstructions = '# SYSTEM ALERT: MISSING REQUIRED OUTPUT FILES\n\nYou wrote IDLE, but the following required output files were NOT found on disk:\n{missingList}\n\nThe app processes and DELETES these files immediately upon IDLE. They must be written BEFORE you write IDLE to agent_status.txt.\n\nPlease write the missing files immediately to their correct paths, then write IDLE to `.ai_bridge/agent_status.txt` again. Do not re-do any code work.';
   String get missingFilesInstructions => _missingFilesInstructions;
 
+  String _syncErrorInstructions = 'AI Bridge Sync Error: The system detected you outputted conversational/status information directly instead of writing to `.ai_bridge/latest_notes.json` or `.ai_bridge/agent_status.txt`. You must write your notes to `.ai_bridge/latest_notes.json` and then write `IDLE` (or the appropriate state) to `.ai_bridge/agent_status.txt` immediately without printing further conversational chat.';
+  String get syncErrorInstructions => _syncErrorInstructions;
+
+  bool _isSyncErrorDetected = false;
+  bool get isSyncErrorDetected => _isSyncErrorDetected;
+
+  void dismissSyncError() {
+    _isSyncErrorDetected = false;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  Future<void> checkForSyncError({Directory? customBrainDir, DateTime? customNow}) async {
+    final targetBrainDir = customBrainDir ?? Directory('${Platform.environment['USERPROFILE'] ?? ''}\\.gemini\\antigravity\\brain');
+    final now = customNow ?? DateTime.now();
+
+    if (!_isSyncErrorDetected &&
+        (_activePrompt != null || _activeAgents.isNotEmpty) &&
+        _antigravityLastChangeObservedAt != null &&
+        now.difference(_antigravityLastChangeObservedAt!).inSeconds > 15) {
+      File? latestTranscript;
+      if (targetBrainDir.existsSync()) {
+        try {
+          final files = targetBrainDir
+              .listSync(recursive: true, followLinks: false)
+              .whereType<File>()
+              .where((f) => f.path.endsWith('transcript.jsonl'))
+              .toList();
+          if (files.isNotEmpty) {
+            files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+            latestTranscript = files.first;
+          }
+        } catch (_) {}
+      }
+      if (latestTranscript != null) {
+        try {
+          final lines = latestTranscript.readAsLinesSync();
+          Map<String, dynamic>? lastStep;
+          for (int i = lines.length - 1; i >= 0; i--) {
+            final line = lines[i].trim();
+            if (line.isNotEmpty && line.startsWith('{')) {
+              lastStep = jsonDecode(line) as Map<String, dynamic>;
+              break;
+            }
+          }
+          if (lastStep != null && lastStep['type'] == 'PLANNER_RESPONSE') {
+            _isSyncErrorDetected = true;
+            notifyListeners();
+          }
+        } catch (_) {}
+      }
+    }
+  }
+
+  @visibleForTesting
+  set isSyncErrorDetected(bool value) {
+    _isSyncErrorDetected = value;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  set activePrompt(QueuedPrompt? value) {
+    _activePrompt = value;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  set antigravityLastChangeObservedAt(DateTime? value) {
+    _antigravityLastChangeObservedAt = value;
+  }
+
   Future<void> compilePrimaryDirectivesFile() async {
     try {
       final dir = Directory(_dirPath);
@@ -1473,7 +1663,8 @@ wshShell.AppActivate $myPid
       String previewApproved,
       String previewRejected,
       String systemHooks,
-      String missingFiles) async {
+      String missingFiles,
+      String syncError) async {
     _primaryDirectives = primary;
     _instructions = text;
     _quickInstructions = quickText;
@@ -1482,6 +1673,7 @@ wshShell.AppActivate $myPid
     _previewRejectedInstructions = previewRejected;
     _systemHooksInstructions = systemHooks;
     _missingFilesInstructions = missingFiles;
+    _syncErrorInstructions = syncError;
     notifyListeners();
     await _save();
     await compilePrimaryDirectivesFile();
@@ -1548,6 +1740,9 @@ wshShell.AppActivate $myPid
       await _loadFromFile();
       _startWatching();
       _startWatchingAntigravity();
+
+      _lastProcessedLogIndex = SystemLogsService.instance.logs.length;
+      SystemLogsService.instance.addListener(_handleSystemLogsChanged);
 
       try {
         if (!kIsWeb &&
@@ -2177,6 +2372,9 @@ wshShell.AppActivate $myPid
             _missingFilesInstructions =
                 jsonTop['missingFilesInstructions'] as String? ??
                     _missingFilesInstructions;
+            _syncErrorInstructions =
+                jsonTop['syncErrorInstructions'] as String? ??
+                    _syncErrorInstructions;
             jsonList = jsonTop['tasks'] as List<dynamic>? ?? [];
           } else if (jsonTop is List<dynamic>) {
             jsonList = jsonTop;
@@ -2496,6 +2694,7 @@ wshShell.AppActivate $myPid
         'previewRejectedInstructions': _previewRejectedInstructions,
         'systemHooksInstructions': _systemHooksInstructions,
         'missingFilesInstructions': _missingFilesInstructions,
+        'syncErrorInstructions': _syncErrorInstructions,
         'tasks': jsonTasksList
       };
       const encoder = JsonEncoder.withIndent('  ');

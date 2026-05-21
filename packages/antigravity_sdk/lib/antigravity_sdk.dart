@@ -415,7 +415,9 @@ class AntigravityClient {
         if (config.targetModel != null && config.targetModel!.isNotEmpty) {
           args.add('--model=${_resolveModelTier(config.targetModel!)}');
         }
-        args.add('Process bridge current_task.json');
+        args.add(
+          'CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n\nProcess bridge current_task.json',
+        );
         final result = await _runAgentapi(args);
 
         if (result == null) {

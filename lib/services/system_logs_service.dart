@@ -5,6 +5,16 @@ import 'package:path_provider/path_provider.dart';
 
 enum LogCategory { GENERAL, ERROR, NETWORK, DB, SYSTEM, AI, MACRO, VC }
 
+enum ErrorCategory { layout, runtime, test, dependency }
+
+class DetectedError {
+  final String message;
+  final ErrorCategory category;
+  final DateTime timestamp;
+
+  DetectedError(this.message, this.category) : timestamp = DateTime.now();
+}
+
 class LogEntry {
   final DateTime timestamp;
   final String message;
