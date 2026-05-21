@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'system_logs_service.dart';
@@ -505,6 +506,23 @@ class VersionControlService {
     }
   }
 
+  String _getRelativePath(String repoPath, String filePath) {
+    var r = repoPath.replaceAll('\\', '/').toLowerCase();
+    if (r.endsWith('/')) {
+      r = r.substring(0, r.length - 1);
+    }
+    var f = filePath.replaceAll('\\', '/');
+    var fLower = f.toLowerCase();
+    String rel = f;
+    if (fLower.startsWith(r)) {
+      rel = f.substring(r.length);
+    }
+    while (rel.startsWith('/')) {
+      rel = rel.substring(1);
+    }
+    return rel;
+  }
+
   Future<List<Map<String, String>>> getFileCommitHistory(String filePath) async {
     final path = await getLocalRepositoryPath();
     if (path == null || path.isEmpty) {
@@ -512,16 +530,20 @@ class VersionControlService {
       return [];
     }
 
+    final relPath = _getRelativePath(path, filePath);
     try {
       final result = await Process.run(
         'git',
-        ['log', '--follow', '--format=%H===%s===%an===%ad', '--date=iso', '--', filePath],
+        ['log', '--follow', '--format=%H===%s===%an===%ad', '--date=iso', '--', relPath],
         workingDirectory: path,
         runInShell: false,
+        stdoutEncoding: null,
+        stderrEncoding: null,
       );
 
       if (result.exitCode == 0) {
-        final out = result.stdout.toString().trim();
+        final bytes = result.stdout as List<int>;
+        final out = utf8.decode(bytes, allowMalformed: true).trim();
         if (out.isEmpty) return [];
         final lines = out.split('\n');
         return lines.map((line) {
@@ -538,7 +560,10 @@ class VersionControlService {
           return {'sha': '', 'hash': '', 'message': 'Unknown format', 'author': '', 'date': ''};
         }).toList();
       } else {
-        SystemLogsService.instance.addLog('getFileCommitHistory exitCode != 0: ${result.exitCode}\n${result.stderr}', category: LogCategory.VC);
+        final stderrStr = result.stderr is List<int>
+            ? utf8.decode(result.stderr as List<int>, allowMalformed: true)
+            : result.stderr.toString();
+        SystemLogsService.instance.addLog('getFileCommitHistory exitCode != 0: ${result.exitCode}\n$stderrStr', category: LogCategory.VC);
       }
     } catch (e) {
       SystemLogsService.instance.addLog('getFileCommitHistory exception: $e', category: LogCategory.VC);
@@ -550,18 +575,24 @@ class VersionControlService {
     final path = await getLocalRepositoryPath();
     if (path == null || path.isEmpty) throw Exception('Local repository path not set.');
     
-    final normalizedPath = filePath.replaceAll('\\', '/');
+    final relPath = _getRelativePath(path, filePath);
 
     final result = await Process.run(
       'git',
-      ['show', '$commitSha:$normalizedPath'],
+      ['show', '$commitSha:$relPath'],
       workingDirectory: path,
       runInShell: false,
+      stdoutEncoding: null,
+      stderrEncoding: null,
     );
 
     if (result.exitCode != 0) {
-      throw Exception('Failed to get file content at commit $commitSha:\n${result.stderr}');
+      final stderrStr = result.stderr is List<int>
+          ? utf8.decode(result.stderr as List<int>, allowMalformed: true)
+          : result.stderr.toString();
+      throw Exception('Failed to get file content at commit $commitSha:\n$stderrStr');
     }
-    return result.stdout.toString();
+    final bytes = result.stdout as List<int>;
+    return utf8.decode(bytes, allowMalformed: true);
   }
 }

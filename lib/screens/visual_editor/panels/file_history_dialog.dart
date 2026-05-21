@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../constants.dart';
 import '../../../services/version_control_service.dart';
@@ -9,180 +10,150 @@ import '../../../services/github_service.dart';
 import '../../../state/editor_state_controller.dart';
 import '../../../choreography/choreography_engine.dart';
 
-class DiffLine {
-  final String text;
-  final String type; // 'added', 'deleted', 'unchanged'
-
-  DiffLine(this.text, this.type);
-}
-
-List<DiffLine> computeDiff(String oldText, String newText) {
-  final oldLines = oldText.split('\n');
-  final newLines = newText.split('\n');
-
-  int m = oldLines.length;
-  int n = newLines.length;
-
-  if (m * n > 150000) {
-    // Simple line-by-line fallback for large files
-    List<DiffLine> result = [];
-    int minLen = m < n ? m : n;
-    for (int i = 0; i < minLen; i++) {
-      if (oldLines[i] == newLines[i]) {
-        result.add(DiffLine(oldLines[i], 'unchanged'));
-      } else {
-        result.add(DiffLine(oldLines[i], 'deleted'));
-        result.add(DiffLine(newLines[i], 'added'));
-      }
-    }
-    if (m > minLen) {
-      for (int i = minLen; i < m; i++) {
-        result.add(DiffLine(oldLines[i], 'deleted'));
-      }
-    }
-    if (n > minLen) {
-      for (int i = minLen; i < n; i++) {
-        result.add(DiffLine(newLines[i], 'added'));
-      }
-    }
-    return result;
-  }
-
-  // Standard LCS DP algorithm
-  List<List<int>> dp = List.generate(m + 1, (_) => List.filled(n + 1, 0));
-  for (int i = 1; i <= m; i++) {
-    for (int j = 1; j <= n; j++) {
-      if (oldLines[i - 1] == newLines[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = dp[i - 1][j] > dp[i][j - 1] ? dp[i - 1][j] : dp[i][j - 1];
-      }
-    }
-  }
-
-  List<DiffLine> result = [];
-  int i = m, j = n;
-  while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && oldLines[i - 1] == newLines[j - 1]) {
-      result.add(DiffLine(oldLines[i - 1], 'unchanged'));
-      i--;
-      j--;
-    } else if (j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      result.add(DiffLine(newLines[j - 1], 'added'));
-      j--;
-    } else {
-      result.add(DiffLine(oldLines[i - 1], 'deleted'));
-      i--;
-    }
-  }
-  return result.reversed.toList();
-}
-
-class DiffViewer extends StatelessWidget {
+class DiffViewer extends StatefulWidget {
   final String oldText;
   final String newText;
 
   const DiffViewer({super.key, required this.oldText, required this.newText});
 
   @override
+  State<DiffViewer> createState() => _DiffViewerState();
+}
+
+class _DiffViewerState extends State<DiffViewer> {
+  final ScrollController _scrollController = ScrollController();
+  bool _copied = false;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _copyToClipboard() {
+    Clipboard.setData(ClipboardData(text: widget.oldText));
+    setState(() {
+      _copied = true;
+    });
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _copied = false;
+        });
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Copied content to clipboard'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final diffs = computeDiff(oldText, newText);
+    final cleanText = widget.oldText.replaceAll('\r\n', '\n');
+    final lines = cleanText.split('\n');
 
-    int oldLineNum = 1;
-    int newLineNum = 1;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF151515), // Dark editor color
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: ListView.builder(
-          itemCount: diffs.length,
-          itemBuilder: (context, index) {
-            final line = diffs[index];
-            Color? bgColor;
-            Color textColor = Colors.grey[300]!;
-            String prefix = ' ';
-            String oldNumStr = '';
-            String newNumStr = '';
-
-            if (line.type == 'added') {
-              bgColor = Colors.green.withOpacity(0.1);
-              textColor = Colors.greenAccent[400]!;
-              prefix = '+';
-              newNumStr = '${newLineNum++}';
-            } else if (line.type == 'deleted') {
-              bgColor = Colors.red.withOpacity(0.1);
-              textColor = Colors.redAccent[100]!;
-              prefix = '-';
-              oldNumStr = '${oldLineNum++}';
-            } else {
-              prefix = ' ';
-              oldNumStr = '${oldLineNum++}';
-              newNumStr = '${newLineNum++}';
-            }
-
-            return Container(
-              color: bgColor,
-              padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 32,
-                    child: Text(
-                      oldNumStr,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        color: Colors.grey[600],
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 32,
-                    child: Text(
-                      newNumStr,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        color: Colors.grey[600],
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    prefix,
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: textColor.withOpacity(0.7),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      line.text,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        color: textColor,
-                      ),
-                    ),
-                  ),
-                ],
+    return Stack(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1117), // GitHub dark background
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: const Color(0xFF30363D)), // GitHub dark border
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                scrollbarTheme: ScrollbarThemeData(
+                  thumbColor: WidgetStateProperty.all(Theme.of(context).colorScheme.primary),
+                ),
               ),
-            );
-          },
+              child: Scrollbar(
+                controller: _scrollController,
+                thumbVisibility: true,
+                interactive: true,
+                thickness: 8.0,
+                radius: const Radius.circular(4),
+                child: SelectionArea(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: lines.length,
+                    itemBuilder: (context, index) {
+                      final lineNumStr = '${index + 1}';
+                      final lineText = lines[index];
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 40,
+                              child: Text(
+                                lineNumStr,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11,
+                                  color: Color(0xFF8B949E), // GitHub style line number color
+                                ),
+                                textAlign: TextAlign.right,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Text(
+                                  lineText,
+                                  style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 11,
+                                    color: Color(0xFFC9D1D9), // GitHub body text color
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
-      ),
+        Positioned(
+          top: 8,
+          right: 20,
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22).withOpacity(0.85),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: const Color(0xFF30363D)),
+            ),
+            child: IconButton(
+              icon: Icon(
+                _copied ? Icons.check : Icons.copy,
+                size: 16,
+                color: _copied ? const Color(0xFF56D364) : const Color(0xFF8B949E),
+              ),
+              onPressed: _copyToClipboard,
+              tooltip: 'Copy code to clipboard',
+              constraints: const BoxConstraints(
+                minWidth: 32,
+                minHeight: 32,
+              ),
+              padding: EdgeInsets.zero,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -253,7 +224,12 @@ class _FileHistoryDialogState extends State<FileHistoryDialog> {
       final file = File(widget.filePath);
       String localContent = '';
       if (await file.exists()) {
-        localContent = await file.readAsString();
+        try {
+          final bytes = await file.readAsBytes();
+          localContent = utf8.decode(bytes, allowMalformed: true);
+        } catch (e) {
+          localContent = 'Error reading file: $e';
+        }
       }
 
       setState(() {
