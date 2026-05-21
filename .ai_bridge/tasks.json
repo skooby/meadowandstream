@@ -4760,60 +4760,6 @@
       "parentId": "1774913415376"
     },
     {
-      "id": "1779063155069",
-      "name": "Task Editor",
-      "description": "Improvements and enhancements",
-      "summary": "Fix task checkbox clearance when returning from AI bridge",
-      "notes": "### Update - 2026-05-19 21:02\nAdded granular merge logic for verification criteria in _loadFromFile to preserve user checkbox modifications when the task list is reloaded from disk. Also ensured that the task status is set to inTesting immediately upon submission to the AI bridge from both the task manager panel and the global task editor window.\n\n---\n\n### Update - 2026-05-19 20:52\nIdentified that when the AI bridge completed, the client absorbed artifacts and triggered `onArtifactUpdate` which completely overwrote the verification criteria of the task, resetting all checkboxes to unchecked/false. Resolved this by introducing a granular merge logic that matches incoming verification criteria by description and preserves existing user-modified status values (verified, pendingReview, ignored), while updating the proof and appending any new/preview items.\n\n---",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "verificationCriteria": [
-        {
-          "description": "returning from ai bridge is clearing out the checkbox when it should not be doing anything with it",
-          "goal": "This is clearing the checkbox immediately... on submit to ai bridge... Before was correct... set to testing status on submission to ai bridge",
-          "isVerified": true,
-          "status": "verified",
-          "proof": "Granular merge logic added to _loadFromFile in ai_bridge_service.dart to match incoming verification criteria by normalized description and preserve user-modified checkbox statuses (verified, pendingReview, ignored). Task status is also updated to inTesting immediately on submission from the task list and task editor.",
-          "requestClarification": false,
-          "tryCount": 1,
-          "attachments": [],
-          "isCommitted": true,
-          "isPreview": false
-        },
-        {
-          "description": "Testing States",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": null,
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": true,
-          "isPreview": false
-        }
-      ],
-      "status": "completed",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": "db92fe16bde8cc75608f4d71de3413e6d33c925d",
-      "commitDate": "2026-05-19T21:24:01.991350",
-      "parentId": "1778559529935",
-      "worksheetId": "1778268121185"
-    },
-    {
       "id": "1779227119674",
       "name": "ANTIGRAVITY CONNECTION",
       "description": "",
@@ -5298,6 +5244,71 @@
       "commitDate": "2026-05-20T13:26:11.903577",
       "parentId": "1778865514716",
       "worksheetId": "1778268121185"
+    },
+    {
+      "id": "1778869915153",
+      "name": "VERSION CONTROL TIMELINE HISTORY",
+      "description": "Version Control System improvements and tasks",
+      "summary": "Allow up to three lines in timeline history entries",
+      "notes": "### Update - 2026-05-21 06:33\nUpdated text widgets in version_control_window.dart's timeline list tiles to allow up to 2 lines for the name/title/summary plus 1 line for the subtitle, making the total height limited to at most 3 lines.\n\n---\n\n### Update - 2026-05-21 06:30\nAdded relative time helper _formatRelativeTime and limited all timeline list tiles to exactly 2 lines of text (title and subtitle/status) using maxLines: 1 and TextOverflow.ellipsis in version_control_window.dart.\n\n---\n\n### Update - 2026-05-20 23:59\nImplemented fetchRepositoryCommits in GithubService, parseCommitMessage/fetchTimelineHistory in VersionControlService, and reloadTimelineHistory in AiBridgeService to fetch remote/local commits and keep the timeline in sync with the repository. Wired reload hooks in VersionControlWindow's initState, Refresh, and Sync handlers.\n\n---",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "What I want is for the timeline history to be the same list as the commit list in GitHub... we should be pulling this from GitHub not managing on our own",
+          "goal": "this should grab the entire github history!",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "VCS timeline history is now loaded dynamically from the GitHub repository API (falling back to local git log if unconfigured/offline) rather than being managed manually via local merge operations in timeline_history.json. Reloading is wired on initState, refresh toolbar button, sync action, and task commits.",
+          "requestClarification": false,
+          "tryCount": 1,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        },
+        {
+          "description": "Lets have entries in the timeline history be limited to two lines. For the status instead of a date when it was committed, show something more like \"committed 6 hours ago\"",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Added _formatRelativeTime to format timestamps into relative strings (e.g. 'committed 6 hours ago') and updated list tile elements in version_control_window.dart to be limited to max 1 line each (title and subtitle status) making each list tile entry exactly 2 lines total.",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        },
+        {
+          "description": "Lets allow up to three lines two for the name + one for sub title",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": "Adjusted the title/summary text widgets to use maxLines: 2 and TextOverflow.ellipsis, while subtitle/status uses maxLines: 1 and TextOverflow.ellipsis, allowing up to three lines total per list entry.",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        }
+      ],
+      "status": "completed",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": "d83d757c02b9d44bb864f65053ced9bfa8117833",
+      "commitDate": "2026-05-21T06:33:37.133388",
+      "parentId": "1778537568342"
     }
   ]
 }

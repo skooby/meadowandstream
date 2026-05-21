@@ -1250,9 +1250,9 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                       fontSize: AppUIConfig.rootFontSize,
                       fontStyle: FontStyle.italic)),
             if (verificationCriteriaList.isNotEmpty)
-              Expanded(
+              Flexible(
                 child: ReorderableListView(
-                  shrinkWrap: false,
+                  shrinkWrap: true,
                   buildDefaultDragHandles: false,
                   onReorder: (int oldIndex, int newIndex) {
                 setStateBuilder(() {
@@ -1781,7 +1781,7 @@ verificationCriteriaList[i].isCommitted = false;
                             },
                             child: Icon(
                               Icons.check_circle_outline,
-                              color: Colors.red.withOpacity(0.8),
+                              color: Colors.green.withOpacity(0.8),
                               size: 48,
                               shadows: [
                                 Shadow(
