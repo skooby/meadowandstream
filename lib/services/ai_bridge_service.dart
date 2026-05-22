@@ -197,6 +197,7 @@ class AiTask {
   List<String> hyperlinks;
   String? commitHash;
   String? commitDate;
+  String? previewState;
 
   AiTask({
     required this.id,
@@ -231,6 +232,7 @@ class AiTask {
     this.proposedChanges,
     this.commitHash,
     this.commitDate,
+    this.previewState,
     List<String>? fileAttachments,
     List<String>? hyperlinks,
   })  : reviewQuestions = reviewQuestions ?? [],
@@ -267,6 +269,7 @@ class AiTask {
       'hyperlinks': hyperlinks,
       'commitHash': commitHash,
       'commitDate': commitDate,
+      'previewState': previewState,
     };
     if (parentId != null) map['parentId'] = parentId;
     if (worksheetId != null) map['worksheetId'] = worksheetId;
@@ -332,6 +335,7 @@ class AiTask {
           : [],
       commitHash: json['commitHash'] as String?,
       commitDate: json['commitDate'] as String?,
+      previewState: json['previewState'] as String?,
     );
   }
 }
@@ -847,6 +851,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   String _filePath = '.ai_bridge/tasks.json';
 
   @visibleForTesting
+  Directory? testBrainDir;
+
+  @visibleForTesting
   set testDirPath(String path) {
     _dirPath = path;
     AntigravityStatusService.instance.statusFilePath = '$path/agent_status.txt';
@@ -965,6 +972,10 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   final List<QueuedPrompt> _pendingPrompts = [];
   final List<QueuedPrompt> _completedPrompts = [];
   QueuedPrompt? _activePrompt;
+  bool _isPromptDispatched = false;
+
+  @visibleForTesting
+  set isPromptDispatched(bool value) => _isPromptDispatched = value;
 
   List<QueuedPrompt> get pendingPrompts => _pendingPrompts;
   List<QueuedPrompt> get completedPrompts => _completedPrompts;
@@ -1097,6 +1108,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   Future<void> _sendToAiAgent(String text) async {
     _antigravityLastChangeObservedAt = DateTime.now();
+    _isPromptDispatched = true;
     await Clipboard.setData(ClipboardData(text: text));
     await MacroService.instance.executeTrigger('BridgeConnect');
 
@@ -1182,6 +1194,7 @@ wshShell.AppActivate $myPid
         }
 
         _activePrompt = nextPrompt;
+        _isPromptDispatched = false;
         _pendingPrompts.removeAt(0);
         await _saveQueueState();
         notifyListeners();
@@ -1804,7 +1817,7 @@ wshShell.AppActivate $myPid
 
   @visibleForTesting
   Future<void> checkForSyncError({Directory? customBrainDir, DateTime? customNow}) async {
-    final targetBrainDir = customBrainDir ?? Directory('${Platform.environment['USERPROFILE'] ?? ''}\\.gemini\\antigravity\\brain');
+    final targetBrainDir = testBrainDir ?? customBrainDir ?? Directory('${Platform.environment['USERPROFILE'] ?? ''}\\.gemini\\antigravity\\brain');
     final now = customNow ?? DateTime.now();
 
     // Check if the agent is still busy and working on stuff
@@ -1824,7 +1837,7 @@ wshShell.AppActivate $myPid
     } catch (_) {}
 
     if (!_isSyncErrorDetected &&
-        (_activePrompt != null || _activeAgents.isNotEmpty) &&
+        ((_activePrompt != null && _isPromptDispatched) || _activeAgents.isNotEmpty) &&
         _antigravityLastChangeObservedAt != null &&
         now.difference(_antigravityLastChangeObservedAt!).inSeconds > 15) {
       File? latestTranscript;
@@ -1877,6 +1890,9 @@ wshShell.AppActivate $myPid
   }
 
   @visibleForTesting
+  Future<void> processStatusChangeForTesting(String content) => _processStatusChange(content);
+
+  @visibleForTesting
   set isSyncErrorDetected(bool value) {
     _isSyncErrorDetected = value;
     notifyListeners();
@@ -1885,6 +1901,11 @@ wshShell.AppActivate $myPid
   @visibleForTesting
   set activePrompt(QueuedPrompt? value) {
     _activePrompt = value;
+    if (value != null) {
+      _isPromptDispatched = true;
+    } else {
+      _isPromptDispatched = false;
+    }
     notifyListeners();
   }
 
@@ -1893,7 +1914,7 @@ wshShell.AppActivate $myPid
     _antigravityLastChangeObservedAt = value;
   }
 
-  Future<void> compilePrimaryDirectivesFile() async {
+  Future<void> compilePrimaryDirectivesFile([AiTask? task]) async {
     if (Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests) {
       return;
     }
@@ -1923,22 +1944,33 @@ wshShell.AppActivate $myPid
         sb.writeln('');
       }
 
-      if (_previewModeInstructions.isNotEmpty) {
-        sb.writeln('# PREVIEW MODE DIRECTIVES');
-        sb.writeln(_previewModeInstructions);
-        sb.writeln('');
-      }
-
-      if (_previewApprovedInstructions.isNotEmpty) {
-        sb.writeln('# PREVIEW APPROVED DIRECTIVES');
-        sb.writeln(_previewApprovedInstructions);
-        sb.writeln('');
-      }
-
-      if (_previewRejectedInstructions.isNotEmpty) {
-        sb.writeln('# PREVIEW REJECTED DIRECTIVES');
-        sb.writeln(_previewRejectedInstructions);
-        sb.writeln('');
+      if (_isPreviewMode) {
+        AiTask? activeTask = task;
+        if (activeTask == null && _activeProcessingTaskId != null) {
+          try {
+            activeTask = _tasks.firstWhere((t) => t.id == _activeProcessingTaskId);
+          } catch (_) {}
+        }
+        final state = activeTask?.previewState;
+        if (state == 'approved') {
+          if (_previewApprovedInstructions.isNotEmpty) {
+            sb.writeln('# PREVIEW APPROVED DIRECTIVES');
+            sb.writeln(_previewApprovedInstructions);
+            sb.writeln('');
+          }
+        } else if (state == 'rejected') {
+          if (_previewRejectedInstructions.isNotEmpty) {
+            sb.writeln('# PREVIEW REJECTED DIRECTIVES');
+            sb.writeln(_previewRejectedInstructions);
+            sb.writeln('');
+          }
+        } else {
+          if (_previewModeInstructions.isNotEmpty) {
+            sb.writeln('# PREVIEW MODE DIRECTIVES');
+            sb.writeln(_previewModeInstructions);
+            sb.writeln('');
+          }
+        }
       }
       
       if (_systemHooksInstructions.isNotEmpty) {
@@ -1951,6 +1983,115 @@ wshShell.AppActivate $myPid
       
       await file.writeAsString(sb.toString(), flush: true);
     } catch (_) {}
+  }
+
+  Future<String> buildTaskPrompt(AiTask task) async {
+    final sb = StringBuffer();
+    sb.writeln('# PRIMARY DIRECTIVES');
+    sb.writeln('> [!IMPORTANT]');
+    sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.');
+    sb.writeln('To align context with the current workspace state, you must also read the recent conversation history in `.ai_bridge/conversation_history.md` and the database dump in `.ai_bridge/db_dump.json` using your file-reading tools.\n');
+    
+    String modeInstructions = _quickInstructions;
+    if (_isPreviewMode) {
+      final state = task.previewState;
+      String previewInst = _previewModeInstructions;
+      if (state == 'approved') {
+        previewInst = _previewApprovedInstructions;
+      } else if (state == 'rejected') {
+        previewInst = _previewRejectedInstructions;
+      }
+      modeInstructions = '$previewInst\n\n$modeInstructions';
+      if (_isIqMode) {
+        modeInstructions = 'IQ MODE ACTIVE: Prefix the `name` of each new sub-task with [RISKY], [FEEDBACK], or [SAFE].\n$modeInstructions';
+      }
+    }
+    sb.writeln(modeInstructions);
+    sb.writeln('');
+
+    sb.writeln('# TASKS TO ADDRESS');
+    sb.writeln('Task: ${task.name}');
+    if (task.description.isNotEmpty) {
+      sb.writeln('Description: ${task.description}');
+    }
+    sb.writeln('Status: ${task.status.name}');
+    
+    final uncheckedTasks = task.verificationCriteria
+        .where((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview)
+        .toList();
+    if (uncheckedTasks.isNotEmpty) {
+      sb.writeln('Verification Criteria:');
+      for (int i = 0; i < uncheckedTasks.length; i++) {
+        var item = uncheckedTasks[i];
+        String extraInfo = '';
+        if (item.goal.isNotEmpty) extraInfo += ' [Goal: ${item.goal}]';
+        if (item.tryCount > 0) extraInfo += ' [TRY #${item.tryCount}]';
+        if (item.requestClarification) {
+          sb.writeln('${i + 1}. [CLARIFY] ${item.description}$extraInfo');
+        } else {
+          sb.writeln('${i + 1}. ${item.description}$extraInfo');
+        }
+      }
+    }
+    
+    if (task.fileAttachments.isNotEmpty) {
+      sb.writeln('Attachments:');
+      for (final attachment in task.fileAttachments) {
+        sb.writeln('- $attachment');
+      }
+    }
+    
+    if (task.hyperlinks.isNotEmpty) {
+      sb.writeln('Hyperlinks:');
+      for (final link in task.hyperlinks) {
+        sb.writeln('- $link');
+      }
+    }
+    
+    sb.writeln('---');
+    return sb.toString();
+  }
+
+  Future<void> approvePreview(String taskId) async {
+    final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
+    if (taskIdx == -1) return;
+    
+    final task = _tasks[taskIdx];
+    task.previewState = 'approved';
+    
+    for (final vc in task.verificationCriteria) {
+      if (vc.isPreview) {
+        vc.isPreview = false;
+        vc.status = AiVerificationStatus.none;
+      }
+    }
+    task.status = AiTaskStatus.inTesting;
+    
+    await _save();
+    notifyListeners();
+    
+    await compilePrimaryDirectivesFile(task);
+    
+    final prompt = await buildTaskPrompt(task);
+    await sendToQueue(prompt, true, taskIds: [task.id]);
+  }
+
+  Future<void> rejectPreview(String taskId, String feedback) async {
+    final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
+    if (taskIdx == -1) return;
+    
+    final task = _tasks[taskIdx];
+    task.previewState = 'rejected';
+    
+    await _save();
+    notifyListeners();
+    
+    await compilePrimaryDirectivesFile(task);
+    
+    final basePrompt = await buildTaskPrompt(task);
+    final fullPrompt = '$basePrompt\n\nUser Rejection Feedback:\n$feedback';
+    
+    await sendToQueue(fullPrompt, true, taskIds: [task.id]);
   }
 
   Future<void> updateInstructions(
@@ -2083,6 +2224,27 @@ wshShell.AppActivate $myPid
     }
   }
 
+  bool _hasConversationalText(String content) {
+    // Remove valid tags and their contents
+    String remaining = content
+        .replaceAll(RegExp(r'<bridge_notes>.*?</bridge_notes>', dotAll: true), '')
+        .replaceAll(RegExp(r'<preview>.*?</preview>', dotAll: true), '')
+        .replaceAll(RegExp(r'<verification>.*?</verification>', dotAll: true), '');
+    
+    // Remove block screen requests
+    remaining = remaining.replaceAll(
+        RegExp(r'please\s+send\s+the\s+block\s+screen\s+message(?:\s+once)?\.?', caseSensitive: false),
+        '');
+    
+    // Trim whitespace, newlines, and common markdown/punctuation characters
+    remaining = remaining.trim();
+    // Also remove common markdown headers/lists symbols that might be empty or formatting
+    remaining = remaining.replaceAll(RegExp(r'[#\*\-\`\>_\s\n\r\t]+'), '').trim();
+
+    // If there's any substantial alphanumeric text left, it is conversational text
+    return remaining.isNotEmpty;
+  }
+
   Future<void> _processStatusChange(String rawContent) async {
     final content = rawContent.trim().toUpperCase().startsWith('PR') ? 'PREVIEW' : 'IDLE';
     if (_isHandlingAgentStatus) {
@@ -2116,6 +2278,62 @@ wshShell.AppActivate $myPid
       _antigravityLastChangeObservedAt = null;
       print('[AiBridge] Busy wait finished. Proceeding with status processing.');
       await Future.delayed(const Duration(milliseconds: 800));
+
+      String rawModelContent = '';
+      try {
+        final String userProfile = Platform.environment['USERPROFILE'] ?? '';
+        final brainDir = testBrainDir ?? Directory('$userProfile\\.gemini\\antigravity\\brain');
+        final hasBrainDir = await brainDir.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
+        if (hasBrainDir) {
+          final overviewFiles = await _getBrainFiles(brainDir);
+          final files = overviewFiles.where((f) => f.path.endsWith('transcript.jsonl')).toList();
+          if (files.isNotEmpty) {
+            final fileTimes = <File, DateTime>{};
+            await Future.wait(files.map((file) async {
+              try {
+                fileTimes[file] = await file.lastModified().timeout(
+                  const Duration(milliseconds: 500),
+                  onTimeout: () => DateTime.fromMillisecondsSinceEpoch(0),
+                );
+              } catch (_) {
+                fileTimes[file] = DateTime.fromMillisecondsSinceEpoch(0);
+              }
+            }));
+            files.sort((a, b) => (fileTimes[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
+                .compareTo(fileTimes[a] ?? DateTime.fromMillisecondsSinceEpoch(0)));
+            final latest = files.first;
+            try {
+              final lines = await latest.readAsLines().timeout(
+                const Duration(milliseconds: 1500),
+                onTimeout: () => const [],
+              );
+              for (int i = lines.length - 1; i >= 0; i--) {
+                try {
+                  final line = lines[i].trim();
+                  if (line.isEmpty || !line.startsWith('{')) continue;
+                  final map = jsonDecode(line);
+                  if (map['source'] == 'MODEL' || map['type'] == 'PLANNER_RESPONSE') {
+                    if (map['content'] != null) {
+                      rawModelContent = map['content'];
+                    }
+                    break;
+                  }
+                } catch (_) {}
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+
+      if (rawModelContent.isNotEmpty && _hasConversationalText(rawModelContent)) {
+        print('[AiBridge] Conversational text detected in model response. Flagging sync error.');
+        _isSyncErrorDetected = true;
+        try {
+          File('$_dirPath/agent_status.txt').writeAsStringSync('BUSY');
+        } catch (_) {}
+        notifyListeners();
+        return;
+      }
 
       if (content == 'IDLE') {
         bool hasCompileError = false;
@@ -2172,9 +2390,10 @@ wshShell.AppActivate $myPid
               final hasBrainDir = await brainDir.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
               if (hasBrainDir) {
                 final overviewFiles = await _getBrainFiles(brainDir);
-                if (overviewFiles.isNotEmpty) {
+                final files = overviewFiles.where((f) => f.path.endsWith('transcript.jsonl')).toList();
+                if (files.isNotEmpty) {
                   final fileTimes = <File, DateTime>{};
-                  await Future.wait(overviewFiles.map((file) async {
+                  await Future.wait(files.map((file) async {
                     try {
                       fileTimes[file] = await file.lastModified().timeout(
                         const Duration(milliseconds: 500),
@@ -2184,9 +2403,9 @@ wshShell.AppActivate $myPid
                       fileTimes[file] = DateTime.fromMillisecondsSinceEpoch(0);
                     }
                   }));
-                  overviewFiles.sort((a, b) => (fileTimes[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
+                  files.sort((a, b) => (fileTimes[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
                       .compareTo(fileTimes[a] ?? DateTime.fromMillisecondsSinceEpoch(0)));
-                  final latest = overviewFiles.first;
+                  final latest = files.first;
                   try {
                     final lines = await latest.readAsLines().timeout(
                       const Duration(milliseconds: 1500),
@@ -2325,6 +2544,10 @@ wshShell.AppActivate $myPid
                             isPreview: true,
                           ))
                       .toList();
+                  
+                  // Clear old preview items to avoid duplicates
+                  _tasks[taskIdx].verificationCriteria.removeWhere((item) => item.isPreview);
+                  
                   _tasks[taskIdx].verificationCriteria.addAll(newItems);
                   changed = true;
                   if (newItems.isNotEmpty) {
@@ -2456,6 +2679,17 @@ wshShell.AppActivate $myPid
                   _triggerSandboxMergeIfNeeded(oldStatus, _tasks[taskIdx]);
                   changed = true;
                 }
+              }
+            }
+            if (content == 'PREVIEW') {
+              if (_tasks[taskIdx].previewState != 'pending') {
+                _tasks[taskIdx].previewState = 'pending';
+                changed = true;
+              }
+            } else if (content == 'IDLE') {
+              if (_tasks[taskIdx].previewState != null) {
+                _tasks[taskIdx].previewState = null;
+                changed = true;
               }
             }
             if (changed) {

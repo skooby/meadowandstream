@@ -2912,77 +2912,9 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     final completeStatus =
         prefs.getString('ai_tasks_bridge_complete_status') ?? 'inTesting';
 
-    String instructions = AiBridgeService.instance.quickInstructions;
-    bool block = _blockOnQuick;
-    String modeName = 'Quick Command';
-
-    if (AiBridgeService.instance.isPreviewMode) {
-      instructions = '${AiBridgeService.instance.previewModeInstructions}\n\n$instructions';
-      if (AiBridgeService.instance.isIqMode) {
-        instructions = 'IQ MODE ACTIVE: Prefix the `name` of each new sub-task with [RISKY], [FEEDBACK], or [SAFE].\n$instructions';
-      }
-    }
-
-    final overrideStyle = getLlmPromptStyleOverride(task.parentId);
-    final replyTypeDirective = await _getReplyTypeDirective(overrideStyle);
-    
-    final StringBuffer sb = StringBuffer();
-    
-    try {
-       final errFile = File('.ai_bridge/bridge_error.txt');
-       if (errFile.existsSync()) {
-          final errStr = errFile.readAsStringSync();
-          if (errStr.trim().isNotEmpty) {
-             sb.writeln('!!! CRITICAL SYSTEM RUNTIME CRASH !!!');
-             sb.writeln('The overarching framework crashed on the previous loop and left this diagnostic stack trace:');
-             sb.writeln(errStr);
-             sb.writeln('Context: You MUST fix the structural regression natively before proceeding.');
-             sb.writeln('Do NOT ignore this runtime log.\n');
-             
-             // Clear the panic file after appending it to the queue constraint
-             errFile.writeAsStringSync('');
-          }
-       }
-    } catch (_) {}
-    
-    await AiBridgeService.instance.compilePrimaryDirectivesFile();
-
-    sb.writeln('# PRIMARY DIRECTIVES');
-    sb.writeln('> [!IMPORTANT]');
-    sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n');
-
-    if (replyTypeDirective.isNotEmpty) sb.writeln(replyTypeDirective);
-    
-    // Mode-specific Directives
-    if (instructions.trim().isNotEmpty) {
-      sb.writeln(instructions);
-    }
-    
-    sb.writeln('\n# TASKS TO ADDRESS');
-    sb.writeln('Task: ${task.name}');
-
-    final area = getAreaPath(task.parentId);
-    if (area.isNotEmpty) sb.writeln('Area: $area');
-
-    if (task.description.isNotEmpty) {
-      sb.writeln('Description: ${task.description}');
-    }
-
-    if (task.summary.isNotEmpty) {
-      sb.writeln('Summary: ${task.summary}');
-    }
-
-    sb.writeln('Status: ${_formatStatusName(task.status)}');
-
     final uncheckedTasks = task.verificationCriteria.where((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview)).toList();
     if (uncheckedTasks.isNotEmpty) {
-      sb.writeln('Verification Criteria:');
-      for (int i = 0; i < uncheckedTasks.length; i++) {
-        var item = uncheckedTasks[i];
-        String extraInfo = '';
-        if (item.goal.isNotEmpty) extraInfo += ' [Goal: ${item.goal}]';
-        if (item.tryCount > 0) extraInfo += ' [TRY #${item.tryCount}]';
-        sb.writeln('${i + 1}. ${item.description}$extraInfo');
+      for (var item in uncheckedTasks) {
         item.status = AiVerificationStatus.pendingReview;
       }
       final updatedCriteria = task.verificationCriteria.map((e) => AiVerificationCriteria(
@@ -3002,24 +2934,49 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
       await AiBridgeService.instance.updateTaskStatus(task.id, AiTaskStatus.inTesting);
     }
 
-    if (task.fileAttachments.isNotEmpty) {
-      sb.writeln('Attachments:');
-      for (final attachment in task.fileAttachments) {
-        sb.writeln('- $attachment');
-      }
-    }
+    final updatedTask = AiBridgeService.instance.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
+
+    bool block = _blockOnQuick;
+    String modeName = 'Quick Command';
+
+    final overrideStyle = getLlmPromptStyleOverride(updatedTask.parentId);
+    final replyTypeDirective = await _getReplyTypeDirective(overrideStyle);
     
-    if (task.hyperlinks.isNotEmpty) {
-      sb.writeln('Hyperlinks:');
-      for (final link in task.hyperlinks) {
-        sb.writeln('- $link');
+    final StringBuffer crashSb = StringBuffer();
+    try {
+       final errFile = File('.ai_bridge/bridge_error.txt');
+       if (errFile.existsSync()) {
+          final errStr = errFile.readAsStringSync();
+          if (errStr.trim().isNotEmpty) {
+             crashSb.writeln('!!! CRITICAL SYSTEM RUNTIME CRASH !!!');
+             crashSb.writeln('The overarching framework crashed on the previous loop and left this diagnostic stack trace:');
+             crashSb.writeln(errStr);
+             crashSb.writeln('Context: You MUST fix the structural regression natively before proceeding.');
+             crashSb.writeln('Do NOT ignore this runtime log.\n');
+             
+             // Clear the panic file after appending it to the queue constraint
+             errFile.writeAsStringSync('');
+          }
+       }
+    } catch (_) {}
+    
+    await AiBridgeService.instance.compilePrimaryDirectivesFile(updatedTask);
+    final basePrompt = await AiBridgeService.instance.buildTaskPrompt(updatedTask);
+    
+    String prompt = basePrompt;
+    if (replyTypeDirective.isNotEmpty) {
+      final index = prompt.indexOf('\n\n');
+      if (index != -1) {
+        prompt = prompt.substring(0, index + 2) + replyTypeDirective + '\n' + prompt.substring(index + 2);
+      } else {
+        prompt = '$replyTypeDirective\n$prompt';
       }
     }
 
-    sb.writeln('---');
+    final fullPrompt = crashSb.isEmpty ? prompt : '${crashSb.toString()}$prompt';
 
     if (copyOnly) {
-      await Clipboard.setData(ClipboardData(text: sb.toString()));
+      await Clipboard.setData(ClipboardData(text: fullPrompt));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('Prompt for "${task.name}" copied to clipboard!'),
@@ -3028,7 +2985,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
       return;
     }
 
-    await AiBridgeService.instance.sendToQueue(sb.toString(), block, taskIds: [task.id]);
+    await AiBridgeService.instance.sendToQueue(fullPrompt, block, taskIds: [task.id]);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('$modeName for "${task.name}" copied to queue!'),

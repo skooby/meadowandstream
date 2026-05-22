@@ -199,6 +199,15 @@ class AntigravityStatusService {
         if (content.startsWith('BU')) {
           final isRunning = await isProcessRunning();
           if (!isRunning) {
+            try {
+              final stat = statusFile.statSync();
+              final lastModified = stat.modified;
+              final age = DateTime.now().difference(lastModified);
+              if (age.inMinutes < 10) {
+                debugPrint('[AntigravityStatusService] $statusFilePath is BUSY and was updated recently (${age.inSeconds}s ago). Assuming active.');
+                return true;
+              }
+            } catch (_) {}
             debugPrint('[AntigravityStatusService] agent_status.txt is BUSY (starts with BU), but HTTP bridge is offline and process is not running. Auto-recovering status to IDLE.');
             try {
               statusFile.writeAsStringSync('IDLE');

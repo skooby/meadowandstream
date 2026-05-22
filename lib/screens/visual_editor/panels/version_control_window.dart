@@ -279,6 +279,23 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                       fontSize: AppUIConfig.windowTitleFontSize / scale,
                                       fontWeight: AppUIConfig.windowTitleFontWeight)),
                                 const Spacer(),
+                                Tooltip(
+                                  message: 'Refresh',
+                                  child: IconButton(
+                                    icon: Icon(Icons.refresh, size: 16 / scale, color: AppColors.titleBarTextSecondary),
+                                    onPressed: () {
+                                      setState(() {
+                                        _commitFutures.clear();
+                                      });
+                                      SandboxService.instance.reload();
+                                      AiBridgeService.instance.reloadTimelineHistory();
+                                      _loadExplorerFiles();
+                                    },
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
                                 IconButton(
                                   icon: Icon(Icons.close, size: 18 / scale, color: AppColors.titleBarTextSecondary),
                                   onPressed: widget.onClose,
@@ -338,6 +355,69 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
     );
   }
 
+  Future<void> _copyTaskPromptToClipboard(BuildContext context, AiTask task) async {
+    await AiBridgeService.instance.compilePrimaryDirectivesFile(task);
+    final prompt = await AiBridgeService.instance.buildTaskPrompt(task);
+    
+    await Clipboard.setData(ClipboardData(text: prompt));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Prompt for "${task.name}" copied to clipboard!'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+  }
+
+  Future<void> _sendTaskToAiBridge(BuildContext context, AiTask task) async {
+    final uncheckedTasks = task.verificationCriteria
+        .where((e) => (e.status != AiVerificationStatus.verified &&
+            e.status != AiVerificationStatus.ignored &&
+            !e.isPreview))
+        .toList();
+    if (uncheckedTasks.isNotEmpty) {
+      for (var item in uncheckedTasks) {
+        item.status = AiVerificationStatus.pendingReview;
+      }
+      final updatedCriteria = task.verificationCriteria
+          .map((e) => AiVerificationCriteria(
+                description: e.description,
+                goal: e.goal,
+                isVerified: e.isVerified,
+                status: e.status,
+                proof: e.proof,
+                requestClarification: e.requestClarification,
+                tryCount: e.tryCount,
+                attachments: List.from(e.attachments),
+                isCommitted: e.isCommitted,
+                isPreview: e.isPreview,
+              ))
+          .toList();
+      await AiBridgeService.instance.updateTaskDetails(
+        task.id,
+        task.name,
+        task.description,
+        verificationCriteria: updatedCriteria,
+        status: AiTaskStatus.inTesting,
+      );
+    } else {
+      await AiBridgeService.instance.updateTaskStatus(task.id, AiTaskStatus.inTesting);
+    }
+
+    final updatedTask = AiBridgeService.instance.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
+
+    await AiBridgeService.instance.compilePrimaryDirectivesFile(updatedTask);
+    final prompt = await AiBridgeService.instance.buildTaskPrompt(updatedTask);
+
+    await AiBridgeService.instance.sendToQueue(prompt, true, taskIds: [task.id]);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Task "${task.name}" sent to AI Bridge!'),
+        duration: const Duration(seconds: 4),
+      ));
+    }
+  }
+
   Widget _buildContent() {
     return ListenableBuilder(
       listenable: Listenable.merge([AiBridgeService.instance, GlobalTaskEditorState.instance.activeRequest, SandboxService.instance]),
@@ -356,143 +436,99 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
         
         return Column(
           children: [
-            Container(
-              height: 36,
-              width: double.infinity,
-              color: AppColors.toolbarBackground,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
+            TabBar(
+              controller: _tabController,
+              labelColor: Colors.blueAccent,
+              unselectedLabelColor: AppColors.textMuted,
+              indicatorColor: Colors.blueAccent,
+              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.0),
+              tabs: const [
+                Tab(text: 'ACTIVE TASKS'),
+                Tab(text: 'TIMELINE HISTORY'),
+                Tab(text: 'EXPLORER'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
                 children: [
-                  Tooltip(
-                    message: 'Refresh',
-                    child: IconButton(
-                      icon: const Icon(Icons.refresh, size: 16),
-                      color: AppColors.toolbarTextPrimary,
-                      onPressed: () {
-                        setState(() {
-                          _commitFutures.clear();
-                        });
-                        SandboxService.instance.reload();
-                        AiBridgeService.instance.reloadTimelineHistory();
-                      },
-                    ),
-                  ),
-                  const Spacer(),
-                  TextButton.icon(
-                    icon: const Icon(Icons.commit, size: 14, color: Colors.blueAccent),
-                    label: const Text('Commit Tasks', style: TextStyle(color: Colors.blueAccent, fontSize: 12)),
-                    onPressed: () async {
-                      if (AiBridgeService.instance.isThinking) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot commit while AI bridge is working.')));
-                        return;
-                      }
-                      if (activeTasks.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No active tasks to commit.')));
-                        return;
-                      }
-                      
-                      bool hasOpen = false;
-                      for (var t in activeTasks) {
-                        if (t.verificationCriteria.any((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored)) {
-                          hasOpen = true;
-                          break;
-                        }
-                      }
-                      
-                      if (hasOpen) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please resolve all open checklist items before committing, or ignore them.')));
-                        return;
-                      }
-                      
-                      final defaultCommitName = AiBridgeService.instance.generateCommitName(activeTasks);
-                      
-                      final taskIds = activeTasks.map((t) => t.id).toList();
-                      final success = await AiBridgeService.instance.performManualCommitAll(taskIds, defaultCommitName);
-                      if (success && mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tasks committed successfully.')));
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    icon: const Icon(Icons.save_alt, size: 14, color: Colors.orangeAccent),
-                    label: const Text('Create Restore Point', style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
-                    onPressed: () async {
-                      final controller = TextEditingController();
-                      final note = await showDialog<String>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          backgroundColor: AppColors.panelBackground,
-                          title: const Text('Create Restore Point', style: TextStyle(color: Colors.white)),
-                          content: TextField(
-                            controller: controller,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              hintText: 'Enter restore point name...',
-                              hintStyle: TextStyle(color: Colors.white54),
+                  // TAB 1: ACTIVE TASKS
+                  Column(
+                    children: [
+                      Container(
+                        height: 36,
+                        width: double.infinity,
+                        color: AppColors.toolbarBackground,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            Tooltip(
+                              message: 'Send to AI Bridge',
+                              child: IconButton(
+                                icon: const Icon(Icons.flash_on, size: 16),
+                                color: activeTasks.isNotEmpty ? Colors.amber : AppColors.textMuted,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: activeTasks.isNotEmpty
+                                    ? () => _sendTaskToAiBridge(context, activeTasks.first)
+                                    : null,
+                              ),
                             ),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, null),
-                              child: Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+                            const SizedBox(width: 12),
+                            Tooltip(
+                              message: 'Copy prompt to clipboard',
+                              child: IconButton(
+                                icon: const Icon(Icons.copy, size: 16),
+                                color: activeTasks.isNotEmpty ? AppColors.toolbarTextPrimary : AppColors.textMuted,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: activeTasks.isNotEmpty
+                                    ? () => _copyTaskPromptToClipboard(context, activeTasks.first)
+                                    : null,
+                              ),
                             ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, controller.text),
-                              child: Text('Create', style: const TextStyle(color: Colors.blueAccent)),
+                            const Spacer(),
+                            TextButton.icon(
+                              icon: const Icon(Icons.commit, size: 14, color: Colors.blueAccent),
+                              label: const Text('Commit Tasks', style: TextStyle(color: Colors.blueAccent, fontSize: 12)),
+                              onPressed: () async {
+                                if (AiBridgeService.instance.isThinking) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot commit while AI bridge is working.')));
+                                  return;
+                                }
+                                if (activeTasks.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No active tasks to commit.')));
+                                  return;
+                                }
+                                
+                                bool hasOpen = false;
+                                for (var t in activeTasks) {
+                                  if (t.verificationCriteria.any((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored)) {
+                                    hasOpen = true;
+                                    break;
+                                  }
+                                }
+                                
+                                if (hasOpen) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please resolve all open checklist items before committing, or ignore them.')));
+                                  return;
+                                }
+                                
+                                final defaultCommitName = AiBridgeService.instance.generateCommitName(activeTasks);
+                                
+                                final taskIds = activeTasks.map((t) => t.id).toList();
+                                final success = await AiBridgeService.instance.performManualCommitAll(taskIds, defaultCommitName);
+                                if (success && mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tasks committed successfully.')));
+                                }
+                              },
                             ),
                           ],
                         ),
-                      );
-
-                      if (note == null || note.isEmpty) return;
-
-                      try {
-                        final desc = note;
-                        final hash = await VersionControlService.instance.createRestorePoint(desc);
-                        
-                        if (hash.isNotEmpty && !hash.startsWith('No changes') && !hash.startsWith('Failed') && !hash.startsWith('Local')) {
-                          final openTask = GlobalTaskEditorState.instance.activeRequest.value?.existingTask;
-                          final taskIds = openTask != null ? [openTask.id] : <String>[];
-                          await AiBridgeService.instance.appendCheckpointToTimeline(desc, hash, taskIds: taskIds);
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Restore Point Created')));
-                          }
-                        } else if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not create checkpoint: $hash')));
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
-                        }
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Container(height: 1, color: AppColors.border),
-            Expanded(
-              child: Column(
-                children: [
-                  TabBar(
-                    controller: _tabController,
-                    labelColor: Colors.blueAccent,
-                    unselectedLabelColor: AppColors.textMuted,
-                    indicatorColor: Colors.blueAccent,
-                    labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.0),
-                    tabs: [
-                      Tab(text: 'ACTIVE TASKS'),
-                      Tab(text: 'TIMELINE HISTORY'),
-                      Tab(text: 'EXPLORER'),
-                    ],
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        // TAB 1: ACTIVE TASKS
-                        activeTasks.isEmpty 
+                      ),
+                      Container(height: 1, color: AppColors.border),
+                      Expanded(
+                        child: activeTasks.isEmpty 
                           ? Center(child: Text('No active tasks', style: TextStyle(color: AppColors.textMuted)))
                           : ListView.builder(
                               itemCount: activeTasks.length,
@@ -546,8 +582,17 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                       iconColor = Colors.redAccent;
                                     }
                                     
+                                    final decoration = vc.isPreview
+                                        ? BoxDecoration(
+                                            color: Colors.orange.withValues(alpha: 0.08),
+                                            border: const Border(
+                                              left: BorderSide(color: Colors.orange, width: 3),
+                                            ),
+                                          )
+                                        : BoxDecoration(color: vcBg);
+                                    
                                     return Container(
-                                      color: vcBg,
+                                      decoration: decoration,
                                       child: InkWell(
                                         onTap: () {
                                           GlobalTaskEditorState.instance.requestEdit(existingTask: t);
@@ -566,14 +611,39 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                                   mainAxisAlignment: MainAxisAlignment.center,
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
-                                                    Text(
-                                                      vc.description,
-                                                      style: TextStyle(
-                                                        color: AppColors.textPrimary,
-                                                        fontSize: AppUIConfig.smallFontSize,
-                                                        decoration: vc.isVerified ? TextDecoration.lineThrough : null,
-                                                        decorationColor: Colors.white,
-                                                      ),
+                                                    Row(
+                                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                                      children: [
+                                                        if (vc.isPreview) ...[
+                                                          Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                                            decoration: BoxDecoration(
+                                                              color: Colors.orange,
+                                                              borderRadius: BorderRadius.circular(3),
+                                                            ),
+                                                            child: const Text(
+                                                              'PREVIEW',
+                                                              style: TextStyle(
+                                                                color: Colors.white,
+                                                                fontSize: 8,
+                                                                fontWeight: FontWeight.bold,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(width: 6),
+                                                        ],
+                                                        Expanded(
+                                                          child: Text(
+                                                            vc.description,
+                                                            style: TextStyle(
+                                                              color: AppColors.textPrimary,
+                                                              fontSize: AppUIConfig.smallFontSize,
+                                                              decoration: vc.isVerified ? TextDecoration.lineThrough : null,
+                                                              decorationColor: Colors.white,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
                                                     if (vc.goal.isNotEmpty)
                                                       Text(
@@ -593,6 +663,10 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                       ),
                                     );
                                   }));
+                                  
+                                  if (t.verificationCriteria.any((e) => e.isPreview)) {
+                                    taskChildren.add(_buildPreviewActionBanner(context, t));
+                                  }
                                 }
 
                                 return Container(
@@ -613,19 +687,98 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                 );
                               }
                             ),
-                        
-                        // TAB 2: TIMELINE HISTORY
-                        timelineCommits.isEmpty
+                      ),
+                    ],
+                  ),
+                  
+                  // TAB 2: TIMELINE HISTORY
+                  Column(
+                    children: [
+                      Container(
+                        height: 36,
+                        width: double.infinity,
+                        color: AppColors.toolbarBackground,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton.icon(
+                              icon: const Icon(Icons.save_alt, size: 14, color: Colors.orangeAccent),
+                              label: const Text('Create Restore Point', style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+                              onPressed: () async {
+                                final controller = TextEditingController();
+                                final note = await showDialog<String>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    backgroundColor: AppColors.panelBackground,
+                                    title: const Text('Create Restore Point', style: TextStyle(color: Colors.white)),
+                                    content: TextField(
+                                      controller: controller,
+                                      style: const TextStyle(color: Colors.white),
+                                      decoration: const InputDecoration(
+                                        hintText: 'Enter restore point name...',
+                                        hintStyle: TextStyle(color: Colors.white54),
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, null),
+                                        child: Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, controller.text),
+                                        child: Text('Create', style: const TextStyle(color: Colors.blueAccent)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (note == null || note.isEmpty) return;
+
+                                try {
+                                  final desc = note;
+                                  final hash = await VersionControlService.instance.createRestorePoint(desc);
+                                  
+                                  if (hash.isNotEmpty && !hash.startsWith('No changes') && !hash.startsWith('Failed') && !hash.startsWith('Local')) {
+                                    final openTask = GlobalTaskEditorState.instance.activeRequest.value?.existingTask;
+                                    final taskIds = openTask != null ? [openTask.id] : <String>[];
+                                    await AiBridgeService.instance.appendCheckpointToTimeline(desc, hash, taskIds: taskIds);
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Restore Point Created')));
+                                    }
+                                  } else if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not create checkpoint: $hash')));
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+                                  }
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(height: 1, color: AppColors.border),
+                      Expanded(
+                        child: timelineCommits.isEmpty
                           ? Center(child: Text('No completed tasks yet', style: TextStyle(color: AppColors.textMuted)))
                           : SingleChildScrollView(
                               child: Column(
                                 children: _buildTimelineNodes(context, timelineCommits),
                               ),
                             ),
-                        // TAB 3: FILES EXPLORER
-                        _buildExplorerTab(context),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
+                  
+                  // TAB 3: FILES EXPLORER
+                  Column(
+                    children: [
+                      Expanded(
+                        child: _buildExplorerTab(context),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1169,6 +1322,136 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildPreviewActionBanner(BuildContext context, AiTask t) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.1),
+        border: Border.all(color: Colors.orange, width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.rate_review, color: Colors.orange, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Proposed Tasks Ready for Review',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: AppUIConfig.smallFontSize,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Review proposed checklist items. Approve to run them, or Reject to send feedback.',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: AppUIConfig.smallFontSize * 0.9,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                ),
+                onPressed: () async {
+                  await AiBridgeService.instance.approvePreview(t.id);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Preview approved. Starting tasks...'))
+                    );
+                  }
+                },
+                child: Text('Approve', style: TextStyle(fontSize: AppUIConfig.smallFontSize * 0.9, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.redAccent,
+                  side: const BorderSide(color: Colors.redAccent),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                ),
+                onPressed: () => _showRejectFeedbackDialog(context, t.id),
+                child: Text('Reject', style: TextStyle(fontSize: AppUIConfig.smallFontSize * 0.9, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRejectFeedbackDialog(BuildContext context, String taskId) {
+    final controller = TextEditingController();
+    showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.panelBackground,
+        title: const Text('Provide Rejection Feedback', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Tell the AI why these tasks are being rejected and what changes are needed:',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              maxLines: 4,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: const InputDecoration(
+                hintText: 'Enter feedback here...',
+                hintStyle: TextStyle(color: Colors.white30),
+                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.orange)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final feedback = controller.text.trim();
+              Navigator.pop(ctx);
+              if (feedback.isNotEmpty) {
+                await AiBridgeService.instance.rejectPreview(taskId, feedback);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Preview rejected. Feedback sent to AI.'))
+                  );
+                }
+              }
+            },
+            child: const Text('Submit Rejection', style: TextStyle(color: Colors.orangeAccent)),
+          ),
+        ],
+      ),
     );
   }
 }

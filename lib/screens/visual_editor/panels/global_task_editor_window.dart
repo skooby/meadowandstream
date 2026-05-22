@@ -106,11 +106,46 @@ class _ChecklistItemContainerState extends State<ChecklistItemContainer> with Si
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.black26,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: _colorAnim.value ?? Colors.orange, width: 2.0),
+            color: Colors.orange.withValues(alpha: 0.08), // orange background
+            borderRadius: const BorderRadius.only(
+              topRight: Radius.circular(4),
+              bottomRight: Radius.circular(4),
+            ),
+            border: Border(
+              left: const BorderSide(color: Colors.orange, width: 4),
+              top: BorderSide(color: (_colorAnim.value ?? Colors.orange).withOpacity(0.3)),
+              right: BorderSide(color: (_colorAnim.value ?? Colors.orange).withOpacity(0.3)),
+              bottom: BorderSide(color: (_colorAnim.value ?? Colors.orange).withOpacity(0.3)),
+            ),
           ),
-          child: widget.child,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: const Text(
+                      'PREVIEW',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              widget.child,
+            ],
+          ),
         );
       },
     );
@@ -1056,6 +1091,138 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     widget.onClose();
   }
 
+  Widget _buildTaskEditorPreviewActionBanner(BuildContext context) {
+    if (existingTask == null) return const SizedBox.shrink();
+    final t = existingTask!;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.1),
+        border: Border.all(color: Colors.orange, width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.rate_review, color: Colors.orange, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Proposed Tasks Ready for Review',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: AppUIConfig.smallFontSize,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Review proposed checklist items. Approve to run them, or Reject to send feedback.',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: AppUIConfig.smallFontSize * 0.9,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                ),
+                onPressed: () async {
+                  await AiBridgeService.instance.approvePreview(t.id);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Preview approved. Starting tasks...'))
+                    );
+                  }
+                },
+                child: Text('Approve', style: TextStyle(fontSize: AppUIConfig.smallFontSize * 0.9, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.redAccent,
+                  side: const BorderSide(color: Colors.redAccent),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                ),
+                onPressed: () => _showRejectFeedbackDialog(context, t.id),
+                child: Text('Reject', style: TextStyle(fontSize: AppUIConfig.smallFontSize * 0.9, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRejectFeedbackDialog(BuildContext context, String taskId) {
+    final controller = TextEditingController();
+    showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.panelBackground,
+        title: const Text('Provide Rejection Feedback', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Tell the AI why these tasks are being rejected and what changes are needed:',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              maxLines: 4,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: const InputDecoration(
+                hintText: 'Enter feedback here...',
+                hintStyle: TextStyle(color: Colors.white30),
+                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.orange)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final feedback = controller.text.trim();
+              Navigator.pop(ctx);
+              if (feedback.isNotEmpty) {
+                await AiBridgeService.instance.rejectPreview(taskId, feedback);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Preview rejected. Feedback sent to AI.'))
+                  );
+                }
+              }
+            },
+            child: const Text('Submit Rejection', style: TextStyle(color: Colors.orangeAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     BuildContext ctx = context;
@@ -1949,6 +2116,10 @@ verificationCriteriaList[i].isCommitted = false;
                 ),
               ],
             ),
+            if (verificationCriteriaList.any((e) => e.isPreview)) ...[
+              const SizedBox(height: 12),
+              _buildTaskEditorPreviewActionBanner(context),
+            ],
           ],
         ],
       );

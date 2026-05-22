@@ -212,6 +212,38 @@ void main() {
     }
   });
 
+  test('checkForSyncError does not detect sync error if prompt is not dispatched yet', () async {
+    final service = AiBridgeService.instance;
+
+    // Reset service state
+    service.isSyncErrorDetected = false;
+    service.activePrompt = QueuedPrompt('test prompt', false, []);
+    service.isPromptDispatched = false; // Mock not dispatched yet
+    service.antigravityLastChangeObservedAt = DateTime.now().subtract(const Duration(seconds: 20));
+
+    final tempDir = Directory.systemTemp.createTempSync('ai_bridge_test_brain_not_disp');
+    try {
+      final transcriptFile = File('${tempDir.path}/transcript.jsonl');
+      await transcriptFile.writeAsString(
+        '${jsonEncode({'type': 'PLANNER_RESPONSE', 'step_index': 0})}\n'
+      );
+
+      await service.checkForSyncError(customBrainDir: tempDir, customNow: DateTime.now());
+
+      // Should NOT detect sync error because it is not dispatched
+      expect(service.isSyncErrorDetected, isFalse);
+    } finally {
+      // Clean up local state
+      service.activePrompt = null;
+      service.isSyncErrorDetected = false;
+      service.antigravityLastChangeObservedAt = null;
+
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    }
+  });
+
   test('checkForSyncError does not detect sync error if agent status is BUSY', () async {
     final service = AiBridgeService.instance;
 
@@ -295,6 +327,134 @@ void main() {
       },
     ));
     expect(logs.any((l) => l.contains('[AntigravityStatusService]')), isFalse);
+  });
+
+  test('_processStatusChange detects conversational text and halts transition', () async {
+    final service = AiBridgeService.instance;
+    service.isSyncErrorDetected = false;
+    service.activePrompt = QueuedPrompt('test prompt', false, []);
+    
+    final tempDir = Directory.systemTemp.createTempSync('ai_bridge_test_brain_conv');
+    service.testBrainDir = tempDir;
+
+    try {
+      final transcriptFile = File('${tempDir.path}/transcript.jsonl');
+      await transcriptFile.writeAsString(
+        '${jsonEncode({
+          'source': 'MODEL',
+          'type': 'PLANNER_RESPONSE',
+          'content': 'I have updated both agent_status.txt locations to PREVIEW.\n\n[{"description": "Add button"}]\n\nPlease send the block screen message.'
+        })}\n'
+      );
+
+      final statusFile = File('${tempBridgeDir.path}/agent_status.txt');
+      await statusFile.writeAsString('PREVIEW');
+
+      await service.processStatusChangeForTesting('PREVIEW');
+
+      expect(service.isSyncErrorDetected, isTrue);
+      // Verify activePrompt is NOT cleared (halted)
+      expect(service.activePrompt, isNotNull);
+      // Reverted to BUSY in agent_status.txt
+      expect(statusFile.readAsStringSync(), equals('BUSY'));
+    } finally {
+      service.activePrompt = null;
+      service.isSyncErrorDetected = false;
+      service.testBrainDir = null;
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    }
+  });
+
+  test('_processStatusChange does NOT detect sync error when model response is clean', () async {
+    final service = AiBridgeService.instance;
+    service.isSyncErrorDetected = false;
+    service.activePrompt = QueuedPrompt('test prompt', false, []);
+    
+    final tempDir = Directory.systemTemp.createTempSync('ai_bridge_test_brain_clean');
+    service.testBrainDir = tempDir;
+
+    try {
+      final transcriptFile = File('${tempDir.path}/transcript.jsonl');
+      await transcriptFile.writeAsString(
+        '${jsonEncode({
+          'source': 'MODEL',
+          'type': 'PLANNER_RESPONSE',
+          'content': '<preview>[{"description": "Add button", "goal": "Verify UI"}]</preview>\nPlease send the block screen message.'
+        })}\n'
+      );
+
+      final statusFile = File('${tempBridgeDir.path}/agent_status.txt');
+      await statusFile.writeAsString('PREVIEW');
+
+      await service.processStatusChangeForTesting('PREVIEW');
+
+      expect(service.isSyncErrorDetected, isFalse);
+      // Verify activePrompt IS completed/cleared since transition succeeded
+      expect(service.activePrompt, isNull);
+    } finally {
+      service.activePrompt = null;
+      service.isSyncErrorDetected = false;
+      service.testBrainDir = null;
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    }
+  });
+
+  test('_processStatusChange ignores newer overview.txt files and successfully reads transcript.jsonl', () async {
+    final service = AiBridgeService.instance;
+    service.isSyncErrorDetected = false;
+    service.activePrompt = QueuedPrompt('test prompt', false, []);
+    
+    final tempDir = Directory.systemTemp.createTempSync('ai_bridge_test_brain_ignore_overview');
+    service.testBrainDir = tempDir;
+
+    try {
+      final transcriptFile = File('${tempDir.path}/transcript.jsonl');
+      await transcriptFile.writeAsString(
+        '${jsonEncode({
+          'source': 'MODEL',
+          'type': 'PLANNER_RESPONSE',
+          'content': 'I have updated both agent_status.txt locations to PREVIEW.\\n\\n[{"description": "Add button"}]\\n\\nPlease send the block screen message.'
+        })}\n'
+      );
+
+      // Create an overview.txt file modified slightly later to test filtering
+      final overviewFile = File('${tempDir.path}/overview.txt');
+      await overviewFile.writeAsString('Some overview text...');
+      // Set last modified to be newer than transcript
+      await overviewFile.setLastModified(DateTime.now().add(const Duration(seconds: 2)));
+
+      final statusFile = File('${tempBridgeDir.path}/agent_status.txt');
+      await statusFile.writeAsString('PREVIEW');
+
+      await service.processStatusChangeForTesting('PREVIEW');
+
+      // It should still detect the conversational text from the transcript.jsonl
+      expect(service.isSyncErrorDetected, isTrue);
+      expect(service.activePrompt, isNotNull);
+      expect(statusFile.readAsStringSync(), equals('BUSY'));
+    } finally {
+      service.activePrompt = null;
+      service.isSyncErrorDetected = false;
+      service.testBrainDir = null;
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    }
+  });
+
+  test('AntigravityStatusService isCliBusy recent age check prevents auto-recovery', () async {
+    final statusFile = File('${tempBridgeDir.path}/agent_status.txt');
+    await statusFile.writeAsString('BUSY');
+
+    // Since it was modified just now, it is within 10 minutes and must return busy (true)
+    // without triggering any auto-recovery to IDLE.
+    final isBusy = await AntigravityStatusService.instance.isCliBusy();
+    expect(isBusy, isTrue);
+    expect(statusFile.readAsStringSync(), equals('BUSY'));
   });
 }
 
