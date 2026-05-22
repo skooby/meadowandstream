@@ -280,6 +280,7 @@ class AppDebugConfig {
   static const bool enableChoreographyLogs = false;
   static const bool debugMode = true;
   static const bool enableNetworkLogs = false;
+  static const bool enableStatusBridgeLogs = false;
 }
 
 class AppStrings {

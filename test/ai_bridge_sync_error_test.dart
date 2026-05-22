@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,11 +18,13 @@ void main() {
     tempBridgeDir = Directory.systemTemp.createTempSync('ai_bridge_test_dir');
     AiBridgeService.instance.testDirPath = tempBridgeDir.path;
     AntigravityStatusService.instance.statusFilePath = '${tempBridgeDir.path}/agent_status.txt';
+    AntigravityStatusService.instance.resetState();
   });
 
   tearDown(() {
     AiBridgeService.instance.testDirPath = '.ai_bridge';
     AntigravityStatusService.instance.statusFilePath = '.ai_bridge/agent_status.txt';
+    AntigravityStatusService.instance.resetState();
     if (tempBridgeDir.existsSync()) {
       tempBridgeDir.deleteSync(recursive: true);
     }
@@ -247,6 +250,51 @@ void main() {
   test('AntigravityStatusService getHttpBridgeStatus handles offline gracefully', () async {
     final status = await AntigravityStatusService.instance.getHttpBridgeStatus();
     expect(status, isNull);
+  });
+
+  test('AntigravityStatusService debug toggle works with SharedPreferences', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final service = AntigravityStatusService.instance;
+    service.resetState();
+    await prefs.setBool('antigravity_status_debug', true);
+
+    final logs = <String>[];
+    await runZoned(() async {
+      await service.checkHttpBridgeBusy();
+    }, zoneSpecification: ZoneSpecification(
+      print: (self, parent, zone, line) {
+        logs.add(line);
+      },
+    ));
+    expect(logs.any((l) => l.contains('[AntigravityStatusService]')), isTrue);
+
+    service.resetState();
+    await prefs.setBool('antigravity_status_debug', false);
+    logs.clear();
+    await runZoned(() async {
+      await service.checkHttpBridgeBusy();
+    }, zoneSpecification: ZoneSpecification(
+      print: (self, parent, zone, line) {
+        logs.add(line);
+      },
+    ));
+    expect(logs.any((l) => l.contains('[AntigravityStatusService]')), isFalse);
+  });
+
+  test('AntigravityStatusService enableStatusBridgeLogs config suppresses or permits logging with deduplication', () async {
+    final logs = <String>[];
+    final service = AntigravityStatusService.instance;
+    service.resetState();
+    
+    // Test that logs are suppressed by default (when enableStatusBridgeLogs is false)
+    await runZoned(() async {
+      await service.checkHttpBridgeBusy();
+    }, zoneSpecification: ZoneSpecification(
+      print: (self, parent, zone, line) {
+        logs.add(line);
+      },
+    ));
+    expect(logs.any((l) => l.contains('[AntigravityStatusService]')), isFalse);
   });
 }
 

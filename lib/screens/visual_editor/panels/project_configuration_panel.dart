@@ -290,6 +290,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   String? _agentRules;
   String? _antigravityBaseUrl;
   String? _antigravityBridgeMode;
+  bool _antigravityStatusDebug = false;
   String? _antigravityInvokeEndpoint;
   String? _antigravityPromptEndpoint;
   String? _antigravityStartupCommand;
@@ -416,6 +417,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _antigravityPromptEndpoint = prefs.getString('antigravity_prompt_endpoint');
       _antigravityStartupCommand = prefs.getString('antigravity_startup_command');
       _antigravityApiKey = prefs.getString('antigravity_api_key');
+      _antigravityStatusDebug = prefs.getBool('antigravity_status_debug') ?? false;
       final savedModel = prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
       if (savedModel == 'flash_lite') {
         _antigravityModel = 'gemini-2.0-flash-lite';
@@ -881,6 +883,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           await prefs.remove('antigravity_model');
       }
 
+      final newAntigravityStatusDebug = values.containsKey('antigravityStatusDebug') ? values['antigravityStatusDebug'] == true : _antigravityStatusDebug;
+      await prefs.setBool('antigravity_status_debug', newAntigravityStatusDebug);
+
       if (mounted) {
          setState(() {
             _primaryStorageUrl = newUrl;
@@ -925,6 +930,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             _antigravityStartupCommand = newAntigravityStartupCommand;
             _antigravityModel = newAntigravityModel;
             _antigravityApiKey = newAntigravityApiKey;
+            _antigravityStatusDebug = newAntigravityStatusDebug;
             _versionControlRepoUrl = newVersionControlRepoUrl;
             _ollamaBaseUrl = newOllamaBaseUrl;
             _ollamaModel = newOllamaModel;
@@ -1470,6 +1476,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                 'antigravityPromptEndpoint': _antigravityPromptEndpoint ?? '/api/v1/prompt',
                 'antigravityStartupCommand': _antigravityStartupCommand ?? 'antigravity-server',
                 'antigravityApiKey': _antigravityApiKey ?? '',
+                'antigravityStatusDebug': _antigravityStatusDebug,
                 'versionControlRepoUrl': _versionControlRepoUrl ?? '',
               },
               child: Column(
@@ -2724,6 +2731,19 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                 );
                               },
                             )),
+                            const SizedBox(height: 16),
+                            FormBuilderSwitch(
+                              name: 'antigravityStatusDebug',
+                              title: Text('Enable Antigravity status log check', style: TextStyle(color: AppColors.panelTextPrimary)),
+                              decoration: InputDecoration(border: InputBorder.none),
+                              activeColor: AppColors.accent,
+                              onChanged: (val) {
+                                _antigravityStatusDebug = val == true;
+                              },
+                              onSaved: (val) {
+                                _antigravityStatusDebug = val == true;
+                              },
+                            ),
                             const SizedBox(height: 32),
                             Wrap(
                               spacing: 12,

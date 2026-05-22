@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:music_app/constants.dart';
 
 /// Service to monitor the status of the Antigravity CLI daemon.
 /// Handles checking both the local LSP HTTP/WebSocket bridge and native OS processes.
@@ -13,6 +14,40 @@ class AntigravityStatusService {
   /// Path to the agent status file, configurable for testing.
   @visibleForTesting
   String statusFilePath = '.ai_bridge/agent_status.txt';
+
+  String? _lastGlobalState;
+  int? _lastActiveJobs;
+  bool? _lastIsBusy;
+  bool? _lastIsOnline;
+  String? _lastBridgeLog;
+  bool _enableLogs = false;
+
+  @visibleForTesting
+  void resetState() {
+    _lastGlobalState = null;
+    _lastActiveJobs = null;
+    _lastIsBusy = null;
+    _lastIsOnline = null;
+    _lastBridgeLog = null;
+  }
+
+  Future<void> _updateLogSetting() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _enableLogs = prefs.getBool('antigravity_status_debug') ?? false;
+    } catch (_) {
+      _enableLogs = false;
+    }
+  }
+
+  void _logBridge(String message) {
+    if (AppDebugConfig.enableStatusBridgeLogs || _enableLogs) {
+      if (_lastBridgeLog != message) {
+        _lastBridgeLog = message;
+        debugPrint(message);
+      }
+    }
+  }
 
   final _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 5),
@@ -47,6 +82,7 @@ class AntigravityStatusService {
   /// Queries the local HTTP root endpoint and checks if the served SPA is responsive.
   /// Returns a status JSON map if online (querying agent_status.txt for busy status), or null if offline.
   Future<Map<String, dynamic>?> getHttpBridgeStatus() async {
+    await _updateLogSetting();
     try {
       final url = await getBridgeUrl();
       final response = await _dio.get(url);
@@ -58,8 +94,8 @@ class AntigravityStatusService {
           try {
             final statusFile = File(statusFilePath);
             if (statusFile.existsSync()) {
-              final fileContent = statusFile.readAsStringSync().trim();
-              if (fileContent == 'BUSY') {
+              final fileContent = statusFile.readAsStringSync().trim().toUpperCase();
+              if (fileContent.startsWith('BU')) {
                 status = 'WORKING';
                 activeJobs = 1;
               }
@@ -74,14 +110,8 @@ class AntigravityStatusService {
       }
       return null;
     } on DioException catch (e) {
-      final isTimeout = e.type == DioExceptionType.connectionTimeout ||
-                        e.type == DioExceptionType.receiveTimeout ||
-                        e.type == DioExceptionType.sendTimeout;
-      final status = isTimeout ? 'offline (timeout)' : 'offline';
-      debugPrint('[AntigravityStatusService] HTTP bridge status check: $status');
       return null;
     } catch (e) {
-      debugPrint('[AntigravityStatusService] HTTP bridge status check: offline');
       return null;
     }
   }
@@ -89,18 +119,45 @@ class AntigravityStatusService {
   /// Queries the HTTP status map to check if the CLI is busy.
   /// Returns true if the daemon has active jobs or is in a WORKING/PROCESSING state.
   Future<bool> checkHttpBridgeBusy() async {
+    await _updateLogSetting();
     try {
       final data = await getHttpBridgeStatus();
+
       if (data != null) {
         final activeJobs = data['active_jobs'] ?? 0;
         final globalState = (data['status'] ?? 'IDLE').toString().toUpperCase();
         final isBusy = activeJobs > 0 || globalState == 'WORKING' || globalState == 'PROCESSING';
-        debugPrint('[AntigravityStatusService] HTTP bridge check: state=$globalState, activeJobs=$activeJobs, isBusy=$isBusy');
+        
+        final changed = _lastIsOnline != true ||
+            _lastGlobalState != globalState ||
+            _lastActiveJobs != activeJobs ||
+            _lastIsBusy != isBusy;
+        if (changed) {
+          _lastIsOnline = true;
+          _lastGlobalState = globalState;
+          _lastActiveJobs = activeJobs;
+          _lastIsBusy = isBusy;
+          _logBridge('[AntigravityStatusService] HTTP bridge check: state=$globalState, activeJobs=$activeJobs, isBusy=$isBusy');
+        }
         return isBusy;
+      }
+
+      if (_lastIsOnline != false) {
+        _lastIsOnline = false;
+        _lastGlobalState = null;
+        _lastActiveJobs = null;
+        _lastIsBusy = null;
+        _logBridge('[AntigravityStatusService] HTTP bridge check: offline');
       }
       return false;
     } catch (e) {
-      debugPrint('[AntigravityStatusService] HTTP bridge check: offline');
+      if (_lastIsOnline != false) {
+        _lastIsOnline = false;
+        _lastGlobalState = null;
+        _lastActiveJobs = null;
+        _lastIsBusy = null;
+        _logBridge('[AntigravityStatusService] HTTP bridge check: offline');
+      }
       return false;
     }
   }
@@ -138,17 +195,17 @@ class AntigravityStatusService {
     try {
       final statusFile = File(statusFilePath);
       if (statusFile.existsSync()) {
-        final content = statusFile.readAsStringSync().trim();
-        if (content == 'BUSY') {
+        final content = statusFile.readAsStringSync().trim().toUpperCase();
+        if (content.startsWith('BU')) {
           final isRunning = await isProcessRunning();
           if (!isRunning) {
-            debugPrint('[AntigravityStatusService] agent_status.txt is BUSY, but HTTP bridge is offline and process is not running. Auto-recovering status to IDLE.');
+            debugPrint('[AntigravityStatusService] agent_status.txt is BUSY (starts with BU), but HTTP bridge is offline and process is not running. Auto-recovering status to IDLE.');
             try {
               statusFile.writeAsStringSync('IDLE');
             } catch (_) {}
             return false;
           }
-          debugPrint('[AntigravityStatusService] $statusFilePath is explicitly BUSY');
+          debugPrint('[AntigravityStatusService] $statusFilePath is explicitly BUSY (starts with BU)');
           return true;
         }
       }
