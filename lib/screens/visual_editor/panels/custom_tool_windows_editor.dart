@@ -145,14 +145,18 @@ class _CustomToolWindowsEditorState extends State<CustomToolWindowsEditor> {
                         onChanged: (val) {
                           if (val == null) return;
                           if (val.contains('none') && !_currentAvail.contains('none')) {
-                             _formKey.currentState?.fields['availability']?.didChange(['none']);
+                            _currentAvail = ['none'];
+                            _formKey.currentState?.fields['availability']?.didChange(['none']);
                           } else if (val.contains('all') && !_currentAvail.contains('all')) {
-                             _formKey.currentState?.fields['availability']?.didChange(['all']);
+                            _currentAvail = ['all'];
+                            _formKey.currentState?.fields['availability']?.didChange(['all']);
                           } else if (val.length > 1 && (val.contains('all') || val.contains('none'))) {
-                             final newVal = val.where((v) => v != 'all' && v != 'none').toList();
-                             _formKey.currentState?.fields['availability']?.didChange(newVal);
+                            final newVal = val.where((v) => v != 'all' && v != 'none').toList();
+                            _currentAvail = newVal;
+                            _formKey.currentState?.fields['availability']?.didChange(newVal);
+                          } else {
+                            _currentAvail = List<String>.from(val);
                           }
-                          _currentAvail = List<String>.from(_formKey.currentState?.fields['availability']?.value ?? []);
                         },
                     ),
                     const SizedBox(height: 24),

@@ -873,8 +873,14 @@ class AppToolWindows {
         id: 'ai_bridge',
         icon: Icons.leak_add,
         color: Colors.purpleAccent,
-        name: 'AI Bridge',
-        shortLabel: 'Brid'),
+        name: 'Task Manager',
+        shortLabel: 'Task'),
+    ToolWindowDefinition(
+        id: 'bridge_monitor',
+        icon: Icons.analytics,
+        color: Colors.tealAccent,
+        name: 'Bridge Monitor',
+        shortLabel: 'Mon'),
     ToolWindowDefinition(
         id: 'unit_testing',
         icon: Icons.bug_report,

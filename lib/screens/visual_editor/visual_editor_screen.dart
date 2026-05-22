@@ -51,8 +51,9 @@ import 'panels/profiler_window.dart';
 import 'panels/backup_manager_panel.dart';
 import 'window_dock_manager.dart';
 import 'panels/flow_editor_window.dart';
-import 'panels/ai_task_manager_panel.dart';
 import 'panels/ai_bridge_window.dart';
+import 'panels/ai_task_manager_panel.dart';
+import 'panels/bridge_monitor_window.dart';
 import 'panels/cli_terminal_window.dart';
 import 'panels/project_modules_panel.dart';
 import 'panels/test_bed_window.dart';
@@ -121,7 +122,7 @@ class _VisualEditorScreenState extends State<VisualEditorScreen> {
   double _uiScale = 1.0;
   int _currentEditorMode = 0; // 0=Timeline, 1=Assets, 2=Collections, 3=Text, 4=Tags, 5=Subscriptions
   bool _leftPanelCollapsed = false;
-  final List<String> _windowZOrder = ['simulator', 'logs', 'profiler', 'backup', 'macro', 'flow_editor', 'project_modules', 'unit_testing', 'ui_helper', 'assets', 'localization', 'subscriptions', 'layer_tree', 'properties', 'timeline', 'ai_bridge', 'cli_terminal', 'test_bed', 'version_control', 'project_config', 'color_picker', 'icon_picker', 'task_editor', 'notes_editor', 'suggestion_engine', 'agents', 'control_types_editor', 'attachment_viewer'];
+  final List<String> _windowZOrder = ['simulator', 'logs', 'profiler', 'backup', 'macro', 'flow_editor', 'project_modules', 'unit_testing', 'ui_helper', 'assets', 'localization', 'subscriptions', 'layer_tree', 'properties', 'timeline', 'ai_bridge', 'bridge_monitor', 'cli_terminal', 'test_bed', 'version_control', 'project_config', 'color_picker', 'icon_picker', 'task_editor', 'notes_editor', 'suggestion_engine', 'agents', 'control_types_editor', 'attachment_viewer'];
   bool _rightPanelCollapsed = false;
   Map<String, List<String>> _windowAvailability = {};
 
@@ -440,6 +441,9 @@ if (-not \$activated) {
     showGlobalTaskPanelNotifier.addListener(() {
       if (showGlobalTaskPanelNotifier.value) _bringToFront('ai_bridge');
     });
+    showBridgeMonitorNotifier.addListener(() {
+      if (showBridgeMonitorNotifier.value) _bringToFront('bridge_monitor');
+    });
     showCliTerminalNotifier.addListener(() {
       if (showCliTerminalNotifier.value) _bringToFront('cli_terminal');
     });
@@ -529,7 +533,6 @@ if (-not \$activated) {
 
   Future<void> _onWorkspaceChanged() async {
     final prefs = await SharedPreferences.getInstance();
-    await AiBridgeWindow.loadPreference();
     if (mounted) {
        showSimulatorNotifier.value = prefs.getBool(VisualEditorScreen.getPrefKey('showSimulator')) ?? true;
        showSystemLogsNotifier.value = _isWindowAvailable('system_logs') ? (prefs.getBool(VisualEditorScreen.getPrefKey('showSystemLogs')) ?? false) : false;
@@ -560,6 +563,8 @@ if (-not \$activated) {
        showIconPickerNotifier.value = _isWindowAvailable('icon_picker') ? (prefs.getBool(VisualEditorScreen.getPrefKey('showIconPicker')) ?? false) : false;
        showCliTerminalNotifier.value = _isWindowAvailable('cli_terminal') ? (prefs.getBool(VisualEditorScreen.getPrefKey('showCliTerminal')) ?? false) : false;
        showKaraokeGenWindowNotifier.value = _isWindowAvailable('karaoke_gen') ? (prefs.getBool(VisualEditorScreen.getPrefKey('showKaraokeGen')) ?? false) : false;
+       showGlobalTaskPanelNotifier.value = _isWindowAvailable('ai_bridge') ? (prefs.getBool('ve_showGlobalTaskPanel') ?? false) : false;
+       showBridgeMonitorNotifier.value = _isWindowAvailable('bridge_monitor') ? (prefs.getBool('ve_showBridgeMonitor') ?? false) : false;
     }
   }
 
@@ -586,6 +591,7 @@ if (-not \$activated) {
        ('flow', AppToolWindows.getDef('flow_editor').name, AppToolWindows.getDef('flow_editor').icon, AppToolWindows.getDef('flow_editor').color, (bool isDocked) => FlowEditorWindow(key: const ValueKey('flow'), onClose: hideFlowEditorWindow, isDocked: isDocked, onFocus: () => _bringToFront('flow')), showFlowEditorNotifier),
        ('ui_helper', AppToolWindows.getDef('ui_helper').name, AppToolWindows.getDef('ui_helper').icon, AppToolWindows.getDef('ui_helper').color, (bool isDocked) => UiInspectorWindow(key: const ValueKey('ui_helper'), onClose: hideUiHelperWindow, isDocked: isDocked, onFocus: () => _bringToFront('ui_helper')), showUiHelperNotifier),
        ('ai_bridge', AppToolWindows.getDef('ai_bridge').name, AppToolWindows.getDef('ai_bridge').icon, AppToolWindows.getDef('ai_bridge').color, (bool isDocked) => AiBridgeWindow(key: const ValueKey('ai_bridge'), isDocked: isDocked, onClose: toggleGlobalTaskPanel, onFocus: () => _bringToFront('ai_bridge')), showGlobalTaskPanelNotifier),
+       ('bridge_monitor', AppToolWindows.getDef('bridge_monitor').name, AppToolWindows.getDef('bridge_monitor').icon, AppToolWindows.getDef('bridge_monitor').color, (bool isDocked) => BridgeMonitorWindow(key: const ValueKey('bridge_monitor'), isDocked: isDocked, onClose: toggleBridgeMonitorWindow, onFocus: () => _bringToFront('bridge_monitor')), showBridgeMonitorNotifier),
        ('test_bed', AppToolWindows.getDef('test_bed').name, AppToolWindows.getDef('test_bed').icon, AppToolWindows.getDef('test_bed').color, (bool isDocked) => TestBedWindow(key: const ValueKey('test_bed'), onClose: hideTestBedWindow, isDocked: isDocked, onFocus: () => _bringToFront('test_bed')), showTestBedNotifier),
        ('version_control', AppToolWindows.getDef('version_control').name, AppToolWindows.getDef('version_control').icon, AppToolWindows.getDef('version_control').color, (bool isDocked) => VersionControlWindow(key: const ValueKey('version_control'), onClose: hideVersionControlWindow, isDocked: isDocked, onFocus: () => _bringToFront('version_control')), showVersionControlNotifier),
        ('cli_terminal', AppToolWindows.getDef('cli_terminal').name, AppToolWindows.getDef('cli_terminal').icon, AppToolWindows.getDef('cli_terminal').color, (bool isDocked) => CliTerminalWindow(key: const ValueKey('cli_terminal'), isDocked: isDocked, onClose: hideCliTerminalWindow, onFocus: () => _bringToFront('cli_terminal')), showCliTerminalNotifier),
@@ -752,6 +758,11 @@ if (-not \$activated) {
       } else {
           _windowAvailability = {};
       }
+      for (final w in AppToolWindows.available) {
+        if (!_windowAvailability.containsKey(w.id)) {
+          _windowAvailability[w.id] = ['all'];
+        }
+      }
       
       // Force Aspect ratio check
       context.read<LyricsViewController>().simulatedPlatform =
@@ -798,6 +809,8 @@ if (-not \$activated) {
       if (showProps) showPropertiesNotifier.value = true;
       final showTime = prefs.getBool(VisualEditorScreen.getPrefKey('showTimeline')) ?? false;
       if (showTime) showTimelineNotifier.value = true;
+
+      await _onWorkspaceChanged();
 
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
@@ -922,6 +935,36 @@ if (-not \$activated) {
                           ),
                         const SizedBox(height: 2),
                         Text('Bridge', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.visible, style: TextStyle(color: Colors.white, fontSize: AppUIConfig.iconFontSize, height: 1.0, fontWeight: AppUIConfig.iconFontBold ? FontWeight.bold : FontWeight.normal)),
+                      ]
+                    )
+                  )
+                )
+              );
+            }
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: showBridgeMonitorNotifier,
+            builder: (context, isActive, child) {
+              return Tooltip(
+                message: 'Toggle Bridge Monitor',
+                preferBelow: false,
+                child: InkWell(
+                  onTap: toggleBridgeMonitorWindow,
+                  child: Container(
+                    width: 48 * _uiScale, height: 60 * _uiScale,
+                    decoration: BoxDecoration(
+                      border: Border(left: BorderSide(color: isActive ? AppToolWindows.getDef('bridge_monitor').color : Colors.transparent, width: 2.0))
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AiBridgeActivityIcon(
+                          size: 20,
+                          color: isActive ? AppToolWindows.getDef('bridge_monitor').color : Colors.white38,
+                          defaultIcon: Icons.analytics,
+                        ),
+                        const SizedBox(height: 2),
+                        Text('Monitor', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.visible, style: TextStyle(color: Colors.white, fontSize: AppUIConfig.iconFontSize, height: 1.0, fontWeight: AppUIConfig.iconFontBold ? FontWeight.bold : FontWeight.normal)),
                       ]
                     )
                   )
@@ -1769,6 +1812,16 @@ Expanded(
                                               builder: (context, isShowing, child) { final d = AppToolWindows.getDef('version_control'); return _buildToolbarBtn(isShowing, d.icon, d.color, d.name, d.shortLabel, () { if (isShowing) { hideVersionControlWindow(); } else { showVersionControlWindow(context); } }, onReset: () => _resetWindowCentered('version_control', 500, 400, hideVersionControlWindow, showVersionControlWindow)); }
                                             ),
                                             if (_isWindowAvailable('version_control')) const SizedBox(width: 8),
+                                            if (_isWindowAvailable('ai_bridge')) ValueListenableBuilder<bool>(
+                                               valueListenable: showGlobalTaskPanelNotifier,
+                                               builder: (context, isShowing, child) { final d = AppToolWindows.getDef('ai_bridge'); return _buildToolbarBtn(isShowing, d.icon, d.color, d.name, d.shortLabel, () { if (isShowing) { hideGlobalTaskPanelWindow(); } else { showGlobalTaskPanelWindow(context); } }, onReset: () => _resetWindowCentered('ai_bridge', 800, 600, hideGlobalTaskPanelWindow, showGlobalTaskPanelWindow)); }
+                                             ),
+                                             if (_isWindowAvailable('ai_bridge')) const SizedBox(width: 8),
+                                             if (_isWindowAvailable('bridge_monitor')) ValueListenableBuilder<bool>(
+                                               valueListenable: showBridgeMonitorNotifier,
+                                               builder: (context, isShowing, child) { final d = AppToolWindows.getDef('bridge_monitor'); return _buildToolbarBtn(isShowing, d.icon, d.color, d.name, d.shortLabel, () { if (isShowing) { hideBridgeMonitorWindow(); } else { showBridgeMonitorWindow(context); } }, onReset: () => _resetWindowCentered('bridge_monitor', 750, 650, hideBridgeMonitorWindow, showBridgeMonitorWindow)); }
+                                             ),
+                                             if (_isWindowAvailable('bridge_monitor')) const SizedBox(width: 8),
                                           if (_isWindowAvailable('cli_terminal')) ValueListenableBuilder<bool>(
                                             valueListenable: showCliTerminalNotifier,
                                             builder: (context, isShowing, child) { final d = AppToolWindows.getDef('cli_terminal'); return _buildToolbarBtn(isShowing, d.icon, d.color, d.name, d.shortLabel, () { if (isShowing) { hideCliTerminalWindow(); } else { showCliTerminalWindow(context); } }, onReset: () => _resetWindowCentered('cli_terminal', 600, 400, hideCliTerminalWindow, showCliTerminalWindow)); }

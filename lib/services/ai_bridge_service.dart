@@ -1079,6 +1079,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       notifyListeners();
 
       if (_activeProcessingTaskId == null && _activePrompt == null) {
+        _pendingUpdateType = null;
         await _processQueue();
       }
     }
@@ -1110,7 +1111,11 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     _antigravityLastChangeObservedAt = DateTime.now();
     _isPromptDispatched = true;
     await Clipboard.setData(ClipboardData(text: text));
-    await MacroService.instance.executeTrigger('BridgeConnect');
+    try {
+      await MacroService.instance.executeTrigger('BridgeConnect');
+    } catch (e) {
+      debugPrint('[AiBridgeService] Error executing BridgeConnect macro: $e');
+    }
 
     final int myPid = pid;
     final vbsFile = File('$_dirPath/paste.vbs');
@@ -1161,16 +1166,19 @@ wshShell.AppActivate $myPid
   Future<void> _processQueue() async {
     if (_isQueuePaused || _isProcessingQueue) return;
 
-    if (_activeProcessingTaskId != null ||
-        _activePrompt != null ||
-        _isAntigravityBusy ||
-        _pendingUpdateType != null ||
-        _isTriggeringUpdate) {
-      return;
-    }
-
     _isProcessingQueue = true;
     try {
+      if (_pendingUpdateType != null) {
+        await triggerPendingUpdate(force: true);
+      }
+
+      if (_activeProcessingTaskId != null ||
+          _activePrompt != null ||
+          _isAntigravityBusy ||
+          _isTriggeringUpdate) {
+        return;
+      }
+
       if (_pendingPrompts.isNotEmpty) {
         final nextPrompt = _pendingPrompts.first;
 
@@ -1675,7 +1683,7 @@ wshShell.AppActivate $myPid
         Directory('$userProfile\\.gemini\\antigravity\\brain');
 
     _antigravityPollTimer =
-        Timer.periodic(const Duration(seconds: 4), (_) async {
+        Timer.periodic(const Duration(milliseconds: 1500), (_) async {
       if (_isWatchingPoll) return;
       _isWatchingPoll = true;
       try {
@@ -1691,6 +1699,37 @@ wshShell.AppActivate $myPid
             if (prev != stat.modified) {
               _antigravityLastChangeObservedAt = DateTime.now();
               await syncConversationHistory();
+
+              if (file.path.endsWith('transcript.jsonl')) {
+                try {
+                  final lines = await file.readAsLines().timeout(
+                    const Duration(milliseconds: 1000),
+                    onTimeout: () => const [],
+                  );
+                  if (lines.isNotEmpty) {
+                    Map<String, dynamic>? lastStep;
+                    for (int i = lines.length - 1; i >= 0; i--) {
+                      final line = lines[i].trim();
+                      if (line.isNotEmpty && line.startsWith('{')) {
+                        lastStep = jsonDecode(line) as Map<String, dynamic>;
+                        break;
+                      }
+                    }
+                    if (lastStep != null && lastStep['type'] == 'PLANNER_RESPONSE') {
+                      final String modelContent = lastStep['content'] ?? '';
+                      final String statusName = modelContent.contains('<preview>') ? 'PREVIEW' : 'IDLE';
+
+                      final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
+                      if (isAgentBusy && !_isHandlingAgentStatus) {
+                        print('[AiBridge] Poller detected completed PLANNER_RESPONSE in transcript.jsonl. Triggering status processing: $statusName');
+                        await _processStatusChange(statusName);
+                      }
+                    }
+                  }
+                } catch (e) {
+                  print('[AiBridge] Poller error reading last line of transcript: $e');
+                }
+              }
             }
             _antigravityLastModifiedTimes[file.path] = stat.modified;
           }
@@ -1711,22 +1750,34 @@ wshShell.AppActivate $myPid
           }
         }
 
-        // Poll timer backup check: if daemon is not busy, but active prompt is still active.
-        if (!foundBusy && _activePrompt != null) {
-          try {
-            final statusFile = File('$_dirPath/agent_status.txt');
-            String content = 'IDLE';
-            if (await statusFile.exists()) {
-              content = (await statusFile.readAsString()).trim();
+        // Unified status check: if daemon is not busy, but active prompt is still active.
+        if (!foundBusy) {
+          final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
+          if (isAgentBusy) {
+            try {
+              final statusFile = File('$_dirPath/agent_status.txt');
+              if (await statusFile.exists()) {
+                final content = (await statusFile.readAsString()).trim();
+                final norm = content.toUpperCase();
+                if (norm.startsWith('ID') || norm.startsWith('PR')) {
+                  if (_bridgeMode == AntigravityBridgeMode.sdk) {
+                    print('[AiBridge] SDK mode detected agent transition to IDLE/PREVIEW (raw: $content). Clearing busy state.');
+                    _activeAgents.clear();
+                    _isAntigravityBusy = false;
+                    _antigravityLastChangeObservedAt = null;
+                    await triggerPendingUpdate(force: true);
+                  } else {
+                    final statusName = norm.startsWith('PR') ? 'PREVIEW' : 'IDLE';
+                    if (!_isHandlingAgentStatus) {
+                      print('[AiBridge] Poller detected agent is $statusName (raw: $content) and active state exists. Triggering status processing...');
+                      await _processStatusChange(statusName);
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              print('[AiBridge] Poller unified status check error: $e');
             }
-            final norm = content.toUpperCase();
-            if (norm.startsWith('ID') || norm.startsWith('PR')) {
-              final statusName = norm.startsWith('PR') ? 'PREVIEW' : 'IDLE';
-              print('[AiBridge] Poll timer backup detected agent is $statusName (raw: $content) but _activePrompt is non-null. Recovering...');
-              await _processStatusChange(statusName);
-            }
-          } catch (e) {
-            print('[AiBridge] Poll timer backup check error: $e');
           }
         }
 
@@ -1810,13 +1861,21 @@ wshShell.AppActivate $myPid
   String get previewRejectedInstructions => _previewRejectedInstructions;
 
   String _systemHooksInstructions =
-      '---\nNATIVE SYSTEM HOOKS (DO NOT IGNORE)\n1. SAFETY ABORT / CLARIFICATION: If a task is unclear, unsafe, massive, or contains a question in the prompt, DO NOT execute code. If the instructions are not clear, you MUST require clarification before proceeding by outputting a `<preview>` tag containing a JSON array of questions, and writing `PREVIEW` to `.ai_bridge/agent_status.txt`.\n2. PREVIEW REVIEW: If any Checklist item is marked as ignored or rejected, adjust plan and generate NEW Checklist items via `<preview>` tag.\n3. DATA MUTATION: Your task context is in `.ai_bridge/current_task.json`. Never edit `.ai_bridge/tasks.json` directly. The app manages global task states — only reference `current_task.json` for your active task data.\n4. NOTES: Log text notes strictly by writing a JSON file to `.ai_bridge/latest_notes.json` formatted as `{"notes": "...", "summary": "..."}`. The `summary` should be a concise commit naming note based ONLY on active checklist items being worked on (ignore completed checklist items completely). You MUST write this file BEFORE writing IDLE.\n5. FOCUS: Work strictly on ONE specific task. The app completes it upon IDLE.\n6. ACCOUNTABILITY: If the task includes Verification Criteria, write your proof/evidence notes to `.ai_bridge/latest_verification.json` formatted as `[{"description": "...", "isVerified": false, "proof": "..."}]`. RULE: isVerified MUST ALWAYS be false \u2014 the user manually verifies in the UI. Never set isVerified to true. You MUST write this file BEFORE writing IDLE.\n7. QUEUE RELEASE: As your FINAL step, overwrite `.ai_bridge/agent_status.txt` with `IDLE`.\n8. BLOCK SCREEN: At the very end of your response, explicitly request to send the block screen message ONCE.';
+      '---\nNATIVE SYSTEM HOOKS (DO NOT IGNORE)\n'
+      '1. SAFETY ABORT / CLARIFICATION: If the task is unclear, unsafe, massive, or contains questions, DO NOT execute code. You MUST require clarification by outputting a `<preview>` tag containing a JSON array of questions, and writing `PREVIEW` to `.ai_bridge/agent_status.txt`.\n'
+      '2. DATA MUTATION: Your active task context is in `.ai_bridge/current_task.json`. Never edit `.ai_bridge/tasks.json` directly.\n'
+      '3. PROGRESS NOTES: At the end of your response, you MUST output your progress notes and verification proofs using XML tags directly in your response chat. Do not write JSON files to disk. Format as:\n'
+      '   <bridge_notes>{"notes": "Detailed progress notes...", "summary": "Concise commit-style summary"}</bridge_notes>\n'
+      '   If the task has Verification Criteria, also output your proof/evidence notes in the format:\n'
+      '   <verification>[{"description": "checklist item description...", "proof": "proof of verification..."}]</verification>\n'
+      '4. QUEUE RELEASE: As your FINAL step, overwrite `.ai_bridge/agent_status.txt` with `IDLE` (or `PREVIEW` if requesting clarification or preview review).\n'
+      '5. BLOCK SCREEN: At the very end of your response, explicitly request to send the block screen message by outputting: "please send the block screen message once."';
   String get systemHooksInstructions => _systemHooksInstructions;
 
-  String _missingFilesInstructions = '# SYSTEM ALERT: MISSING REQUIRED OUTPUT FILES\n\nYou wrote IDLE, but the following required output files were NOT found on disk:\n{missingList}\n\nThe app processes and DELETES these files immediately upon IDLE. They must be written BEFORE you write IDLE to agent_status.txt.\n\nPlease write the missing files immediately to their correct paths, then write IDLE to `.ai_bridge/agent_status.txt` again. Do not re-do any code work.';
+  String _missingFilesInstructions = '# SYSTEM ALERT: MISSING REQUIRED RESPONSE TAGS\n\nYou ended your turn, but the following required XML response tags were NOT found in your chat output:\n{missingList}\n\nYou must output these tags directly in your chat response before ending your turn.\n\nPlease output the missing XML tags immediately, then write IDLE (or PREVIEW) to `.ai_bridge/agent_status.txt` again. Do not re-do any code work.';
   String get missingFilesInstructions => _missingFilesInstructions;
 
-  String _syncErrorInstructions = 'AI Bridge Sync Error: The system detected you outputted conversational/status information directly instead of writing to `.ai_bridge/latest_notes.json` or `.ai_bridge/agent_status.txt`. You must write your notes to `.ai_bridge/latest_notes.json` and then write `IDLE` (or the appropriate state) to `.ai_bridge/agent_status.txt` immediately without printing further conversational chat.';
+  String _syncErrorInstructions = 'AI Bridge Sync Error: The system detected you outputted conversational/status information directly in your response chat outside of the required XML tags. You must output your notes and verification proofs strictly inside the `<bridge_notes>`, `<verification>`, or `<preview>` XML tags, and eliminate all conversational text outside of these tags. Please output the XML tags immediately without any other chat.';
   String get syncErrorInstructions => _syncErrorInstructions;
 
   bool _isSyncErrorDetected = false;
@@ -1829,6 +1888,9 @@ wshShell.AppActivate $myPid
 
   @visibleForTesting
   Future<void> checkForSyncError({Directory? customBrainDir, DateTime? customNow}) async {
+    if (_isHandlingAgentStatus) {
+      return;
+    }
     final targetBrainDir = testBrainDir ?? customBrainDir ?? Directory('${Platform.environment['USERPROFILE'] ?? ''}\\.gemini\\antigravity\\brain');
     final now = customNow ?? DateTime.now();
 
@@ -2033,17 +2095,17 @@ wshShell.AppActivate $myPid
         .toList();
     if (uncheckedTasks.isNotEmpty) {
       sb.writeln('Verification Criteria:');
-      for (int i = 0; i < uncheckedTasks.length; i++) {
-        var item = uncheckedTasks[i];
-        String extraInfo = '';
-        if (item.goal.isNotEmpty) extraInfo += ' [Goal: ${item.goal}]';
-        if (item.tryCount > 0) extraInfo += ' [TRY #${item.tryCount}]';
-        if (item.requestClarification) {
-          sb.writeln('${i + 1}. [CLARIFY] ${item.description}$extraInfo');
-        } else {
-          sb.writeln('${i + 1}. ${item.description}$extraInfo');
-        }
+      final item = uncheckedTasks.first;
+      String extraInfo = '';
+      if (item.goal.isNotEmpty) extraInfo += ' [Goal: ${item.goal}]';
+      if (item.tryCount > 0) extraInfo += ' [TRY #${item.tryCount}]';
+      if (item.requestClarification) {
+        sb.writeln('1. [CLARIFY] ${item.description}$extraInfo');
+      } else {
+        sb.writeln('1. ${item.description}$extraInfo');
       }
+      sb.writeln('\nCRITICAL FOCUS CONSTRAINT:');
+      sb.writeln('Your ONLY objective for this run is to satisfy Checklist Item #1 above. Do not attempt to work on, address, or implement any other features, checklist items, or criteria. Focus entirely on completing this single item, verify it is working, and then output your notes and verification proofs as requested.');
     }
     
     if (task.fileAttachments.isNotEmpty) {
@@ -2171,24 +2233,33 @@ wshShell.AppActivate $myPid
         }
       } else {
         if (!(Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests)) {
-          // Clean up any stale files from a previous run/crash
-          final notesFile = File('$_dirPath/latest_notes.json');
-          if (notesFile.existsSync()) {
+          // Clean up any stale files from a previous run/crash only if agent was busy
+          final statusFile = File('$_dirPath/agent_status.txt');
+          String currentStatus = 'IDLE';
+          if (statusFile.existsSync()) {
             try {
-              notesFile.deleteSync();
+              currentStatus = statusFile.readAsStringSync().trim().toUpperCase();
             } catch (_) {}
           }
-          final verificationFile = File('$_dirPath/latest_verification.json');
-          if (verificationFile.existsSync()) {
-            try {
-              verificationFile.deleteSync();
-            } catch (_) {}
-          }
-          final previewFile = File('$_dirPath/latest_preview.json');
-          if (previewFile.existsSync()) {
-            try {
-              previewFile.deleteSync();
-            } catch (_) {}
+          if (currentStatus == 'BUSY') {
+            final notesFile = File('$_dirPath/latest_notes.json');
+            if (notesFile.existsSync()) {
+              try {
+                notesFile.deleteSync();
+              } catch (_) {}
+            }
+            final verificationFile = File('$_dirPath/latest_verification.json');
+            if (verificationFile.existsSync()) {
+              try {
+                verificationFile.deleteSync();
+              } catch (_) {}
+            }
+            final previewFile = File('$_dirPath/latest_preview.json');
+            if (previewFile.existsSync()) {
+              try {
+                previewFile.deleteSync();
+              } catch (_) {}
+            }
           }
         }
       }
@@ -2393,78 +2464,144 @@ wshShell.AppActivate $myPid
           if (taskIdx != -1) {
             bool changed = false;
 
+            String notesContent = '';
+            String previewContent = '';
+            String verificationContent = '';
             String aiOutput = '';
-            try {
-              final String userProfile =
-                  Platform.environment['USERPROFILE'] ?? '';
-              final brainDir = Directory(
-                  '$userProfile\\.gemini\\antigravity\\brain');
-              final hasBrainDir = await brainDir.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
-              if (hasBrainDir) {
-                final overviewFiles = await _getBrainFiles(brainDir);
-                final files = overviewFiles.where((f) => f.path.endsWith('transcript.jsonl')).toList();
-                if (files.isNotEmpty) {
-                  final fileTimes = <File, DateTime>{};
-                  await Future.wait(files.map((file) async {
-                    try {
-                      fileTimes[file] = await file.lastModified().timeout(
-                        const Duration(milliseconds: 500),
-                        onTimeout: () => DateTime.fromMillisecondsSinceEpoch(0),
-                      );
-                    } catch (_) {
-                      fileTimes[file] = DateTime.fromMillisecondsSinceEpoch(0);
-                    }
-                  }));
-                  files.sort((a, b) => (fileTimes[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
-                      .compareTo(fileTimes[a] ?? DateTime.fromMillisecondsSinceEpoch(0)));
-                  final latest = files.first;
-                  try {
-                    final lines = await latest.readAsLines().timeout(
-                      const Duration(milliseconds: 1500),
-                      onTimeout: () => const [],
-                    );
-                    for (int i = lines.length - 1; i >= 0; i--) {
+
+            Future<void> attemptIngestion() async {
+              final notesFile = File('$_dirPath/latest_notes.json');
+              if (notesFile.existsSync() && notesContent.isEmpty) {
+                try {
+                  notesContent = notesFile.readAsStringSync();
+                } catch (_) {}
+              }
+
+              final previewFile = File('$_dirPath/latest_preview.json');
+              if (previewFile.existsSync() && previewContent.isEmpty) {
+                try {
+                  previewContent = previewFile.readAsStringSync();
+                } catch (_) {}
+              }
+
+              final verificationFile = File('$_dirPath/latest_verification.json');
+              if (verificationFile.existsSync() && verificationContent.isEmpty) {
+                try {
+                  verificationContent = verificationFile.readAsStringSync();
+                } catch (_) {}
+              }
+
+              if (notesContent.trim().isEmpty || 
+                  (content == 'IDLE' && _tasks[taskIdx].verificationCriteria.isNotEmpty && verificationContent.trim().isEmpty) ||
+                  (content == 'PREVIEW' && previewContent.trim().isEmpty)) {
+                try {
+                  final String userProfile = Platform.environment['USERPROFILE'] ?? '';
+                  final brainDir = testBrainDir ?? Directory('$userProfile\\.gemini\\antigravity\\brain');
+                  final hasBrainDir = await brainDir.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
+                  if (hasBrainDir) {
+                    final overviewFiles = await _getBrainFiles(brainDir);
+                    final files = overviewFiles.where((f) => f.path.endsWith('transcript.jsonl')).toList();
+                    if (files.isNotEmpty) {
+                      final fileTimes = <File, DateTime>{};
+                      await Future.wait(files.map((file) async {
+                        try {
+                          fileTimes[file] = await file.lastModified().timeout(
+                            const Duration(milliseconds: 500),
+                            onTimeout: () => DateTime.fromMillisecondsSinceEpoch(0),
+                          );
+                        } catch (_) {
+                          fileTimes[file] = DateTime.fromMillisecondsSinceEpoch(0);
+                        }
+                      }));
+                      files.sort((a, b) => (fileTimes[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
+                          .compareTo(fileTimes[a] ?? DateTime.fromMillisecondsSinceEpoch(0)));
+                      final latest = files.first;
                       try {
-                        final line = lines[i].trim();
-                        if (line.isEmpty || !line.startsWith('{')) continue;
-                        final map = jsonDecode(line);
-                        if (map['source'] == 'MODEL') {
-                          if (map['content'] != null) {
-                            String content = map['content'];
-                            if (content.contains('<bridge_notes>') || 
-                                content.contains('<preview>') || 
-                                content.contains('<verification>')) {
-                              aiOutput = content;
+                        final lines = await latest.readAsLines().timeout(
+                          const Duration(milliseconds: 1500),
+                          onTimeout: () => const [],
+                        );
+                        for (int i = lines.length - 1; i >= 0; i--) {
+                          try {
+                            final line = lines[i].trim();
+                            if (line.isEmpty || !line.startsWith('{')) continue;
+                            final map = jsonDecode(line);
+                            if (map['source'] == 'MODEL') {
+                              if (map['content'] != null) {
+                                String mContent = map['content'];
+                                if (mContent.contains('<bridge_notes>') || 
+                                    mContent.contains('<preview>') || 
+                                    mContent.contains('<verification>')) {
+                                  aiOutput = mContent;
+                                }
+                              }
+                              break;
                             }
-                          }
-                          break;
+                          } catch (_) {}
                         }
                       } catch (_) {}
                     }
-                  } catch (_) {}
+                  }
+                } catch (_) {}
+
+                if (aiOutput.isNotEmpty) {
+                  if (notesContent.trim().isEmpty) {
+                    final notesMatches = RegExp(
+                            r'<bridge_notes>(.*?)</bridge_notes>',
+                            dotAll: true)
+                        .allMatches(aiOutput);
+                    if (notesMatches.isNotEmpty) {
+                      notesContent = notesMatches.last.group(1)!;
+                    }
+                  }
+                  if (previewContent.trim().isEmpty) {
+                    final previewMatches = RegExp(
+                            r'<preview>(.*?)</preview>',
+                            dotAll: true)
+                        .allMatches(aiOutput);
+                    if (previewMatches.isNotEmpty) {
+                      previewContent = previewMatches.last.group(1)!;
+                    }
+                  }
+                  if (verificationContent.trim().isEmpty) {
+                    final verificationMatches = RegExp(
+                            r'<verification>(.*?)</verification>',
+                            dotAll: true)
+                        .allMatches(aiOutput);
+                    if (verificationMatches.isNotEmpty) {
+                      verificationContent = verificationMatches.last.group(1)!;
+                    }
+                  }
                 }
               }
+            }
+
+            await attemptIngestion();
+
+            bool notesMissing = notesContent.trim().isEmpty;
+            bool hasVerificationCriteria = _tasks[taskIdx].verificationCriteria.isNotEmpty;
+            bool verificationMissing = hasVerificationCriteria && verificationContent.trim().isEmpty;
+
+            if (notesMissing || verificationMissing) {
+              print('[AiBridge] Missing files detected on first ingestion attempt. Waiting 500ms for retry...');
+              await Future.delayed(const Duration(milliseconds: 500));
+              await attemptIngestion();
+            }
+
+            try {
+              final notesFile = File('$_dirPath/latest_notes.json');
+              if (notesFile.existsSync()) notesFile.deleteSync();
+            } catch (_) {}
+            try {
+              final previewFile = File('$_dirPath/latest_preview.json');
+              if (previewFile.existsSync()) previewFile.deleteSync();
+            } catch (_) {}
+            try {
+              final verificationFile = File('$_dirPath/latest_verification.json');
+              if (verificationFile.existsSync()) verificationFile.deleteSync();
             } catch (_) {}
 
             // 1. Absorb Notes
-            final notesFile = File('$_dirPath/latest_notes.json');
-            String notesContent = '';
-            if (notesFile.existsSync()) {
-              try {
-                notesContent = notesFile.readAsStringSync();
-                notesFile.deleteSync();
-              } catch (_) {}
-            }
-            if (notesContent.trim().isEmpty) {
-              final notesMatches = RegExp(
-                      r'<bridge_notes>(.*?)</bridge_notes>',
-                      dotAll: true)
-                  .allMatches(aiOutput);
-              if (notesMatches.isNotEmpty) {
-                notesContent = notesMatches.last.group(1)!;
-              }
-            }
-
             if (notesContent.trim().isNotEmpty) {
               String parsedSummary = '';
               String parsedNotes = '';
@@ -2517,24 +2654,7 @@ wshShell.AppActivate $myPid
             }
 
             // 2. Absorb Preview
-            final previewFile = File('$_dirPath/latest_preview.json');
             bool generatedPreviewItems = false;
-            String previewContent = '';
-            if (previewFile.existsSync()) {
-              try {
-                previewContent = previewFile.readAsStringSync();
-                previewFile.deleteSync();
-              } catch (_) {}
-            }
-            if (previewContent.trim().isEmpty) {
-              final previewMatches =
-                  RegExp(r'<preview>(.*?)</preview>', dotAll: true)
-                      .allMatches(aiOutput);
-              if (previewMatches.isNotEmpty) {
-                previewContent = previewMatches.last.group(1)!;
-              }
-            }
-
             if (previewContent.trim().isNotEmpty) {
               try {
                 String content = previewContent;
@@ -2557,9 +2677,7 @@ wshShell.AppActivate $myPid
                           ))
                       .toList();
                   
-                  // Clear old preview items to avoid duplicates
                   _tasks[taskIdx].verificationCriteria.removeWhere((item) => item.isPreview);
-                  
                   _tasks[taskIdx].verificationCriteria.addAll(newItems);
                   changed = true;
                   if (newItems.isNotEmpty) {
@@ -2573,27 +2691,6 @@ wshShell.AppActivate $myPid
             }
 
             // 3. Absorb Verification
-            final verificationFile =
-                File('$_dirPath/latest_verification.json');
-            String verificationContent = '';
-            if (verificationFile.existsSync()) {
-              try {
-                verificationContent =
-                    verificationFile.readAsStringSync();
-                verificationFile.deleteSync();
-              } catch (_) {}
-            }
-            if (verificationContent.trim().isEmpty) {
-              final verificationMatches = RegExp(
-                      r'<verification>(.*?)</verification>',
-                      dotAll: true)
-                  .allMatches(aiOutput);
-              if (verificationMatches.isNotEmpty) {
-                verificationContent =
-                    verificationMatches.last.group(1)!;
-              }
-            }
-
             if (verificationContent.trim().isNotEmpty) {
               try {
                 String content = verificationContent;
@@ -2642,15 +2739,15 @@ wshShell.AppActivate $myPid
                final bool notesWereMissing = notesContent.trim().isEmpty;
                final bool verificationWasMissing = hasVerificationCriteria && verificationContent.trim().isEmpty;
 
-               if (notesWereMissing) missingFiles.add('`.ai_bridge/latest_notes.json` (format: {"notes": "...", "summary": "..."})');
-               if (verificationWasMissing) missingFiles.add('`.ai_bridge/latest_verification.json` (format: [{"description": "...", "isVerified": true, "proof": "..."}])');
+               if (notesWereMissing) missingFiles.add('`<bridge_notes>` tag containing JSON: {"notes": "...", "summary": "..."}');
+               if (verificationWasMissing) missingFiles.add('`<verification>` tag containing JSON array: [{"description": "...", "isVerified": true, "proof": "..."}]');
 
                if (missingFiles.isNotEmpty) {
-                 print('[AiBridge] Missing required files after IDLE: $missingFiles');
+                 print('[AiBridge] Missing required XML tags after IDLE: $missingFiles');
                  final missingList = missingFiles.map((f) => '- $f').join('\n');
                  final correctionPrompt = _missingFilesInstructions.replaceAll('{missingList}', missingList);
                  
-                 print('[AiBridge] Re-queuing correction prompt for missing files.');
+                 print('[AiBridge] Re-queuing correction prompt for missing XML tags.');
                  await sendToQueue(correctionPrompt, false, taskIds: [_tasks[taskIdx].id], insertFirst: true);
 
                  print('[AiBridge] Clearing active prompt/task state to unblock UI.');
@@ -2715,6 +2812,12 @@ wshShell.AppActivate $myPid
 
       if (content == 'IDLE' || content == 'PREVIEW') {
         print('[AiBridge] $content detected. Completing and archiving active prompt.');
+        try {
+          File('$_dirPath/agent_status.txt').writeAsStringSync(content);
+          print('[AiBridge] Wrote $content to agent_status.txt');
+        } catch (e) {
+          print('[AiBridge] Failed to write status to agent_status.txt: $e');
+        }
         if (_activePrompt != null) {
           _activePrompt!.completedAt = DateTime.now();
           _completedPrompts.add(_activePrompt!);
@@ -2831,48 +2934,6 @@ wshShell.AppActivate $myPid
           }
 
           _isProcessingSuggestion = false;
-        }
-
-        if (normPath.endsWith('tasks.json') || normPath.endsWith('sandbox.json') || normPath.endsWith('timeline_history.json')) {
-          await Future.delayed(const Duration(
-              milliseconds: 100)); // Debounce file locks gracefully
-          await _loadFromFile();
-        }
-
-        if (normPath.endsWith('agent_status.txt')) {
-          if (!isThinking) {
-            print('[AiBridge] agent_status.txt changed but isThinking is false. Ignoring event.');
-            return;
-          }
-          if (_bridgeMode == AntigravityBridgeMode.sdk) {
-            await Future.delayed(const Duration(milliseconds: 100));
-            try {
-              final file = File(event.path);
-              if (await file.exists()) {
-                final content = (await file.readAsString()).trim();
-                final norm = content.toUpperCase();
-                if (norm.startsWith('ID') || norm.startsWith('PR')) {
-                  _activeAgents.clear();
-                  _isAntigravityBusy = false;
-                  _antigravityLastChangeObservedAt = null;
-                  await triggerPendingUpdate(force: true);
-                }
-              }
-            } catch (_) {}
-          } else {
-            try {
-              final statusFile = File(event.path);
-              if (await statusFile.exists()) {
-                final content = (await statusFile.readAsString()).trim();
-                final norm = content.toUpperCase();
-                if (norm.startsWith('ID') || norm.startsWith('PR')) {
-                  final statusName = norm.startsWith('PR') ? 'PREVIEW' : 'IDLE';
-                  print('[AiBridge] Status change observed in agent_status.txt: $statusName (raw: $content)');
-                  await _processStatusChange(statusName);
-                }
-              }
-            } catch (_) {}
-          }
         }
       });
     }
@@ -3280,22 +3341,27 @@ wshShell.AppActivate $myPid
     if ((force || !isThinking) && _pendingUpdateType != null) {
       _isTriggeringUpdate = true;
       try {
-        // We no longer require the window to be focused to trigger a hot reload.
-        // This allows the app to visually update side-by-side while the user is typing in their IDE.
+        try {
+          SystemSound.play(SystemSoundType.alert);
+        } catch (_) {}
 
-        SystemSound.play(SystemSoundType.alert);
         final type = _pendingUpdateType!;
+        _pendingUpdateType = null; // Clear early to prevent leakage
 
-        await MacroService.instance.executeTrigger('BeforeReload');
+        try {
+          await MacroService.instance.executeTrigger('BeforeReload');
+        } catch (e) {
+          debugPrint('Error executing BeforeReload macro: $e');
+        }
 
         if (_screenBlockerEnabledForCurrentTaskPhase &&
             onAutoReloadTriggered != null) {
           await onAutoReloadTriggered!(type);
-          _pendingUpdateType = null;
         } else {
           showUpdateCoverFor(type);
-          _pendingUpdateType = null;
         }
+      } catch (e) {
+        debugPrint('Error during triggerPendingUpdate execution: $e');
       } finally {
         _isTriggeringUpdate = false;
       }

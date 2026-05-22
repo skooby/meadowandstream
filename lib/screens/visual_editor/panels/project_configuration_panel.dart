@@ -438,7 +438,16 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           try {
               final Map<String, dynamic> parsed = jsonDecode(availStr);
               _windowAvailability = parsed.map((k, v) => MapEntry(k, List<String>.from(v)));
-          } catch (_) {}
+          } catch (_) {
+              _windowAvailability = {};
+          }
+      } else {
+          _windowAvailability = {};
+      }
+      for (final w in AppToolWindows.available) {
+        if (!_windowAvailability.containsKey(w.id)) {
+          _windowAvailability[w.id] = ['all'];
+        }
       }
 
       _isLoading = false;

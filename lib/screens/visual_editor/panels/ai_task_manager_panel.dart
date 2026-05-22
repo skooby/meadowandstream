@@ -50,6 +50,17 @@ void toggleGlobalTaskPanel() async {
       've_showGlobalTaskPanel', showGlobalTaskPanelNotifier.value);
 }
 
+void showGlobalTaskPanelWindow(BuildContext context) {
+  if (showGlobalTaskPanelNotifier.value) return;
+  SharedPreferences.getInstance().then((prefs) => prefs.setBool('ve_showGlobalTaskPanel', true));
+  showGlobalTaskPanelNotifier.value = true;
+}
+
+void hideGlobalTaskPanelWindow() {
+  showGlobalTaskPanelNotifier.value = false;
+  SharedPreferences.getInstance().then((prefs) => prefs.setBool('ve_showGlobalTaskPanel', false));
+}
+
 class AiTaskManagerPanel extends StatefulWidget {
   final bool isDocked;
   final void Function(DragUpdateDetails)? onPanUpdate;

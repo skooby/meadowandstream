@@ -1,5 +1,17 @@
 [
   {
+    "id": "454ae7ef824a11bddce4c7f5529cedc17d0de5c6",
+    "taskIds": [
+      "1779299719063",
+      "1778722257125"
+    ],
+    "title": "TASK MANAGER [ui: update Task Manager title theme color and Task List toolbar background] | CONNECTION [test: verify busy state detection and task status writing in unit tests [TRY #2]]",
+    "summary": "Connection test 2.0 passed.",
+    "commitHash": "454ae7ef824a11bddce4c7f5529cedc17d0de5c6",
+    "commitDate": "2026-05-22T10:28:31-06:00",
+    "verifiedNotes": "- Main Task Manager window title isn't using the theme color\n- Task List toolbar should use black for its color\n\n- Test for determining busy state of ai bridge and writing status in tasks\n- Lets create an AI BRIDGE WINDOW that we can use to diagnose problems, send tests and monitor outcomes. Have test state and regular state icon\n- Move the task manager toolbar below our worksheet toolbar"
+  },
+  {
     "id": "ec466315cef8f94e9de7211eee3e5974f76aba15",
     "taskIds": [
       "1778869915153"

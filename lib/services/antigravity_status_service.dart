@@ -50,8 +50,8 @@ class AntigravityStatusService {
   }
 
   final _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 5),
-    receiveTimeout: const Duration(seconds: 5),
+    connectTimeout: const Duration(seconds: 1),
+    receiveTimeout: const Duration(seconds: 1),
   ));
 
   /// Resolves the loopback/host URL for the HTTP bridge dynamically from SharedPreferences.
@@ -197,36 +197,32 @@ class AntigravityStatusService {
       if (statusFile.existsSync()) {
         final content = statusFile.readAsStringSync().trim().toUpperCase();
         if (content.startsWith('BU')) {
+          // If the file was updated recently, assume active without scanning processes
+          try {
+            final stat = statusFile.statSync();
+            final lastModified = stat.modified;
+            final age = DateTime.now().difference(lastModified);
+            if (age.inMinutes < 10) {
+              debugPrint('[AntigravityStatusService] $statusFilePath is BUSY and was updated recently (${age.inSeconds}s ago). Assuming active.');
+              return true;
+            }
+          } catch (_) {}
+
+          // Only scan processes if the file is older than 10 minutes to verify if the process is still running
           final isRunning = await isProcessRunning();
           if (!isRunning) {
-            try {
-              final stat = statusFile.statSync();
-              final lastModified = stat.modified;
-              final age = DateTime.now().difference(lastModified);
-              if (age.inMinutes < 10) {
-                debugPrint('[AntigravityStatusService] $statusFilePath is BUSY and was updated recently (${age.inSeconds}s ago). Assuming active.');
-                return true;
-              }
-            } catch (_) {}
-            debugPrint('[AntigravityStatusService] agent_status.txt is BUSY (starts with BU), but HTTP bridge is offline and process is not running. Auto-recovering status to IDLE.');
+            debugPrint('[AntigravityStatusService] agent_status.txt is BUSY (starts with BU) and older than 10 minutes, HTTP bridge is offline and process is not running. Auto-recovering status to IDLE.');
             try {
               statusFile.writeAsStringSync('IDLE');
             } catch (_) {}
             return false;
           }
-          debugPrint('[AntigravityStatusService] $statusFilePath is explicitly BUSY (starts with BU)');
+          debugPrint('[AntigravityStatusService] $statusFilePath is explicitly BUSY and process is running');
           return true;
         }
       }
     } catch (_) {}
 
-    // 3. Fallback: if process is running but bridge did not respond (possibly due to network/port issue)
-    // or if the process itself is active and we want to prevent simultaneous updates.
-    // However, if the process is running but the HTTP bridge returns IDLE (handled in step 1),
-    // we do NOT treat it as busy. But if the HTTP bridge is completely offline/unreachable AND
-    // the process is running, let's treat it as potentially busy if agent_status.txt is BUSY,
-    // which is already covered. If the bridge is offline and agent_status.txt is IDLE,
-    // we assume it is not busy.
     return false;
   }
 }
