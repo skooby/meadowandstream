@@ -456,6 +456,33 @@ void main() {
     expect(isBusy, isTrue);
     expect(statusFile.readAsStringSync(), equals('BUSY'));
   });
+
+  test('Determining busy state of ai bridge and writing status in tasks', () async {
+    final statusFile = File('${tempBridgeDir.path}/agent_status.txt');
+    await statusFile.writeAsString('BUSY');
+
+    // 1. Determine busy state from AntigravityStatusService
+    final isBusy = await AntigravityStatusService.instance.isCliBusy();
+    expect(isBusy, isTrue);
+
+    // 2. Mock sending to queue / status update to verify it writes status correctly
+    final service = AiBridgeService.instance;
+    await service.init();
+    
+    // Add a dummy task
+    final task = await service.addTask('Test task busy state', 'description');
+    expect(task.status, equals(AiTaskStatus.open));
+
+    // Simulate sending task to bridge (updates status to inTesting)
+    await service.updateTaskStatus(task.id, AiTaskStatus.inTesting);
+    
+    // Retrieve the updated task and check
+    final updatedTask = service.tasks.firstWhere((t) => t.id == task.id);
+    expect(updatedTask.status, equals(AiTaskStatus.inTesting));
+
+    // Cleanup
+    await service.deleteTask(task.id);
+  });
 }
 
 class MockAntigravityClient extends AntigravityClient {

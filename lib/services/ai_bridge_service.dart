@@ -1641,10 +1641,22 @@ wshShell.AppActivate $myPid
   Timer? _antigravityPollTimer;
   Timer? _queueCleanupTimer;
 
+  bool get isAntigravityBusy => _isAntigravityBusy;
+  DateTime? get antigravityLastChangeObservedAt => _antigravityLastChangeObservedAt;
+
   bool get isThinking =>
       _activeAgents.isNotEmpty ||
       _isAntigravityBusy ||
       _activePrompt != null;
+
+  bool _isTesting = false;
+  bool get isTesting => _isTesting || _tasks.any((t) => t.status == AiTaskStatus.inTesting);
+  set isTesting(bool value) {
+    if (_isTesting != value) {
+      _isTesting = value;
+      notifyListeners();
+    }
+  }
 
   @visibleForTesting
   void setAntigravityBusyForTesting(bool busy) {
@@ -2312,7 +2324,7 @@ wshShell.AppActivate $myPid
                   final line = lines[i].trim();
                   if (line.isEmpty || !line.startsWith('{')) continue;
                   final map = jsonDecode(line);
-                  if (map['source'] == 'MODEL' || map['type'] == 'PLANNER_RESPONSE') {
+                  if (map['type'] == 'PLANNER_RESPONSE') {
                     if (map['content'] != null) {
                       rawModelContent = map['content'];
                     }

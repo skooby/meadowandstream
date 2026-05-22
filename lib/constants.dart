@@ -870,6 +870,12 @@ class AppToolWindows {
         name: 'Version Control',
         shortLabel: 'Git'),
     ToolWindowDefinition(
+        id: 'ai_bridge',
+        icon: Icons.leak_add,
+        color: Colors.purpleAccent,
+        name: 'AI Bridge',
+        shortLabel: 'Brid'),
+    ToolWindowDefinition(
         id: 'unit_testing',
         icon: Icons.bug_report,
         color: Colors.redAccent,

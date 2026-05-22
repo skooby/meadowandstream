@@ -52,6 +52,7 @@ import 'panels/backup_manager_panel.dart';
 import 'window_dock_manager.dart';
 import 'panels/flow_editor_window.dart';
 import 'panels/ai_task_manager_panel.dart';
+import 'panels/ai_bridge_window.dart';
 import 'panels/cli_terminal_window.dart';
 import 'panels/project_modules_panel.dart';
 import 'panels/test_bed_window.dart';
@@ -528,6 +529,7 @@ if (-not \$activated) {
 
   Future<void> _onWorkspaceChanged() async {
     final prefs = await SharedPreferences.getInstance();
+    await AiBridgeWindow.loadPreference();
     if (mounted) {
        showSimulatorNotifier.value = prefs.getBool(VisualEditorScreen.getPrefKey('showSimulator')) ?? true;
        showSystemLogsNotifier.value = _isWindowAvailable('system_logs') ? (prefs.getBool(VisualEditorScreen.getPrefKey('showSystemLogs')) ?? false) : false;
@@ -913,7 +915,11 @@ if (-not \$activated) {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(AppUIConfig.bridgeIconCodePoint != null ? IconData(AppUIConfig.bridgeIconCodePoint!, fontFamily: 'MaterialIcons') : Icons.rocket_launch, size: 20, color: isActive ? Colors.redAccent : (AppUIConfig.bridgeIconColor ?? Colors.white38)),
+                          AiBridgeActivityIcon(
+                            size: 20,
+                            color: isActive ? Colors.redAccent : (AppUIConfig.bridgeIconColor ?? Colors.white38),
+                            defaultIcon: AppUIConfig.bridgeIconCodePoint != null ? IconData(AppUIConfig.bridgeIconCodePoint!, fontFamily: 'MaterialIcons') : Icons.rocket_launch,
+                          ),
                         const SizedBox(height: 2),
                         Text('Bridge', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.visible, style: TextStyle(color: Colors.white, fontSize: AppUIConfig.iconFontSize, height: 1.0, fontWeight: AppUIConfig.iconFontBold ? FontWeight.bold : FontWeight.normal)),
                       ]

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:multi_split_view/multi_split_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'visual_editor_screen.dart';
+import 'panels/ai_bridge_window.dart';
 
 enum DockPosition { floating, left, right, top, bottom }
 
@@ -181,12 +182,59 @@ class WindowDockManager {
             },
             child: Row(
               children: [
-                Icon(panel.icon, size: 16, color: panel.color),
+                panel.id == 'ai_bridge'
+                    ? AiBridgeActivityIcon(size: 16, color: panel.color, defaultIcon: panel.icon)
+                    : Icon(panel.icon, size: 16, color: panel.color),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(AppUIConfig.formatWindowTitle(panel.title), style: TextStyle(color: AppColors.textPrimary, fontSize: AppUIConfig.windowTitleFontSize, fontWeight: AppUIConfig.windowTitleFontWeight), overflow: TextOverflow.ellipsis),
+                  child: panel.id == 'ai_bridge'
+                      ? ValueListenableBuilder<bool>(
+                          valueListenable: AiBridgeWindow.showBridgeMonitorNotifier,
+                          builder: (context, showBridgeMonitor, _) {
+                            return Text(
+                              showBridgeMonitor ? 'Bridge Monitor' : 'Task Manager',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: AppUIConfig.windowTitleFontSize,
+                                fontWeight: AppUIConfig.windowTitleFontWeight,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            );
+                          },
+                        )
+                      : Text(
+                          AppUIConfig.formatWindowTitle(panel.title),
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: AppUIConfig.windowTitleFontSize,
+                            fontWeight: AppUIConfig.windowTitleFontWeight,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                 ),
                 const SizedBox(width: 8),
+                if (panel.id == 'ai_bridge') ...[
+                  ValueListenableBuilder<bool>(
+                    valueListenable: AiBridgeWindow.showBridgeMonitorNotifier,
+                    builder: (context, showBridgeMonitor, _) {
+                      return Tooltip(
+                        message: showBridgeMonitor ? 'Switch to Task Manager' : 'Switch to Bridge Monitor',
+                        child: InkWell(
+                          onTap: AiBridgeWindow.toggleMode,
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              showBridgeMonitor ? Icons.assignment : Icons.analytics,
+                              color: AppColors.textSecondary,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 // Show layout toggle when multiple panels share this side
                 if (showLayoutToggle && siblingCount > 1)
                   Tooltip(
@@ -427,16 +475,32 @@ class _TabbedDockWidgetState extends State<_TabbedDockWidget> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(panel.icon, size: 14, color: isActive ? panel.color : panel.color.withOpacity(0.5)),
+                                    panel.id == 'ai_bridge'
+                                        ? AiBridgeActivityIcon(size: 14, color: isActive ? panel.color : panel.color.withOpacity(0.5), defaultIcon: panel.icon)
+                                        : Icon(panel.icon, size: 14, color: isActive ? panel.color : panel.color.withOpacity(0.5)),
                                     const SizedBox(width: 6),
-                                    Text(
-                                      AppUIConfig.formatWindowTitle(panel.title),
-                                      style: TextStyle(
-                                        color: isActive ? AppColors.textPrimary : AppColors.textSecondary,
-                                        fontSize: 11,
-                                        fontWeight: isActive ? AppUIConfig.windowTitleFontWeight : FontWeight.normal,
-                                      ),
-                                    ),
+                                    panel.id == 'ai_bridge'
+                                        ? ValueListenableBuilder<bool>(
+                                            valueListenable: AiBridgeWindow.showBridgeMonitorNotifier,
+                                            builder: (context, showBridgeMonitor, _) {
+                                              return Text(
+                                                showBridgeMonitor ? 'Bridge Monitor' : 'Task Manager',
+                                                style: TextStyle(
+                                                  color: isActive ? AppColors.textPrimary : AppColors.textSecondary,
+                                                  fontSize: 11,
+                                                  fontWeight: isActive ? AppUIConfig.windowTitleFontWeight : FontWeight.normal,
+                                                ),
+                                              );
+                                            },
+                                          )
+                                        : Text(
+                                            AppUIConfig.formatWindowTitle(panel.title),
+                                            style: TextStyle(
+                                              color: isActive ? AppColors.textPrimary : AppColors.textSecondary,
+                                              fontSize: 11,
+                                              fontWeight: isActive ? AppUIConfig.windowTitleFontWeight : FontWeight.normal,
+                                            ),
+                                          ),
                                   ],
                                 ),
                               );
@@ -449,6 +513,28 @@ class _TabbedDockWidgetState extends State<_TabbedDockWidget> {
                 ),
                 // Action buttons
                 const SizedBox(width: 4),
+                if (activePanel.id == 'ai_bridge') ...[
+                  ValueListenableBuilder<bool>(
+                    valueListenable: AiBridgeWindow.showBridgeMonitorNotifier,
+                    builder: (context, showBridgeMonitor, _) {
+                      return Tooltip(
+                        message: showBridgeMonitor ? 'Switch to Task Manager' : 'Switch to Bridge Monitor',
+                        child: InkWell(
+                          onTap: AiBridgeWindow.toggleMode,
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              showBridgeMonitor ? Icons.assignment : Icons.analytics,
+                              color: AppColors.textSecondary,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 Tooltip(
                   message: 'Switch to Stacked',
                   child: InkWell(

@@ -218,6 +218,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     AiBridgeService.instance.addListener(_checkRestoreActiveTask);
     AiBridgeService.instance.addListener(_handleTaskSandboxTransition);
     GlobalTaskEditorState.instance.activeRequest.addListener(_onActiveTaskChanged);
+    VisualEditorScreen.configRefreshNotifier.addListener(_loadState);
 
     _checkRestoreActiveTask();
   }
@@ -342,6 +343,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     AiBridgeService.instance.removeListener(_syncInstructions);
     AiBridgeService.instance.removeListener(_syncUnassignedState);
     GlobalTaskEditorState.instance.activeRequest.removeListener(_onActiveTaskChanged);
+    VisualEditorScreen.configRefreshNotifier.removeListener(_loadState);
     _primaryDirectivesController.dispose();
     _instController.dispose();
     _quickInstController.dispose();
@@ -3499,6 +3501,11 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // Worksheet Toolbar
+        ListenableBuilder(
+          listenable: AiBridgeService.instance,
+          builder: (context, _) => _buildWorksheetManager(),
+        ),
         // Toolbar
         MouseRegion(
           cursor: widget.onPanUpdate != null ? SystemMouseCursors.move : MouseCursor.defer,
@@ -3508,11 +3515,11 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
             child: Container(
               height: AppUIConfig.titleBarHeight,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              color: AppColors.titleBarBackground,
+              color: widget.isDocked ? AppColors.panelBackground : AppColors.titleBarBackground.withValues(alpha: _toolWindowOpacity),
               child: Row(
                 children: [
                   if (!widget.isDocked) ...[
-                    Icon(Icons.rocket_launch, size: 14, color: AppColors.getAdaptiveRed(AppColors.titleBarBackground)),
+                    Icon(AppToolWindows.getDef('ai_bridge').icon, size: 14, color: AppToolWindows.getDef('ai_bridge').color),
                     const SizedBox(width: 8),
                     Text(AppUIConfig.formatWindowTitle('Task Manager'), style: TextStyle(color: AppColors.titleBarTextPrimary, fontSize: AppUIConfig.windowTitleFontSize, fontWeight: AppUIConfig.windowTitleFontWeight)),
                     const SizedBox(width: 16),
@@ -3755,8 +3762,6 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                       },
                     ),
                     child: Column(children: [
-
-                      _buildWorksheetManager(),
                       Expanded(
                           child: DragTarget<String>(
                             onAcceptWithDetails: (details) {
@@ -3992,358 +3997,6 @@ class ExpandableTaskField extends StatelessWidget {
   }
 }
 
-class AiBridgeWindow extends StatefulWidget {
-  final bool isDocked;
-  final VoidCallback? onClose;
-  final VoidCallback? onFocus;
-  const AiBridgeWindow(
-      {super.key, required this.isDocked, this.onClose, this.onFocus});
-  @override
-  State<AiBridgeWindow> createState() => _AiBridgeWindowState();
-}
-
-class _AiBridgeWindowState extends State<AiBridgeWindow> {
-  final ValueNotifier<Offset> _positionNotifier = ValueNotifier(const Offset(50, 50));
-  double _width = 500;
-  double _height = 800;
-  
-
-  @override
-  void initState() {
-    super.initState();
-    _loadState();
-    VisualEditorScreen.currentWorkspace.addListener(_loadState);
-    VisualEditorScreen.activeWindowNotifier.addListener(_onActiveWindowChanged);
-  }
-
-  @override
-  void dispose() {
-    VisualEditorScreen.currentWorkspace.removeListener(_loadState);
-    VisualEditorScreen.activeWindowNotifier.removeListener(_onActiveWindowChanged);
-    super.dispose();
-  }
-
-  void _onActiveWindowChanged() {
-    if (mounted) setState(() {});
-  }
-
-  void _loadState() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-      _positionNotifier.value = Offset(
-        prefs.getDouble(VisualEditorScreen.getPrefKey('ai_float_x')) ?? 50,
-        prefs.getDouble(VisualEditorScreen.getPrefKey('ai_float_y')) ?? 50,
-      );
-      setState(() {
-        _width =
-            prefs.getDouble(VisualEditorScreen.getPrefKey('ai_float_w')) ?? 500;
-        _height =
-            prefs.getDouble(VisualEditorScreen.getPrefKey('ai_float_h')) ?? 800;
-        //
-                //
-            //
-      });
-    }
-  }
-
-  void _saveState() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(
-        VisualEditorScreen.getPrefKey('ai_float_x'), _positionNotifier.value.dx);
-    await prefs.setDouble(
-        VisualEditorScreen.getPrefKey('ai_float_y'), _positionNotifier.value.dy);
-    await prefs.setDouble(VisualEditorScreen.getPrefKey('ai_float_w'), _width);
-    await prefs.setDouble(VisualEditorScreen.getPrefKey('ai_float_h'), _height);
-    //
-        //
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.isDocked) {
-      return Material(
-          color: Colors.transparent, child: AiTaskManagerPanel(key: globalTaskManagerKey));
-    }
-
-    return ValueListenableBuilder<double>(
-      valueListenable: VisualEditorScreen.globalUiScale,
-      builder: (context, scale, child) {
-        final mq = MediaQuery.of(context).size;
-
-        final maxW = mq.width * 0.9;
-        final maxH = mq.height * 0.95;
-
-        final w = _width.clamp(300.0, maxW);
-        final h = _height.clamp(300.0, maxH);
-
-        // Position is extracted via ValueListenableBuilder instead
-
-        Widget rz({
-          double? t,
-          double? b,
-          double? l,
-          double? r,
-          double? dw,
-          double? dh,
-          required SystemMouseCursor cursor,
-          required void Function(DragUpdateDetails) pan,
-        }) =>
-            Positioned(
-                top: t,
-                bottom: b,
-                left: l,
-                right: r,
-                width: dw,
-                height: dh,
-                child: MouseRegion(
-                    cursor: cursor,
-                    child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onPanDown: (_) => widget.onFocus?.call(),
-                        onPanUpdate: pan,
-                        onPanEnd: (_) => _saveState(),
-                        child: Container(color: Colors.transparent))));
-
-        return ValueListenableBuilder<Offset>(
-          valueListenable: _positionNotifier,
-          builder: (context, position, child) {
-            final dx =
-                position.dx.clamp(0.0, (mq.width - w).clamp(0.0, double.infinity));
-            final dy = position.dy
-                .clamp(0.0, (mq.height - h).clamp(0.0, double.infinity));
-
-            return Positioned(
-              left: dx,
-              top: dy,
-              child: child!,
-            );
-          },
-          child: Transform.scale(
-            scale: 1.0,
-            alignment: Alignment.topLeft,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                SizedBox(
-                  width: w,
-                  height: h,
-                  child: RepaintBoundary(
-                    child: Material(
-                      elevation: 24.0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius),
-                        side: AppUIConfig.windowBorderWidth > 0 
-                            ? BorderSide(color: VisualEditorScreen.activeWindowNotifier.value == 'ai_bridge' ? AppColors.activeWindowBorder : AppColors.border, width: AppUIConfig.windowBorderWidth)
-                            : BorderSide.none,
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      color: AppColors.windowBackground,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                              child: GestureDetector(
-                                  behavior: HitTestBehavior.translucent,
-                                  onTapDown: (_) => widget.onFocus?.call(),
-                                  child: AiTaskManagerPanel(
-                                      key: globalTaskManagerKey,
-                                      isDocked: widget.isDocked,
-                                      onPanUpdate: (d) {
-                                        if (mounted) _positionNotifier.value += d.delta;
-                                      },
-                                      onFocus: widget.onFocus,
-                                      onClose: widget.onClose,
-                                  ))),
-                          Container(
-                            height: 16,
-                            color: AppColors.panelBackground,
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: GestureDetector(
-                                    onPanDown: (_) => widget.onFocus?.call(),
-                                    onPanUpdate: (d) {
-                                      final dx = d.delta.dx;
-                                      final dy = d.delta.dy;
-                                      if (mounted) {
-                                        setState(() {
-                                          _width = (_width + dx)
-                                              .clamp(300.0, 2000.0);
-                                          _height = (_height + dy)
-                                              .clamp(300.0, 2000.0);
-                                        });
-                                      }
-                                    },
-                                    onPanEnd: (_) => _saveState(),
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
-                                      child: Container(
-                                        color: Colors.transparent,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                MouseRegion(
-                                  cursor: SystemMouseCursors.resizeDownRight,
-                                  child: GestureDetector(
-                                    onPanDown: (_) => widget.onFocus?.call(),
-                                    onPanUpdate: (d) {
-                                      final dx = d.delta.dx;
-                                      final dy = d.delta.dy;
-                                      if (mounted) {
-                                        setState(() {
-                                          _width = (_width + dx)
-                                              .clamp(300.0, 2000.0);
-                                          _height = (_height + dy)
-                                              .clamp(300.0, 2000.0);
-                                        });
-                                      }
-                                    },
-                                    onPanEnd: (_) => _saveState(),
-                                    child: Container(
-                                      width: 16,
-                                      height: 16,
-                                      color: Colors.transparent,
-                                      child: Icon(Icons.drag_handle, size: 14, color: AppColors.panelTextSecondary),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                 ...[
-                  rz(
-                      t: 0,
-                      l: 12,
-                      r: 12,
-                      dh: 12,
-                      cursor: SystemMouseCursors.resizeUpDown,
-                      pan: (d) => setState(() {
-                            double nH = _height - d.delta.dy;
-                            if (nH >= 300) {
-                              _height = nH;
-                              _positionNotifier.value += Offset(0, d.delta.dy);
-                            }
-                          })),
-                  rz(
-                      b: 0,
-                      l: 12,
-                      r: 12,
-                      dh: 12,
-                      cursor: SystemMouseCursors.resizeUpDown,
-                      pan: (d) => setState(() {
-                            double nH = _height + d.delta.dy;
-                            if (nH >= 300) {
-                              _height = nH;
-                            }
-                          })),
-                  rz(
-                      l: 0,
-                      t: 12,
-                      b: 12,
-                      dw: 12,
-                      cursor: SystemMouseCursors.resizeLeftRight,
-                      pan: (d) => setState(() {
-                            double nW = _width - d.delta.dx;
-                            if (nW >= 300) {
-                              _width = nW;
-                              _positionNotifier.value += Offset(d.delta.dx, 0);
-                            }
-                          })),
-                  rz(
-                      r: 0,
-                      t: 12,
-                      b: 12,
-                      dw: 12,
-                      cursor: SystemMouseCursors.resizeLeftRight,
-                      pan: (d) => setState(() {
-                            double nW = _width + d.delta.dx;
-                            if (nW >= 300) {
-                              _width = nW;
-                            }
-                          })),
-                  rz(
-                      t: 0,
-                      l: 0,
-                      dw: 16,
-                      dh: 16,
-                      cursor: SystemMouseCursors.resizeUpLeftDownRight,
-                      pan: (d) => setState(() {
-                            double nW = _width - d.delta.dx;
-                            double nH = _height - d.delta.dy;
-                            if (nW >= 300) {
-                              _width = nW;
-                              _positionNotifier.value += Offset(d.delta.dx, 0);
-                            }
-                            if (nH >= 300) {
-                              _height = nH;
-                              _positionNotifier.value += Offset(0, d.delta.dy);
-                            }
-                          })),
-                  rz(
-                      t: 0,
-                      r: 0,
-                      dw: 16,
-                      dh: 16,
-                      cursor: SystemMouseCursors.resizeUpRightDownLeft,
-                      pan: (d) => setState(() {
-                            double nW = _width + d.delta.dx;
-                            double nH = _height - d.delta.dy;
-                            if (nW >= 300) {
-                              _width = nW;
-                            }
-                            if (nH >= 300) {
-                              _height = nH;
-                              _positionNotifier.value += Offset(0, d.delta.dy);
-                            }
-                          })),
-                  rz(
-                      b: 0,
-                      l: 0,
-                      dw: 16,
-                      dh: 16,
-                      cursor: SystemMouseCursors.resizeUpRightDownLeft,
-                      pan: (d) => setState(() {
-                            double nW = _width - d.delta.dx;
-                            double nH = _height + d.delta.dy;
-                            if (nW >= 300) {
-                              _width = nW;
-                              _positionNotifier.value += Offset(d.delta.dx, 0);
-                            }
-                            if (nH >= 300) {
-                              _height = nH;
-                            }
-                          })),
-                  rz(
-                      b: 0,
-                      r: 0,
-                      dw: 16,
-                      dh: 16,
-                      cursor: SystemMouseCursors.resizeUpLeftDownRight,
-                      pan: (d) => setState(() {
-                            double nW = _width + d.delta.dx;
-                            double nH = _height + d.delta.dy;
-                            if (nW >= 300) {
-                              _width = nW;
-                            }
-                            if (nH >= 300) {
-                              _height = nH;
-                            }
-                          })),
-                ]
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
 
 class _FlashingBackground extends StatefulWidget {
   final Widget child;
