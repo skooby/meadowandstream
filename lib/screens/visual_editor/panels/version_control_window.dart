@@ -375,9 +375,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
             !e.isPreview))
         .toList();
     if (uncheckedTasks.isNotEmpty) {
-      for (var item in uncheckedTasks) {
-        item.status = AiVerificationStatus.pendingReview;
-      }
+      uncheckedTasks.first.status = AiVerificationStatus.pendingReview;
       final updatedCriteria = task.verificationCriteria
           .map((e) => AiVerificationCriteria(
                 description: e.description,

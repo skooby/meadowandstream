@@ -4,17 +4,34 @@ import 'package:multi_split_view/multi_split_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'visual_editor_screen.dart';
 import 'panels/ai_bridge_window.dart';
+import 'panels/ai_task_manager_panel.dart';
 
 enum DockPosition { floating, left, right, top, bottom }
 
 class DockablePanel {
   final String id;
   final String title;
-  final IconData icon;
-  final Color color;
+  final IconData _icon;
+  final Color _color;
   final Widget child;
   final Widget Function() floatingBuilder;
   final VoidCallback? onFocus;
+
+  IconData get icon {
+    try {
+      return AppToolWindows.getDef(id).icon;
+    } catch (_) {
+      return _icon;
+    }
+  }
+
+  Color get color {
+    try {
+      return AppToolWindows.getDef(id).color;
+    } catch (_) {
+      return _color;
+    }
+  }
 
   ValueNotifier<DockPosition> dockPosition = ValueNotifier(DockPosition.floating);
   ValueNotifier<bool> isVisible = ValueNotifier(false);
@@ -22,12 +39,13 @@ class DockablePanel {
   DockablePanel({
     required this.id,
     required this.title,
-    required this.icon,
+    required IconData icon,
     Color? color,
     required this.child,
     required this.floatingBuilder,
     this.onFocus,
-  }) : color = color ?? AppColors.accent;
+  }) : _icon = icon,
+       _color = color ?? AppColors.accent;
 
   void show() => isVisible.value = true;
   void hide() => isVisible.value = false;
@@ -183,7 +201,12 @@ class WindowDockManager {
             child: Row(
               children: [
                 (panel.id == 'ai_bridge' || panel.id == 'bridge_monitor')
-                    ? AiBridgeActivityIcon(size: 16, color: panel.color, defaultIcon: panel.icon)
+                    ? AiBridgeActivityIcon(
+                        size: 16,
+                        color: panel.color,
+                        defaultIcon: panel.icon,
+                        toolWindowId: panel.id,
+                      )
                     : Icon(panel.icon, size: 16, color: panel.color),
                 const SizedBox(width: 8),
                 Expanded(
@@ -197,6 +220,10 @@ class WindowDockManager {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (panel.id == 'ai_bridge') ...[
+                  AiTaskManagerToolbarButtons(buttonColor: AppColors.textSecondary),
+                  const SizedBox(width: 8),
+                ],
                 // Show layout toggle when multiple panels share this side
                 if (showLayoutToggle && siblingCount > 1)
                   Tooltip(
@@ -438,7 +465,12 @@ class _TabbedDockWidgetState extends State<_TabbedDockWidget> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     (panel.id == 'ai_bridge' || panel.id == 'bridge_monitor')
-                                        ? AiBridgeActivityIcon(size: 14, color: isActive ? panel.color : panel.color.withOpacity(0.5), defaultIcon: panel.icon)
+                                        ? AiBridgeActivityIcon(
+                                            size: 14,
+                                            color: isActive ? panel.color : panel.color.withOpacity(0.5),
+                                            defaultIcon: panel.icon,
+                                            toolWindowId: panel.id,
+                                          )
                                         : Icon(panel.icon, size: 14, color: isActive ? panel.color : panel.color.withOpacity(0.5)),
                                     const SizedBox(width: 6),
                                     Text(
@@ -460,6 +492,10 @@ class _TabbedDockWidgetState extends State<_TabbedDockWidget> {
                   ),
                 ),
                 // Action buttons
+                if (activePanel.id == 'ai_bridge') ...[
+                  AiTaskManagerToolbarButtons(buttonColor: AppColors.textSecondary),
+                  const SizedBox(width: 8),
+                ],
                 const SizedBox(width: 4),
                 Tooltip(
                   message: 'Switch to Stacked',

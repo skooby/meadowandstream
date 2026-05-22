@@ -15,12 +15,14 @@ class AiBridgeActivityIcon extends StatefulWidget {
   final double size;
   final Color? color;
   final IconData defaultIcon;
+  final String? toolWindowId;
 
   const AiBridgeActivityIcon({
     super.key,
     required this.size,
     this.color,
     required this.defaultIcon,
+    this.toolWindowId,
   });
 
   @override
@@ -51,12 +53,25 @@ class _AiBridgeActivityIconState extends State<AiBridgeActivityIcon> with Single
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: AiBridgeService.instance,
+      listenable: Listenable.merge([
+        AiBridgeService.instance,
+        VisualEditorScreen.configRefreshNotifier,
+      ]),
       builder: (context, child) {
         final isThinking = AiBridgeService.instance.isThinking;
-        final isTesting = AiBridgeService.instance.isTesting;
-        final iconData = isTesting ? Icons.science : widget.defaultIcon;
-        final iconColor = isTesting ? Colors.amberAccent : (widget.color ?? Colors.white70);
+        
+        IconData iconData = widget.defaultIcon;
+        Color iconColor = widget.color ?? Colors.white70;
+
+        if (widget.toolWindowId != null) {
+          final def = AppToolWindows.getDef(widget.toolWindowId!);
+          iconData = def.icon;
+          if (widget.color != null) {
+            iconColor = def.color.withOpacity(widget.color!.opacity);
+          } else {
+            iconColor = def.color;
+          }
+        }
 
         if (isThinking) {
           if (!_controller.isAnimating) {
@@ -244,6 +259,7 @@ class _AiBridgeWindowState extends State<AiBridgeWindow> {
                               size: 16,
                               color: AppToolWindows.getDef('ai_bridge').color,
                               defaultIcon: AppToolWindows.getDef('ai_bridge').icon,
+                              toolWindowId: 'ai_bridge',
                             ),
                             const SizedBox(width: 8),
                             Text(
@@ -255,6 +271,8 @@ class _AiBridgeWindowState extends State<AiBridgeWindow> {
                               ),
                             ),
                             const Spacer(),
+                            const AiTaskManagerToolbarButtons(),
+                            const SizedBox(width: 8),
                             if (widget.onClose != null) ...[
                               const SizedBox(width: 8),
                               IconButton(

@@ -1697,7 +1697,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     }
   }
 
-  Future<void> _showConfigDialog(BuildContext context) async {
+  Future<void> showConfigDialog(BuildContext context) async {
     Set<AiTaskStatus> selectedStatuses = Set.from(_configExportStatuses);
     AiTaskStatus newTargetStatus = _configNewTaskStatus;
 
@@ -2927,9 +2927,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
 
     final uncheckedTasks = task.verificationCriteria.where((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview)).toList();
     if (uncheckedTasks.isNotEmpty) {
-      for (var item in uncheckedTasks) {
-        item.status = AiVerificationStatus.pendingReview;
-      }
+      uncheckedTasks.first.status = AiVerificationStatus.pendingReview;
       final updatedCriteria = task.verificationCriteria.map((e) => AiVerificationCriteria(
         description: e.description,
         goal: e.goal,
@@ -3517,156 +3515,6 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
           listenable: AiBridgeService.instance,
           builder: (context, _) => _buildWorksheetManager(),
         ),
-        // Toolbar
-        MouseRegion(
-          cursor: widget.onPanUpdate != null ? SystemMouseCursors.move : MouseCursor.defer,
-          child: GestureDetector(
-            onPanDown: (_) => widget.onFocus?.call(),
-            onPanUpdate: widget.onPanUpdate,
-            child: Container(
-              height: AppUIConfig.titleBarHeight,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              color: widget.isDocked ? AppColors.panelBackground : AppColors.titleBarBackground.withValues(alpha: _toolWindowOpacity),
-              child: Row(
-                children: [
-                  if (!widget.isDocked) ...[
-                    Icon(AppToolWindows.getDef('ai_bridge').icon, size: 14, color: AppToolWindows.getDef('ai_bridge').color),
-                    const SizedBox(width: 8),
-                    Text(AppUIConfig.formatWindowTitle('Task Manager'), style: TextStyle(color: AppColors.titleBarTextPrimary, fontSize: AppUIConfig.windowTitleFontSize, fontWeight: AppUIConfig.windowTitleFontWeight)),
-                    const SizedBox(width: 16),
-                  ],
-                  ListenableBuilder(
-                    listenable: AiBridgeService.instance,
-                    builder: (ctx, _) => Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.undo, size: 14, color: AiBridgeService.instance.canUndo ? Colors.lightBlueAccent : AppColors.titleBarTextSecondary),
-                            onPressed: AiBridgeService.instance.canUndo ? () => AiBridgeService.instance.undo() : null,
-                          padding: const EdgeInsets.only(right: 8),
-                          constraints: const BoxConstraints(),
-                          tooltip: 'Undo Task Action',
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.redo, size: 14, color: AiBridgeService.instance.canRedo ? Colors.lightBlueAccent : AppColors.titleBarTextSecondary),
-                            onPressed: AiBridgeService.instance.canRedo ? () => AiBridgeService.instance.redo() : null,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          tooltip: 'Redo Task Action',
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      alignment: Alignment.centerRight,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                      IconButton(
-                        onPressed: () => _showConfigDialog(context),
-                        icon: Icon(Icons.settings, size: 16, color: AppColors.titleBarTextSecondary),
-                        tooltip: 'Prompt Helper Settings',
-                        padding: const EdgeInsets.only(right: 8),
-                        constraints: const BoxConstraints(),
-                      ),
-                      
-                      PopupMenuButton<String>(
-                        tooltip: 'Common Commands',
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: Icon(Icons.code,
-                              size: 16, color: AppColors.panelTextSecondary),
-                        ),
-                        constraints:
-                            const BoxConstraints(minWidth: 40, maxWidth: 40, minHeight: 0),
-                        color: AppColors.panelBackground,
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius)),
-                        onSelected: (val) async {
-                          String command = '';
-                          if (val == 'console') {
-                            command =
-                                "You have full direction and permission to use your native IDE tool (replace_file_content) to modify configuration files directly instead of prompting us via terminal commands.";
-                          } else if (val == 'emulator') {
-                            command =
-                                "Please show this running inside the Android Emulator";
-                          }
-                          await AiBridgeService.instance.sendToQueue(command, false);
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text('Copied: $command'),
-                                duration: const Duration(seconds: 2)));
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: 'console',
-                            padding: EdgeInsets.zero,
-                            child: Tooltip(
-                                message: 'Force Native IDE File Edits',
-                                child: Center(
-                                    child: Icon(Icons.terminal,
-                                        color: Colors.cyanAccent, size: 16))),
-                          ),
-                          PopupMenuItem(
-                            value: 'emulator',
-                            padding: EdgeInsets.zero,
-                            child: Tooltip(
-                                message: 'Show in Android Emulator',
-                                child: Center(
-                                    child: Icon(Icons.phone_android,
-                                        color: Colors.pinkAccent, size: 16))),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        onPressed: () {
-                            GlobalTaskEditorState.instance.requestEdit(forceFolderCreation: true);
-                            showTaskEditorWindow(context);
-                        },
-                        icon: Icon(Icons.create_new_folder, size: 18, color: AppColors.folder),
-                        tooltip: 'Add Folder',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: () {
-                            final visibleWorksheets = AiBridgeService.instance.worksheets.where((w) => w.isWorksheetVisible).toList();
-                            final String? targetParentId = visibleWorksheets.isNotEmpty ? visibleWorksheets.first.id : null;
-                            GlobalTaskEditorState.instance.requestEdit(preselectedParentId: targetParentId);
-                            showTaskEditorWindow(context);
-                        },
-                        icon: Icon(Icons.add, size: 20, color: AppColors.accent),
-                        tooltip: 'Add Task',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-              if (!widget.isDocked) ...[
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: Icon(Icons.close, size: 18, color: AppColors.titleBarTextSecondary),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: widget.onClose ?? toggleGlobalTaskPanel,
-                ),
-                const SizedBox(width: 4),
-              ],
-            ],
-          ),
-        ),
-      ),
-    ),
-
         // Error Banner
         ListenableBuilder(
           listenable: AiBridgeService.instance,
@@ -4078,6 +3926,121 @@ class _FlashingIconState extends State<_FlashingIcon> with SingleTickerProviderS
   @override
   Widget build(BuildContext context) {
     return FadeTransition(opacity: _ctrl, child: Icon(widget.icon, color: widget.color, size: widget.size));
+  }
+}
+
+class AiTaskManagerToolbarButtons extends StatelessWidget {
+  final Color? buttonColor;
+
+  const AiTaskManagerToolbarButtons({
+    super.key,
+    this.buttonColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final baseColor = buttonColor ?? AppColors.titleBarTextSecondary;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListenableBuilder(
+          listenable: AiBridgeService.instance,
+          builder: (ctx, _) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(Icons.undo, size: 14, color: AiBridgeService.instance.canUndo ? Colors.lightBlueAccent : baseColor),
+                onPressed: AiBridgeService.instance.canUndo ? () => AiBridgeService.instance.undo() : null,
+                padding: const EdgeInsets.only(right: 8),
+                constraints: const BoxConstraints(),
+                tooltip: 'Undo Task Action',
+              ),
+              IconButton(
+                icon: Icon(Icons.redo, size: 14, color: AiBridgeService.instance.canRedo ? Colors.lightBlueAccent : baseColor),
+                onPressed: AiBridgeService.instance.canRedo ? () => AiBridgeService.instance.redo() : null,
+                padding: const EdgeInsets.only(right: 8),
+                constraints: const BoxConstraints(),
+                tooltip: 'Redo Task Action',
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          onPressed: () => globalTaskManagerKey.currentState?.showConfigDialog(context),
+          icon: Icon(Icons.settings, size: 16, color: baseColor),
+          tooltip: 'Prompt Helper Settings',
+          padding: const EdgeInsets.only(right: 8),
+          constraints: const BoxConstraints(),
+        ),
+        PopupMenuButton<String>(
+          tooltip: 'Common Commands',
+          child: Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Icon(Icons.code, size: 16, color: baseColor),
+          ),
+          constraints: const BoxConstraints(minWidth: 40, maxWidth: 40, minHeight: 0),
+          color: AppColors.panelBackground,
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius)),
+          onSelected: (val) async {
+            String command = '';
+            if (val == 'console') {
+              command =
+                  "You have full direction and permission to use your native IDE tool (replace_file_content) to modify configuration files directly instead of prompting us via terminal commands.";
+            } else if (val == 'emulator') {
+              command = "Please show this running inside the Android Emulator";
+            }
+            await AiBridgeService.instance.sendToQueue(command, false);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Copied: $command'),
+                  duration: const Duration(seconds: 2)));
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'console',
+              padding: EdgeInsets.zero,
+              child: Tooltip(
+                  message: 'Force Native IDE File Edits',
+                  child: Center(
+                      child: Icon(Icons.terminal, color: Colors.cyanAccent, size: 16))),
+            ),
+            PopupMenuItem(
+              value: 'emulator',
+              padding: EdgeInsets.zero,
+              child: Tooltip(
+                  message: 'Show in Android Emulator',
+                  child: Center(
+                      child: Icon(Icons.phone_android, color: Colors.pinkAccent, size: 16))),
+            ),
+          ],
+        ),
+        IconButton(
+          onPressed: () {
+            GlobalTaskEditorState.instance.requestEdit(forceFolderCreation: true);
+            showTaskEditorWindow(context);
+          },
+          icon: Icon(Icons.create_new_folder, size: 18, color: AppColors.folder),
+          tooltip: 'Add Folder',
+          padding: const EdgeInsets.only(right: 8),
+          constraints: const BoxConstraints(),
+        ),
+        IconButton(
+          onPressed: () {
+            final visibleWorksheets = AiBridgeService.instance.worksheets.where((w) => w.isWorksheetVisible).toList();
+            final String? targetParentId = visibleWorksheets.isNotEmpty ? visibleWorksheets.first.id : null;
+            GlobalTaskEditorState.instance.requestEdit(preselectedParentId: targetParentId);
+            showTaskEditorWindow(context);
+          },
+          icon: Icon(Icons.add, size: 20, color: AppColors.accent),
+          tooltip: 'Add Task',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+        ),
+      ],
+    );
   }
 }
 

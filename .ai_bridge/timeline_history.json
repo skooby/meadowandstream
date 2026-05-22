@@ -1,5 +1,16 @@
 [
   {
+    "id": "62730daf0e00d95134df0d7bef76dbdf77699a80",
+    "taskIds": [
+      "1779468603941"
+    ],
+    "title": "BRIDGE MONITOR [fix: resolve AI Bridge sync error and transition to IDLE]",
+    "summary": "",
+    "commitHash": "62730daf0e00d95134df0d7bef76dbdf77699a80",
+    "commitDate": "2026-05-22T15:30:39-06:00",
+    "verifiedNotes": "- Log Outcomes Monitor have the area take up the whole space\n- Lets show the log outcomes monitor as a collapsible with text areas that are scrollable and fixed to a certain height, lets have it remember which is collapsed\n- at the top lets have a reset button which tries to put it into a clean state\n- At the top lets link to a markdown document that reviews the code base and determines the design and flow of the ai bridge. A button to view this document in the notes editor and a button to have this rebuilt which copies a prompt to the clipboard that we can put into the LLM manually\n- log outcome monitor adjust each size to the height of the content if it is > 120 pixels then make it scrollable and limited\n- Modify our rebuild prompt to keep it simple, mainly focus on the flow and detection of the AI Bridge. Have it analize if it is correctly doing a list of tasks. Instruct it to only do the areas that I mention and to keep it very brief and to the point. Have it list by number specific areas that we can then pinpoint as not working properly.  Include launching app, after sending to ai bridge, after returning to ai bridge, while processing, include any others that are relevant\n- Split the Bridge Monitor into its own window, I don't like the toggle idea"
+  },
+  {
     "id": "454ae7ef824a11bddce4c7f5529cedc17d0de5c6",
     "taskIds": [
       "1779299719063",

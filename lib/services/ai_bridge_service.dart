@@ -444,6 +444,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     AntigravityStatusService.instance.statusFilePath = '$_dirPath/agent_status.txt';
     syncDatabaseDump();
     syncConversationHistory();
+    init();
   }
 
   Future<List<File>> _getBrainFiles(Directory brainDir) async {
@@ -1034,8 +1035,17 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       final json = task.toJson();
       json['name'] = _buildTaskPathName(task);
       if (json['verificationCriteria'] != null) {
-        final List<dynamic> vcList = json['verificationCriteria'] as List<dynamic>;
-        json['verificationCriteria'] = vcList.where((e) => e['isPreview'] != true).toList();
+        final uncheckedTasks = task.verificationCriteria
+            .where((e) =>
+                e.status != AiVerificationStatus.verified &&
+                e.status != AiVerificationStatus.ignored &&
+                !e.isPreview)
+            .toList();
+        if (uncheckedTasks.isNotEmpty) {
+          json['verificationCriteria'] = [uncheckedTasks.first.toJson()];
+        } else {
+          json['verificationCriteria'] = [];
+        }
       }
       File('$_dirPath/current_task.json')
           .writeAsString(jsonEncode(json), flush: true)
@@ -1677,6 +1687,8 @@ wshShell.AppActivate $myPid
   void _startWatchingAntigravity() {
     if (kIsWeb || (!Platform.isWindows && !Platform.isMacOS)) return;
 
+    _antigravityPollTimer?.cancel();
+
     final String userProfile = Platform.environment['USERPROFILE'] ?? '';
     if (userProfile.isEmpty) return;
     final brainDir =
@@ -2194,6 +2206,10 @@ wshShell.AppActivate $myPid
 
   Future<void> init() async {
     try {
+      _queueCleanupTimer?.cancel();
+      _pendingPrompts.clear();
+      _completedPrompts.clear();
+
       final prefs = await SharedPreferences.getInstance();
       _isQueuePaused = prefs.getBool('ai_queue_paused') ?? false;
       _isPreviewMode = prefs.getBool('ai_queue_preview_mode') ?? false;
@@ -2856,6 +2872,10 @@ wshShell.AppActivate $myPid
   bool _isProcessingSuggestion = false;
 
   void _startWatching() {
+    _watchSubscription?.cancel();
+    _libWatchSubscription?.cancel();
+    _rootWatchSubscription?.cancel();
+
     final dir = Directory(_dirPath);
     if (dir.existsSync()) {
       _watchSubscription =

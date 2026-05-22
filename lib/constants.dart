@@ -719,20 +719,37 @@ class AppUIConfig {
 
 class ToolWindowDefinition {
   final String id;
-  final IconData icon;
-  final Color color;
+  final IconData _icon;
+  final Color _color;
   final String name;
   final String shortLabel;
   final String description;
 
   ToolWindowDefinition({
     required this.id,
-    required this.icon,
-    required this.color,
+    required IconData icon,
+    required Color color,
     required this.name,
     required this.shortLabel,
     this.description = '',
-  });
+  }) : _icon = icon, _color = color;
+
+  IconData get icon {
+    if (id == 'ai_bridge') {
+      if (AppUIConfig.bridgeIconCodePoint != null) {
+        return IconData(AppUIConfig.bridgeIconCodePoint!, fontFamily: 'MaterialIcons');
+      }
+      return Icons.rocket_launch;
+    }
+    return _icon;
+  }
+
+  Color get color {
+    if (id == 'ai_bridge') {
+      return AppUIConfig.bridgeIconColor ?? Colors.redAccent;
+    }
+    return _color;
+  }
 
   factory ToolWindowDefinition.fromJson(Map<String, dynamic> json) {
     return ToolWindowDefinition(

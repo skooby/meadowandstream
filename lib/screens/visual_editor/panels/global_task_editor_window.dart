@@ -2495,8 +2495,7 @@ verificationCriteriaList[i].isCommitted = false;
                                             sb.writeln(
                                                 'Description: ${existingTask!.description}');
                                           }
-                                          sb.writeln(
-                                              'Status: ${existingTask!.status.name}');
+                                          sb.writeln('Status: ${existingTask!.status.name}');
                                           final uncheckedTasks =
                                               verificationCriteriaList
                                                   .where((e) =>
@@ -2505,23 +2504,20 @@ verificationCriteriaList[i].isCommitted = false;
                                                   .toList();
                                           if (uncheckedTasks.isNotEmpty) {
                                             sb.writeln('Verification Criteria:');
-                                            for (int i = 0;
-                                                i < uncheckedTasks.length;
-                                                i++) {
-                                              var item = uncheckedTasks[i];
-                                              String extraInfo = '';
-                                              if (item.goal.isNotEmpty) extraInfo += ' [Goal: ${item.goal}]';
-                                              if (item.tryCount > 0) extraInfo += ' [TRY #${item.tryCount}]';
-                                              if (item.requestClarification) {
-                                                sb.writeln(
-                                                    '${i + 1}. [CLARIFY] ${item.description}$extraInfo');
-                                              } else {
-                                                sb.writeln(
-                                                    '${i + 1}. ${item.description}$extraInfo');
-                                              }
-                                              item.status =
-                                                  AiVerificationStatus.pendingReview;
+                                            final item = uncheckedTasks.first;
+                                            String extraInfo = '';
+                                            if (item.goal.isNotEmpty) extraInfo += ' [Goal: ${item.goal}]';
+                                            if (item.tryCount > 0) extraInfo += ' [TRY #${item.tryCount}]';
+                                            if (item.requestClarification) {
+                                              sb.writeln('1. [CLARIFY] ${item.description}$extraInfo');
+                                            } else {
+                                              sb.writeln('1. ${item.description}$extraInfo');
                                             }
+                                            sb.writeln('\nCRITICAL FOCUS CONSTRAINT:');
+                                            sb.writeln('Your ONLY objective for this run is to satisfy Checklist Item #1 above. Do not attempt to work on, address, or implement any other features, checklist items, or criteria. Focus entirely on completing this single item, verify it is working, and then output your notes and verification proofs as requested.');
+                                            
+                                            item.status =
+                                                AiVerificationStatus.pendingReview;
                                           }
 
                                           if (fileAttachments.isNotEmpty) {

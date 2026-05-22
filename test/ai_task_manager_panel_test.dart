@@ -14,7 +14,9 @@ void main() {
       AiBridgeService.instance.tasks.clear();
     });
 
-    testWidgets('Renders the AI Task Manager Panel and verifies sync error banner display/unstick flow', (WidgetTester tester) async {
+    testWidgets(
+        'Renders the AI Task Manager Panel and verifies sync error banner display/unstick flow',
+        (WidgetTester tester) async {
       // 1. Set larger screen size to avoid layout overflows in test
       tester.view.physicalSize = const Size(1280, 1024);
       tester.view.devicePixelRatio = 1.0;
@@ -25,10 +27,18 @@ void main() {
 
       // 2. Pump the widget with sync error set to false initially
       await tester.pumpWidget(
-        const MaterialApp(
+        MaterialApp(
           home: Scaffold(
-            body: AiTaskManagerPanel(
-              isDocked: true,
+            body: Column(
+              children: [
+                const AiTaskManagerToolbarButtons(),
+                Expanded(
+                  child: AiTaskManagerPanel(
+                    key: globalTaskManagerKey,
+                    isDocked: true,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -44,7 +54,7 @@ void main() {
 
       // 3. Trigger sync error state in the service
       AiBridgeService.instance.isSyncErrorDetected = true;
-      
+
       // Pump to reflect the state change in UI
       await tester.pump();
 

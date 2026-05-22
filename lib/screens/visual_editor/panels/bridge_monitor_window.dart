@@ -1,5 +1,8 @@
+
+
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +11,7 @@ import '../../../constants.dart';
 import '../../../services/ai_bridge_service.dart';
 import '../../../services/antigravity_status_service.dart';
 import '../../../state/global_picker_state.dart';
+import '../../../state/global_task_editor_state.dart';
 import 'global_notes_editor_window.dart';
 import 'ai_bridge_window.dart';
 
@@ -187,6 +191,7 @@ class _BridgeMonitorWindowState extends State<BridgeMonitorWindow> {
                               size: 16,
                               color: AppToolWindows.getDef('bridge_monitor').color,
                               defaultIcon: AppToolWindows.getDef('bridge_monitor').icon,
+                              toolWindowId: 'bridge_monitor',
                             ),
                             const SizedBox(width: 8),
                             Text(
@@ -235,6 +240,15 @@ class _BridgeMonitorWindowState extends State<BridgeMonitorWindow> {
     );
   }
 }
+enum LogType { info, success, warning, error, command, stdout, agent }
+
+class SimulatedLogEntry {
+  final String prefix;
+  final String message;
+  final LogType type;
+
+  SimulatedLogEntry(this.prefix, this.message, this.type);
+}
 
 class AiBridgePanel extends StatefulWidget {
   const AiBridgePanel({super.key});
@@ -269,11 +283,37 @@ class _AiBridgePanelState extends State<AiBridgePanel> {
   final Map<String, String> _loadedLogs = {};
   final Map<String, bool> _collapsedStates = {};
 
+  // Dry Run state
+  String? _selectedDryRunTaskId;
+  String _dryRunPrompt = '';
+  String _dryRunJson = '';
+  int _dryRunSubTab = 0; // 0 = Prompt, 1 = JSON
+  bool _isSimulating = false;
+  Timer? _simulationTimer;
+  final List<SimulatedLogEntry> _displayedSimulationLogs = [];
+  final ScrollController _simulationScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
     _checkStatus();
     _loadCollapsedStates().then((_) => _loadAllLogs());
+    AiBridgeService.instance.addListener(_onAiBridgeServiceChanged);
+    GlobalTaskEditorState.instance.activeRequest.addListener(_onActiveRequestChanged);
+    _updateDryRunData();
+  }
+
+  @override
+  void dispose() {
+    AiBridgeService.instance.removeListener(_onAiBridgeServiceChanged);
+    GlobalTaskEditorState.instance.activeRequest.removeListener(_onActiveRequestChanged);
+    _simulationTimer?.cancel();
+    _simulationScrollController.dispose();
+    super.dispose();
+  }
+
+  void _onActiveRequestChanged() {
+    _updateDryRunData();
   }
 
   Future<void> _loadCollapsedStates() async {
@@ -579,6 +619,261 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
     });
   }
 
+  void _onAiBridgeServiceChanged() {
+    _updateDryRunData();
+  }
+
+  String _getTaskPathName(AiTask task) {
+    final path = <String>[];
+    AiTask? current = task;
+    final visited = <String>{};
+    final allTasks = AiBridgeService.instance.tasks;
+    while (current != null) {
+      if (visited.contains(current.id)) break;
+      visited.add(current.id);
+      path.insert(0, current.name);
+      
+      if (current.parentId != null) {
+        current = allTasks.cast<AiTask?>().firstWhere(
+          (t) => t?.id == current!.parentId,
+          orElse: () => null,
+        );
+      } else if (current.worksheetId != null && !current.isWorksheet) {
+        current = allTasks.cast<AiTask?>().firstWhere(
+          (t) => t?.id == current!.worksheetId,
+          orElse: () => null,
+        );
+      } else {
+        current = null;
+      }
+    }
+    return path.join(' > ');
+  }
+
+  void _updateDryRunData() async {
+    final activeId = AiBridgeService.instance.activeProcessingTaskId 
+        ?? GlobalTaskEditorState.instance.activeRequest.value?.existingTask?.id
+        ?? (AiBridgeService.instance.activeTaskIds.isNotEmpty ? AiBridgeService.instance.activeTaskIds.first : null);
+    
+    if (activeId != _selectedDryRunTaskId) {
+      _simulationTimer?.cancel();
+      _isSimulating = false;
+      _displayedSimulationLogs.clear();
+    }
+
+    if (activeId == null) {
+      if (mounted) {
+        setState(() {
+          _selectedDryRunTaskId = null;
+          _dryRunPrompt = '';
+          _dryRunJson = '';
+        });
+      }
+      return;
+    }
+
+    final tasks = AiBridgeService.instance.tasks;
+    var taskIdx = tasks.indexWhere((t) => t.id == activeId);
+    AiTask? task;
+    if (taskIdx != -1) {
+      task = tasks[taskIdx];
+    } else if (GlobalTaskEditorState.instance.activeRequest.value?.existingTask?.id == activeId) {
+      task = GlobalTaskEditorState.instance.activeRequest.value?.existingTask;
+    }
+
+    if (task == null) {
+      if (mounted) {
+        setState(() {
+          _selectedDryRunTaskId = null;
+          _dryRunPrompt = '';
+          _dryRunJson = '';
+        });
+      }
+      return;
+    }
+    
+    _selectedDryRunTaskId = task.id;
+    
+    try {
+      final prompt = await AiBridgeService.instance.buildTaskPrompt(task);
+
+      // Build JSON representation matching _writeCurrentTaskFile
+      final json = task.toJson();
+      json['name'] = _getTaskPathName(task);
+      if (json['verificationCriteria'] != null) {
+        final uncheckedTasks = task.verificationCriteria
+            .where((e) =>
+                e.status != AiVerificationStatus.verified &&
+                e.status != AiVerificationStatus.ignored &&
+                !e.isPreview)
+            .toList();
+        if (uncheckedTasks.isNotEmpty) {
+          json['verificationCriteria'] = [uncheckedTasks.first.toJson()];
+        } else {
+          json['verificationCriteria'] = [];
+        }
+      }
+      final jsonStr = const JsonEncoder.withIndent('  ').convert(json);
+
+      if (mounted) {
+        setState(() {
+          _dryRunPrompt = prompt;
+          _dryRunJson = jsonStr;
+        });
+      }
+    } catch (e) {
+      debugPrint('[BridgeMonitor] Error updating dry run data: $e');
+    }
+  }
+
+  void _startDryRunSimulation(AiTask task) {
+    if (_isSimulating) return;
+
+    _simulationTimer?.cancel();
+    setState(() {
+      _isSimulating = true;
+      _displayedSimulationLogs.clear();
+    });
+
+    final steps = _generateSimulationSteps(task);
+    int stepIndex = 0;
+
+    _simulationTimer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
+      if (stepIndex < steps.length) {
+        if (mounted) {
+          setState(() {
+            _displayedSimulationLogs.add(steps[stepIndex]);
+          });
+          _scrollSimulationToEnd();
+        }
+        stepIndex++;
+      } else {
+        timer.cancel();
+        if (mounted) {
+          setState(() {
+            _isSimulating = false;
+          });
+        }
+      }
+    });
+  }
+
+  List<SimulatedLogEntry> _generateSimulationSteps(AiTask task) {
+    final pathName = _getTaskPathName(task);
+    final activeCriteria = task.verificationCriteria
+        .where((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview)
+        .toList();
+    final hasCriteria = activeCriteria.isNotEmpty;
+    final activeItemDesc = hasCriteria ? activeCriteria.first.description : 'No active checklist item';
+
+    return [
+      SimulatedLogEntry('[System]', 'Initializing dry run simulation for task: $pathName', LogType.info),
+      SimulatedLogEntry('[System]', 'Creating local workspace sandbox at .ai_scratch/sandbox_${task.id}', LogType.info),
+      SimulatedLogEntry('[System]', 'Preparing simulated environment state...', LogType.info),
+      SimulatedLogEntry('[File Write]', 'Writing agent_status.txt -> BUSY', LogType.success),
+      SimulatedLogEntry('[File Write]', 'Writing .ai_bridge/current_task.json', LogType.success),
+      SimulatedLogEntry('[System]', 'Serialized task verification criteria. Count: ${hasCriteria ? 1 : 0} (isolated focus)', LogType.info),
+      SimulatedLogEntry('[Macro]', 'Triggering "BridgeConnect" keyboard/mouse macro (runs paste.vbs)', LogType.warning),
+      SimulatedLogEntry('[Clipboard]', 'Copied AI task prompt to system clipboard (length: ${_dryRunPrompt.length} chars)', LogType.success),
+      SimulatedLogEntry('[System]', 'Simulated Bridge Connection established. Transferring control to LLM agent...', LogType.info),
+      SimulatedLogEntry('[Agent]', 'Agent wakes up, detects active checklist item: "$activeItemDesc"', LogType.agent),
+      SimulatedLogEntry('[Command]', 'Executing check: flutter analyze', LogType.command),
+      SimulatedLogEntry('[Stdout]', 'Analyzing Project...\nNo issues found! (exit code: 0)', LogType.stdout),
+      if (hasCriteria) ...[
+        SimulatedLogEntry('[Agent]', 'Locating relevant files to satisfy checklist item...', LogType.agent),
+        SimulatedLogEntry('[File Edit]', 'Simulating edits to fulfill requirement: "$activeItemDesc"', LogType.success),
+      ],
+      SimulatedLogEntry('[Command]', 'Executing test suite check: flutter test', LogType.command),
+      SimulatedLogEntry('[Stdout]', 'Testing Project...\nAll tests passed successfully! (exit code: 0)', LogType.stdout),
+      SimulatedLogEntry('[File Write]', 'Writing .ai_bridge/latest_notes.json', LogType.success),
+      SimulatedLogEntry('[File Write]', 'Writing .ai_bridge/agent_status.txt -> IDLE', LogType.success),
+      SimulatedLogEntry('[System]', 'Dry run simulation finished. Checklist item verified successfully!', LogType.info),
+    ];
+  }
+
+  void _scrollSimulationToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_simulationScrollController.hasClients) {
+        _simulationScrollController.animateTo(
+          _simulationScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Color _getLogPrefixColor(LogType type) {
+    switch (type) {
+      case LogType.info:
+        return Colors.cyanAccent;
+      case LogType.success:
+        return Colors.lightGreenAccent;
+      case LogType.warning:
+        return Colors.orangeAccent;
+      case LogType.error:
+        return Colors.redAccent;
+      case LogType.command:
+        return Colors.yellowAccent;
+      case LogType.stdout:
+        return Colors.white54;
+      case LogType.agent:
+        return const Color(0xFFE040FB);
+    }
+  }
+
+  Color _getLogMessageColor(LogType type) {
+    switch (type) {
+      case LogType.stdout:
+        return Colors.white70;
+      case LogType.command:
+        return Colors.white;
+      default:
+        return Colors.white.withOpacity(0.9);
+    }
+  }
+
+  Widget _buildSubTabButton(int index, String title, IconData icon) {
+    final isActive = _dryRunSubTab == index;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _dryRunSubTab = index;
+        });
+      },
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive ? AppColors.accent.withOpacity(0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: isActive ? AppColors.accent.withOpacity(0.5) : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: isActive ? AppColors.accent : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              title,
+              style: TextStyle(
+                color: isActive ? AppColors.textPrimary : AppColors.textSecondary,
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final statusColor = _isOnline ? Colors.greenAccent : Colors.redAccent;
@@ -594,7 +889,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
         final isTesting = AiBridgeService.instance.isTesting;
 
         return DefaultTabController(
-          length: 2,
+          length: 3,
           child: Column(
             children: [
               Container(
@@ -611,6 +906,10 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                     Tab(
                       icon: Icon(Icons.health_and_safety_outlined, size: 18),
                       text: 'Diagnostics & Status',
+                    ),
+                    Tab(
+                      icon: Icon(Icons.play_circle_outline_rounded, size: 18),
+                      text: 'Dry Run',
                     ),
                   ],
                   labelColor: AppColors.accent,
@@ -1232,6 +1531,334 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                           ),
                         ],
                       ),
+                    ),
+                    // Tab 3: Dry Run
+                    Builder(
+                      builder: (context) {
+                        final tasks = AiBridgeService.instance.tasks;
+                        final executableTasks = tasks.where((t) => !t.isFolder && !t.isWorksheet).toList();
+                        return Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Top Control Bar: Dropdown + Play button
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.panelBackground,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.border),
+                                ),
+                                child: Row(
+                                  children: [
+                                    // Active task status display
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: AppColors.border),
+                                          borderRadius: BorderRadius.circular(4),
+                                          color: Colors.black.withOpacity(0.2),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: BoxDecoration(
+                                                color: _selectedDryRunTaskId != null ? Colors.greenAccent : Colors.grey,
+                                                shape: BoxShape.circle,
+                                                boxShadow: _selectedDryRunTaskId != null
+                                                    ? [
+                                                        BoxShadow(
+                                                          color: Colors.greenAccent.withOpacity(0.5),
+                                                          blurRadius: 4,
+                                                          spreadRadius: 1,
+                                                        )
+                                                      ]
+                                                    : null,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    'ACTIVE TASK',
+                                                    style: TextStyle(
+                                                      color: AppColors.accent,
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.bold,
+                                                      letterSpacing: 1.1,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Builder(
+                                                    builder: (context) {
+                                                      final activeTask = _selectedDryRunTaskId != null
+                                                          ? tasks.cast<AiTask?>().firstWhere(
+                                                              (t) => t?.id == _selectedDryRunTaskId,
+                                                              orElse: () => null,
+                                                            )
+                                                          : null;
+                                                      return Text(
+                                                        activeTask != null
+                                                            ? _getTaskPathName(activeTask)
+                                                            : 'No active task currently processing',
+                                                        style: TextStyle(
+                                                          color: activeTask != null ? AppColors.textPrimary : AppColors.textSecondary,
+                                                          fontSize: 12,
+                                                          fontWeight: activeTask != null ? FontWeight.bold : FontWeight.normal,
+                                                        ),
+                                                        overflow: TextOverflow.ellipsis,
+                                                      );
+                                                    }
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    // Play / Simulation Button
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: _isSimulating
+                                            ? Colors.grey.withOpacity(0.1)
+                                            : AppColors.accent.withOpacity(0.15),
+                                        foregroundColor: _isSimulating ? Colors.grey : AppColors.accent,
+                                        side: BorderSide(
+                                          color: _isSimulating
+                                              ? Colors.grey.withOpacity(0.5)
+                                              : AppColors.accent.withOpacity(0.5),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                      ),
+                                      icon: _isSimulating
+                                          ? const SizedBox(
+                                              width: 14,
+                                              height: 14,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor: AlwaysStoppedAnimation(Colors.grey),
+                                              ),
+                                            )
+                                          : const Icon(Icons.play_arrow_rounded, size: 16),
+                                      label: Text(
+                                        _isSimulating ? 'Simulating...' : 'Simulate Dry Run',
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                      ),
+                                      onPressed: _isSimulating || _selectedDryRunTaskId == null
+                                          ? null
+                                          : () {
+                                              final task = tasks.firstWhere((t) => t.id == _selectedDryRunTaskId);
+                                              _startDryRunSimulation(task);
+                                            },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Split Screen Content
+                              Expanded(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    // Left Column: Terminal Simulation Logs
+                                    Expanded(
+                                      flex: 5,
+                                      child: Card(
+                                        color: Colors.black.withOpacity(0.5),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          side: BorderSide(color: AppColors.border),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                                          children: [
+                                            // Terminal Header
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black26,
+                                                border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
+                                                borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  const Icon(Icons.terminal_rounded, size: 14, color: Colors.white70),
+                                                  const SizedBox(width: 8),
+                                                  const Text(
+                                                    'Simulation Log Terminal',
+                                                    style: TextStyle(
+                                                      color: Colors.white70,
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  const Spacer(),
+                                                  if (_displayedSimulationLogs.isNotEmpty)
+                                                    IconButton(
+                                                      padding: EdgeInsets.zero,
+                                                      constraints: const BoxConstraints(),
+                                                      icon: const Icon(Icons.delete_sweep_outlined, size: 14, color: Colors.white54),
+                                                      onPressed: () {
+                                                        setState(() {
+                                                          _displayedSimulationLogs.clear();
+                                                        });
+                                                      },
+                                                      tooltip: 'Clear Logs',
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                            // Logs Content
+                                            Expanded(
+                                              child: Container(
+                                                padding: const EdgeInsets.all(8),
+                                                color: Colors.black.withOpacity(0.2),
+                                                child: _displayedSimulationLogs.isEmpty
+                                                    ? Center(
+                                                        child: Text(
+                                                          'No simulation logs yet.\nClick "Simulate Dry Run" to run.',
+                                                          textAlign: TextAlign.center,
+                                                          style: TextStyle(
+                                                            color: AppColors.textSecondary.withOpacity(0.5),
+                                                            fontSize: 11,
+                                                            fontStyle: FontStyle.italic,
+                                                          ),
+                                                        ),
+                                                      )
+                                                    : Scrollbar(
+                                                        controller: _simulationScrollController,
+                                                        child: ListView.builder(
+                                                          controller: _simulationScrollController,
+                                                          itemCount: _displayedSimulationLogs.length,
+                                                          itemBuilder: (context, index) {
+                                                            final entry = _displayedSimulationLogs[index];
+                                                            final prefixColor = _getLogPrefixColor(entry.type);
+                                                            final msgColor = _getLogMessageColor(entry.type);
+                                                            return Padding(
+                                                              padding: const EdgeInsets.symmetric(vertical: 2),
+                                                              child: Text.rich(
+                                                                TextSpan(
+                                                                  children: [
+                                                                    TextSpan(
+                                                                      text: '${entry.prefix} ',
+                                                                      style: TextStyle(
+                                                                        color: prefixColor,
+                                                                        fontWeight: FontWeight.bold,
+                                                                        fontFamily: 'monospace',
+                                                                        fontSize: 11,
+                                                                      ),
+                                                                    ),
+                                                                    TextSpan(
+                                                                      text: entry.message,
+                                                                      style: TextStyle(
+                                                                        color: msgColor,
+                                                                        fontFamily: 'monospace',
+                                                                        fontSize: 11,
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              ),
+                                                            );
+                                                          },
+                                                        ),
+                                                      ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    // Right Column: Payload Preview
+                                    Expanded(
+                                      flex: 6,
+                                      child: Card(
+                                        color: AppColors.panelBackground,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          side: BorderSide(color: AppColors.border),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                                          children: [
+                                            // Payload Header with Sub-tabs & Copy Button
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.panelBackground.withValues(alpha: 0.8),
+                                                border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
+                                                borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                                                ),
+                                              child: Row(
+                                                children: [
+                                                  _buildSubTabButton(0, 'AI Task Prompt', Icons.description_outlined),
+                                                  const SizedBox(width: 6),
+                                                  _buildSubTabButton(1, 'current_task.json', Icons.code_rounded),
+                                                  const Spacer(),
+                                                  IconButton(
+                                                    padding: EdgeInsets.zero,
+                                                    constraints: const BoxConstraints(),
+                                                    icon: const Icon(Icons.copy_all, size: 16, color: Colors.white70),
+                                                    onPressed: () async {
+                                                      final content = _dryRunSubTab == 0 ? _dryRunPrompt : _dryRunJson;
+                                                      if (content.isNotEmpty) {
+                                                        await Clipboard.setData(ClipboardData(text: content));
+                                                        if (context.mounted) {
+                                                          final label = _dryRunSubTab == 0 ? 'AI Task Prompt' : 'current_task.json';
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            SnackBar(content: Text('Copied $label to clipboard!')),
+                                                          );
+                                                        }
+                                                      }
+                                                    },
+                                                    tooltip: 'Copy Payload',
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            // Code View Container
+                                            Expanded(
+                                              child: Container(
+                                                padding: const EdgeInsets.all(12),
+                                                color: Colors.black.withOpacity(0.3),
+                                                child: SingleChildScrollView(
+                                                  child: Text(
+                                                    _dryRunSubTab == 0
+                                                        ? (_dryRunPrompt.isEmpty ? 'No prompt loaded.' : _dryRunPrompt)
+                                                        : (_dryRunJson.isEmpty ? 'No task JSON loaded.' : _dryRunJson),
+                                                    style: TextStyle(
+                                                      color: AppColors.textPrimary.withOpacity(0.85),
+                                                      fontFamily: 'monospace',
+                                                      fontSize: 11,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
                     ),
                   ],
                 ),

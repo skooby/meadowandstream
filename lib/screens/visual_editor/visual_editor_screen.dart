@@ -915,56 +915,28 @@ if (-not \$activated) {
           ValueListenableBuilder<bool>(
             valueListenable: showGlobalTaskPanelNotifier,
             builder: (context, isActive, child) {
+              final def = AppToolWindows.getDef('ai_bridge');
               return Tooltip(
-                message: 'Toggle AI Bridge',
+                message: 'Toggle Task Manager',
                 preferBelow: false,
                 child: InkWell(
                   onTap: toggleGlobalTaskPanel,
                   child: Container(
                     width: 48 * _uiScale, height: 60 * _uiScale,
                     decoration: BoxDecoration(
-                      border: Border(left: BorderSide(color: isActive ? Colors.redAccent : Colors.transparent, width: 2.0))
+                      border: Border(left: BorderSide(color: isActive ? def.color : Colors.transparent, width: 2.0))
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                           AiBridgeActivityIcon(
                             size: 20,
-                            color: isActive ? Colors.redAccent : (AppUIConfig.bridgeIconColor ?? Colors.white38),
-                            defaultIcon: AppUIConfig.bridgeIconCodePoint != null ? IconData(AppUIConfig.bridgeIconCodePoint!, fontFamily: 'MaterialIcons') : Icons.rocket_launch,
+                            color: isActive ? def.color : def.color.withOpacity(0.38),
+                            defaultIcon: def.icon,
+                            toolWindowId: 'ai_bridge',
                           ),
                         const SizedBox(height: 2),
                         Text('Bridge', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.visible, style: TextStyle(color: Colors.white, fontSize: AppUIConfig.iconFontSize, height: 1.0, fontWeight: AppUIConfig.iconFontBold ? FontWeight.bold : FontWeight.normal)),
-                      ]
-                    )
-                  )
-                )
-              );
-            }
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: showBridgeMonitorNotifier,
-            builder: (context, isActive, child) {
-              return Tooltip(
-                message: 'Toggle Bridge Monitor',
-                preferBelow: false,
-                child: InkWell(
-                  onTap: toggleBridgeMonitorWindow,
-                  child: Container(
-                    width: 48 * _uiScale, height: 60 * _uiScale,
-                    decoration: BoxDecoration(
-                      border: Border(left: BorderSide(color: isActive ? AppToolWindows.getDef('bridge_monitor').color : Colors.transparent, width: 2.0))
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AiBridgeActivityIcon(
-                          size: 20,
-                          color: isActive ? AppToolWindows.getDef('bridge_monitor').color : Colors.white38,
-                          defaultIcon: Icons.analytics,
-                        ),
-                        const SizedBox(height: 2),
-                        Text('Monitor', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.visible, style: TextStyle(color: Colors.white, fontSize: AppUIConfig.iconFontSize, height: 1.0, fontWeight: AppUIConfig.iconFontBold ? FontWeight.bold : FontWeight.normal)),
                       ]
                     )
                   )
