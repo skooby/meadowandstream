@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../choreography/choreography_engine.dart';
+import '../services/storage_url_resolver.dart';
 
 class EditorStateController extends ChangeNotifier {
   ChoreographyConfig? config;
@@ -52,7 +53,7 @@ class EditorStateController extends ChangeNotifier {
     }
   }
 
-  Future<bool> tryRestoreLastSession() async {
+  Future<bool> tryRestoreLastSession([StorageUrlResolver? urlResolver]) async {
     final prefs = await SharedPreferences.getInstance();
     final String? lastPath = prefs.getString('ve_last_opened_path');
     final String? lastType = prefs.getString('ve_last_opened_type');
@@ -62,9 +63,25 @@ class EditorStateController extends ChangeNotifier {
 
     try {
       String jsonStr;
+      String? mirror = prefs.getString('ve_last_opened_mirror');
+      
       if (lastType == 'asset') {
-         final bytes = await Supabase.instance.client.storage.from('tenant-assets').download(lastPath);
-         jsonStr = utf8.decode(bytes);
+         if ((mirror == null || mirror.isEmpty) && urlResolver != null) {
+           mirror = await urlResolver.resolvePlayableUrl(lastPath);
+           if (mirror != null && mirror.isNotEmpty) {
+             await prefs.setString('ve_last_opened_mirror', mirror);
+           }
+         }
+
+         if (mirror != null && await File(mirror).exists()) {
+           jsonStr = await File(mirror).readAsString();
+         } else {
+           final bytes = await Supabase.instance.client.storage
+               .from('tenant-assets')
+               .download(lastPath)
+               .timeout(const Duration(milliseconds: 1500));
+           jsonStr = utf8.decode(bytes);
+         }
       } else {
          final file = File(lastPath);
          if (!await file.exists()) return false;
@@ -72,7 +89,6 @@ class EditorStateController extends ChangeNotifier {
       }
 
       final configObj = ChoreographyConfig.fromJson(jsonDecode(jsonStr));
-      final String? mirror = prefs.getString('ve_last_opened_mirror');
       loadConfig(lastPath, configObj, targetType: lastType, targetName: lastName ?? lastPath.split('/').last, localPath: mirror);
       return true;
     } catch (e) {

@@ -41,6 +41,7 @@ import 'services/system_logs_service.dart';
 import 'services/profiler_service.dart';
 import 'services/control_type_registry.dart';
 import 'services/sandbox_service.dart';
+import 'services/ai_bridge_service.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -88,17 +89,10 @@ Future<void> main(List<String> args) async {
   JustAudioMediaKit.ensureInitialized();
   AppProfilerService.instance.init();
 
-  await dotenv.load(fileName: ".env"); // Added this line
-  // 1. Initialize our environment secrets
+  // 1. Launch the loading placeholder app immediately to paint the splash screen.
+  runApp(const AppInitializationPlaceholder());
 
-  await Env.init();
-
-  // 2. Initialize Supabase globally using the secure env
-  await SupabaseService.initialize();
-
-  // 3. Initialize tenant selection
-  await TenantService.init();
-
+  // 2. Show the native window immediately so the painted frame becomes visible.
   if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
     await windowManager.ensureInitialized();
     final prefs = await SharedPreferences.getInstance();
@@ -125,7 +119,13 @@ Future<void> main(List<String> args) async {
     });
   }
 
-  // Initialize Auth Services
+  // 3. Perform the slow asynchronous initialization tasks in the background while the UI is responsive.
+  await dotenv.load(fileName: ".env");
+  await Env.init();
+  await SupabaseService.initialize();
+  await TenantService.init();
+
+  // Initialize Auth Services after Supabase has successfully loaded.
   final authService = AuthService();
   final audioPlayerService = AudioPlayerService();
   final supabaseClient = Supabase.instance.client;
@@ -136,7 +136,11 @@ Future<void> main(List<String> args) async {
         Provider<AuthService>.value(value: authService),
         Provider<AudioPlayerService>.value(value: audioPlayerService),
         Provider<AppDatabase>(
-          create: (_) => AppDatabase(),
+          create: (context) {
+            final db = AppDatabase();
+            AiBridgeService.instance.initialize(db);
+            return db;
+          },
           dispose: (_, db) => db.close(),
         ),
         Provider<I18nDao>(
@@ -227,3 +231,106 @@ Future<void> main(List<String> args) async {
     ),
   );
 }
+
+class AppInitializationPlaceholder extends StatelessWidget {
+  const AppInitializationPlaceholder({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(),
+      home: Scaffold(
+        backgroundColor: const Color(0xFF1E1E2C), // AppColors.backgroundDark
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF1E1E2C), // Deep Indigo-Slate
+                Color(0xFF111119), // Almost Black
+              ],
+            ),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Glowing/Glassmorphic Container for the App Logo/Icon
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE94560).withOpacity(0.08),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFE94560).withOpacity(0.3),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFE94560).withOpacity(0.2),
+                        blurRadius: 30,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.headphones_rounded,
+                    size: 64,
+                    color: Color(0xFFE94560),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                // App Title
+                const Text(
+                  'MEADOW & STREAM',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 4.0,
+                    color: Colors.white,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'THE BIONIC MAN',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 2.0,
+                    color: Colors.white.withOpacity(0.5),
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 48),
+                // Premium Progress Indicator
+                SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3.5,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFE94560)),
+                    backgroundColor: Colors.white.withOpacity(0.08),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Subtext
+                Text(
+                  'Starting up the experience...',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withOpacity(0.4),
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

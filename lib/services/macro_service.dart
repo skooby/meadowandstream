@@ -513,6 +513,37 @@ public class Win32 {
     public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
     [DllImport("user32.dll")]
     public static extern bool BlockInput(bool fBlockIt);
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern int GetWindowTextLength(IntPtr hWnd);
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+    
+    public static string GetVisibleWindows() {
+        var sb = new System.Text.StringBuilder();
+        EnumWindows(delegate(IntPtr hWnd, IntPtr lParam) {
+            if (IsWindowVisible(hWnd)) {
+                int length = GetWindowTextLength(hWnd);
+                if (length > 0) {
+                    var titleSb = new System.Text.StringBuilder(length + 1);
+                    GetWindowText(hWnd, titleSb, titleSb.Capacity);
+                    sb.Append(hWnd.ToInt64().ToString() + "|" + titleSb.ToString() + "\n");
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return sb.ToString();
+    }
     
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
@@ -520,7 +551,6 @@ public class Win32 {
     public struct POINT { public int X; public int Y; }
 }
 "@
-
 $global:SavedWindowRect = $null
 $global:SavedWindowHwnd = $null
 
@@ -698,19 +728,102 @@ function SwitchWindow {
     [System.Diagnostics.DebuggerHidden()]
     param([string]$title)
     $wshell = New-Object -ComObject wscript.shell
-    $process = Get-Process | Where-Object MainWindowTitle -match $title | Select-Object -First 1
-    if ($process) {
-        Write-Host "MACRO_LOG|SwitchWindow: Found process '$($process.Name)' with MainWindowTitle '$($process.MainWindowTitle)', HWND: $($process.MainWindowHandle)"
-        $wshell.AppActivate($process.Id) | Out-Null
+    
+    # 1. Get the list of process IDs to exclude (current macro process and all its parent processes)
+    $excludePids = @($PID)
+    $currentPid = $PID
+    while ($currentPid) {
+        $p = $null
+        try {
+            $p = Get-CimInstance Win32_Process -Filter "ProcessId = $currentPid" -ErrorAction SilentlyContinue | Select-Object -First 1
+        } catch {
+            $p = Get-WmiObject Win32_Process -Filter "ProcessId = $currentPid" -ErrorAction SilentlyContinue | Select-Object -First 1
+        }
+        if ($p -and $p.ParentProcessId -and $p.ParentProcessId -ne 0) {
+            $currentPid = $p.ParentProcessId
+            $excludePids += $currentPid
+        } else {
+            $currentPid = $null
+        }
+    }
+    
+    # 2. Enumerate all visible windows to find a match by title (regex or substring)
+    $windowsText = [Win32]::GetVisibleWindows()
+    $windows = $windowsText -split "`n" | Where-Object { $_ } | ForEach-Object {
+        $parts = $_ -split '\|', 2
+        if ($parts.Length -eq 2) {
+            [PSCustomObject]@{
+                Hwnd = [IntPtr][int64]$parts[0]
+                Title = $parts[1]
+            }
+        }
+    }
+    
+    $match = $null
+    if ($windows) {
+        $match = $windows | Where-Object {
+            $winHwnd = $_.Hwnd
+            $winPid = 0
+            [Win32]::GetWindowThreadProcessId($winHwnd, [ref]$winPid) | Out-Null
+            if ($excludePids -contains $winPid) {
+                # Skip windows belonging to our process tree
+                return $false
+            }
+            return $_.Title -match $title
+        } | Select-Object -First 1
+    }
+    
+    # 3. Fuzzy fallback matching for terminal/console windows if no direct match is found
+    if (-not $match -and ($title -match 'powershell|pwsh|cmd|terminal')) {
+        Write-Host "MACRO_LOG|SwitchWindow: Match not found for '$title', attempting fuzzy match for terminal..."
+        if ($windows) {
+            $match = $windows | Where-Object {
+                $winHwnd = $_.Hwnd
+                $winPid = 0
+                [Win32]::GetWindowThreadProcessId($winHwnd, [ref]$winPid) | Out-Null
+                if ($excludePids -contains $winPid) {
+                    return $false
+                }
+                return $_.Title -match 'powershell|pwsh|cmd|command prompt|terminal'
+            } | Select-Object -First 1
+        }
+    }
+    
+    # 4. Activate the window
+    if ($match) {
+        $targetPid = 0
+        [Win32]::GetWindowThreadProcessId($match.Hwnd, [ref]$targetPid) | Out-Null
+        Write-Host "MACRO_LOG|SwitchWindow: Found matching window '$($match.Title)' (HWND: $($match.Hwnd), PID: $targetPid)"
+        
+        # Restore if minimized
+        [Win32]::ShowWindow($match.Hwnd, 9) | Out-Null
+        
+        # Set foreground window natively
+        [Win32]::SetForegroundWindow($match.Hwnd) | Out-Null
+        
+        # Also attempt wshell AppActivate using process ID (handles terminal focus-stealing issues)
+        if ($targetPid -ne 0) {
+            $wshell.AppActivate($targetPid) | Out-Null
+        } else {
+            $wshell.AppActivate($match.Title) | Out-Null
+        }
+        
+        # Wait up to 500ms for activation
         $timeout = 50
-        while ([Win32]::GetForegroundWindow() -ne $process.MainWindowHandle -and $timeout -gt 0) {
+        while ($timeout -gt 0) {
+            $fgHwnd = [Win32]::GetForegroundWindow()
+            $fgPid = 0
+            [Win32]::GetWindowThreadProcessId($fgHwnd, [ref]$fgPid) | Out-Null
+            if ($fgPid -eq $targetPid -or $fgHwnd -eq $match.Hwnd) {
+                break
+            }
             Start-Sleep -Milliseconds 10
             $timeout--
         }
         $finalForeground = [Win32]::GetForegroundWindow()
-        Write-Host "MACRO_LOG|SwitchWindow: Finished wait. Target HWND: $($process.MainWindowHandle), Final Foreground HWND: $finalForeground, Timeout left: $timeout"
+        Write-Host "MACRO_LOG|SwitchWindow: Finished wait. Final HWND: $finalForeground, Timeout left: $timeout"
     } else {
-        Write-Host "MACRO_LOG|SwitchWindow: Could not find process matching '$title'. Falling back to AppActivate string."
+        Write-Host "MACRO_LOG|SwitchWindow: Could not find any matching window for '$title'. Falling back to AppActivate string."
         $wshell.AppActivate($title) | Out-Null
         Start-Sleep -Milliseconds 200
     }

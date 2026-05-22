@@ -839,20 +839,22 @@ if (-not \$activated) {
   void _initializeEditor() {
     final editorState = context.read<EditorStateController>();
     final lyricsState = context.read<LyricsViewController>();
+    final urlResolver = context.read<StorageUrlResolver>();
     
     if (editorState.config == null) {
-       editorState.tryRestoreLastSession().then((restored) async {
+       editorState.tryRestoreLastSession(urlResolver).then((restored) async {
           if (restored && editorState.config != null) {
               if (mounted) {
                   lyricsState.overrideEditorConfig(editorState.config!); // Use override instead of loadExternalConfig to prevent wiping!
                   
                   final prefs = await SharedPreferences.getInstance();
-                  final audioPath = prefs.getString('ve_audioUrl_for_${editorState.currentFilePath}');
+                  var audioPath = prefs.getString('ve_audioUrl_for_${editorState.currentFilePath}');
                   
                   if (audioPath != null && audioPath.isNotEmpty && mounted) {
-                      final st = (audioPath.startsWith('/') || audioPath.startsWith('C:') || audioPath.startsWith('file:')) ? SourceType.file : SourceType.url;
-                      context.read<PlayerController>().loadQueue([ItemSource(id: 'asset_preview', title: editorState.loadedTargetName, sourceType: st, source: audioPath)]);
-                      lyricsState.loadForCurrentItem('restore', audioPath);
+                      final resolvedAudio = await urlResolver.resolvePlayableUrl(audioPath) ?? audioPath;
+                      final st = (resolvedAudio.startsWith('/') || resolvedAudio.startsWith('C:') || resolvedAudio.startsWith('file:')) ? SourceType.file : SourceType.url;
+                      context.read<PlayerController>().loadQueue([ItemSource(id: 'asset_preview', title: editorState.loadedTargetName, sourceType: st, source: resolvedAudio)]);
+                      lyricsState.loadForCurrentItem('restore', resolvedAudio);
                   } else {
                      if (editorState.loadedTargetType == 'asset') {
                         _simulatorWindowKey.currentState?.setPreviewMode('ELEMENT');
@@ -1026,8 +1028,19 @@ if (-not \$activated) {
       try {
           final sb = Supabase.instance.client;
           Uint8List bytes;
+          String? localPath;
+          
+          if (type == 'asset') {
+              try {
+                  final storageResolver = context.read<StorageUrlResolver>();
+                  localPath = await storageResolver.resolvePlayableUrl(id);
+              } catch (_) {}
+          }
+
           if (AssetsPanelSessionCache.modifiedFiles.containsKey(id)) {
               bytes = AssetsPanelSessionCache.modifiedFiles[id]!;
+          } else if (localPath != null && await File(localPath).exists()) {
+              bytes = await File(localPath).readAsBytes();
           } else {
               bytes = await sb.storage.from('tenant-assets').download(id);
           }
@@ -1050,7 +1063,8 @@ if (-not \$activated) {
             id, 
             configObj,
             targetType: type,
-            targetName: finalTargetName
+            targetName: finalTargetName,
+            localPath: localPath,
           );
           
           if (type == 'asset') {
@@ -1165,7 +1179,7 @@ if (-not \$activated) {
 
                       context.read<PlayerController>().loadQueue([ItemSource(id: 'asset_preview', title: baseName, sourceType: st, source: audioUrl)]);
                       context.read<LyricsViewController>().loadForCurrentItem(id, audioUrl);
-                      context.read<EditorStateController>().loadConfig(id, configObj, targetType: type, targetName: finalTargetName);
+                      context.read<EditorStateController>().loadConfig(id, configObj, targetType: type, targetName: finalTargetName, localPath: localPath);
                   } else {
                       _simulatorWindowKey.currentState?.setPreviewMode('ELEMENT');
                       context.read<LyricsViewController>().loadExternalConfig(configObj);

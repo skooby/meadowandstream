@@ -95,7 +95,8 @@ class StorageUrlResolver {
       } else {
         final signedUrl = await _supabase.storage
             .from(StorageConfig.defaultAudioBucket)
-            .createSignedUrl(sourceUrl, StorageConfig.signedUrlExpirySeconds);
+            .createSignedUrl(sourceUrl, StorageConfig.signedUrlExpirySeconds)
+            .timeout(const Duration(milliseconds: 1500));
 
         _cache[cacheKey] = ResolvedAudioUrl(
             url: signedUrl,
@@ -181,7 +182,8 @@ class StorageUrlResolver {
         final List<dynamic> response = await _supabase.storage
             .from(StorageConfig.defaultAudioBucket)
             .createSignedUrls(
-                pathsToResolve, StorageConfig.signedUrlExpirySeconds);
+                pathsToResolve, StorageConfig.signedUrlExpirySeconds)
+            .timeout(const Duration(milliseconds: 2000), onTimeout: () => const []);
 
         for (var item in response) {
           final map = item as Map<String, dynamic>;

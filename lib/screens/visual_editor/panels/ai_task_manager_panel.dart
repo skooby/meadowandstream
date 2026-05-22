@@ -3898,13 +3898,21 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                 ),
                                 const SizedBox(width: 8),
                                 IconButton(
-                                    icon: Icon(Icons.stop, size: 16, color: AppColors.error),
-                                    onPressed: () => AiBridgeService.instance.clearQueue(),
-                                    tooltip: 'Clear Queue',
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                  )
-                                ])),
+                                     icon: Icon(Icons.stop, size: 16, color: AppColors.error),
+                                     onPressed: () => AiBridgeService.instance.clearQueue(),
+                                     tooltip: 'Clear Queue',
+                                     padding: EdgeInsets.zero,
+                                     constraints: const BoxConstraints(),
+                                   ),
+                                 const SizedBox(width: 8),
+                                 IconButton(
+                                     icon: const Icon(Icons.restart_alt, size: 16, color: Colors.orangeAccent),
+                                     onPressed: () => AiBridgeService.instance.forceResetIdle(),
+                                     tooltip: 'Force Reset IDLE (Unstick)',
+                                     padding: EdgeInsets.zero,
+                                     constraints: const BoxConstraints(),
+                                   )
+                                 ])),
                       if (_showAiQueue)
                         Container(
                           constraints: BoxConstraints(

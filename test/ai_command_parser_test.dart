@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
+import 'package:drift/native.dart';
 import 'package:music_app/db/app_database.dart';
 import 'package:music_app/db/daos/i18n_dao.dart';
 import 'package:music_app/db/daos/assets_dao.dart';
@@ -50,12 +51,15 @@ void main() {
       await Supabase.initialize(
         url: 'https://lswberciytrkxjftryei.supabase.co',
         anonKey: 'sb_publishable__oj8jDk8aa8fs9q7UGFkLg_1px6aaVN',
+        authOptions: const FlutterAuthClientOptions(
+          autoRefreshToken: false,
+        ),
       );
     } catch (_) {
       // Already initialized
     }
     
-    final db = AppDatabase();
+    final db = AppDatabase(NativeDatabase.memory());
     final i18nDao = I18nDao(db);
     final assetsDao = AssetsDao(db);
     final assetTagsDao = AssetTagsDao(db);
@@ -80,36 +84,38 @@ void main() {
 
     final context = tester.element(find.byType(Container));
     
-    // 1. Create a folder with table tags
-    final logs1 = await AiCommandParser.executeBatch('folder create "Mood" --table tags', context);
-    expect(logs1.any((l) => l.contains('[OK] Folder "Mood"')), isTrue);
-    
-    // 2. Create a tag under the folder
-    final logs2 = await AiCommandParser.executeBatch('tag create "Inspirational" --folder "Mood" --color "#FFAA55"', context);
-    expect(logs2.any((l) => l.contains('[OK] Tag "Inspirational"')), isTrue);
-    
-    // 3. Verify tag exists in local database
-    final tag = await (i18nDao.select(i18nDao.strings)
-      ..where((s) => s.key.equals('tag.mood.inspirational'))).getSingleOrNull();
+    await tester.runAsync(() async {
+      // 1. Create a folder with table tags
+      final logs1 = await AiCommandParser.executeBatch('folder create "Mood" --table tags', context);
+      expect(logs1.any((l) => l.contains('[OK] Folder "Mood"')), isTrue);
       
-    expect(tag, isNotNull);
-    final nonNullTag = tag!;
-    expect(nonNullTag.color, equals('#FFAA55'));
-    expect(nonNullTag.type, equals('STRING'));
-    
-    // 4. Verify translation exists
-    final trans = await i18nDao.getTranslation('tag.mood.inspirational', 'en');
-    expect(trans, equals('Inspirational'));
+      // 2. Create a tag under the folder
+      final logs2 = await AiCommandParser.executeBatch('tag create "Inspirational" --folder "Mood" --color "#FFAA55"', context);
+      expect(logs2.any((l) => l.contains('[OK] Tag "Inspirational"')), isTrue);
+      
+      // 3. Verify tag exists in local database
+      final tag = await (i18nDao.select(i18nDao.strings)
+        ..where((s) => s.key.equals('tag.mood.inspirational'))).getSingleOrNull();
+        
+      expect(tag, isNotNull);
+      final nonNullTag = tag!;
+      expect(nonNullTag.color, equals('#FFAA55'));
+      expect(nonNullTag.type, equals('STRING'));
+      
+      // 4. Verify translation exists
+      final trans = await i18nDao.getTranslation('tag.mood.inspirational', 'en');
+      expect(trans, equals('Inspirational'));
+    });
     
     await db.close();
   });
 
-  testWidgets('I18nDao getOrCreateLangId does not enter infinite recursion', (WidgetTester tester) async {
+  test('I18nDao getOrCreateLangId does not enter infinite recursion', () async {
     SharedPreferences.setMockInitialValues({
       'stored_tenant_id': 1,
     });
     
-    final db = AppDatabase();
+    final db = AppDatabase(NativeDatabase.memory());
     final i18nDao = I18nDao(db);
     
     // Clear languages table to ensure it is empty

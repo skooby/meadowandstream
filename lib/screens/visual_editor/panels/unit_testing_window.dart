@@ -279,7 +279,8 @@ class _UnitTestingWindowState extends State<UnitTestingWindow> {
                            final StringBuffer sb = StringBuffer();
                            sb.writeln('# PRIMARY DIRECTIVES');
                            sb.writeln('> [!IMPORTANT]');
-                           sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n');
+                           sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.');
+                           sb.writeln('To align context with the current workspace state, you must also read the recent conversation history in `.ai_bridge/conversation_history.md` and the database dump in `.ai_bridge/db_dump.json` using your file-reading tools.\n');
                            
                            sb.writeln('SAFETY ABORT PROTOCOL: Regardless of whether you are in LIVE or PREVIEW mode, if a task is not clear, potentially harmful, extensive, or requires system-wide core changes, DO NOT execute code. Instead, generate a `.ai_bridge/latest_preview.json` containing your questions or concerns to be resolved (use the description field), and write `PREVIEW` to `.ai_bridge/agent_status.txt`. This will dynamically switch the app to preview mode and pause for human review.');
                            

@@ -278,7 +278,8 @@ class _AttachmentViewerWindowState extends State<AttachmentViewerWindow> {
 
     final prompt = '# PRIMARY DIRECTIVES\n'
         '> [!IMPORTANT]\n'
-        'CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n\n'
+        'CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n'
+        'To align context with the current workspace state, you must also read the recent conversation history in `.ai_bridge/conversation_history.md` and the database dump in `.ai_bridge/db_dump.json` using your file-reading tools.\n\n'
         'Voice: Direct / Robotic\n'
         'Complexity: Verbose\n\n'
         'You are performing a one-shot analysis of an attachment file. '

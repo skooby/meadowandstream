@@ -38,7 +38,8 @@ class TenantService {
           .from('tenants')
           .select('id')
           .eq('slug', appCode) // Assumes a 'slug' column. Change if necessary.
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(const Duration(milliseconds: 1500));
 
       if (response != null && response['id'] != null) {
         return int.tryParse(response['id'].toString());

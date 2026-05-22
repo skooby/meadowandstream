@@ -9,6 +9,7 @@ import '../db/daos/assets_dao.dart';
 import '../db/daos/asset_tags_dao.dart';
 import '../scripts/tenant_service.dart';
 import 'folder_engine.dart';
+import '../services/ai_bridge_service.dart';
 
 class AiCommandParser {
   /// Executes a bash-style command block against the local DAOs and remote Supabase instance natively.
@@ -126,6 +127,9 @@ class AiCommandParser {
          logs.add('  [ERROR] Line ${i+1}: $e');
        }
     }
+    try {
+      await AiBridgeService.instance.syncDatabaseDump();
+    } catch (_) {}
     return logs;
   }
 

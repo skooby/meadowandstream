@@ -2315,7 +2315,8 @@ verificationCriteriaList[i].isCommitted = false;
                                           final sb = StringBuffer();
                                           sb.writeln('# PRIMARY DIRECTIVES');
                                           sb.writeln('> [!IMPORTANT]');
-                                          sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n');
+                                          sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.');
+                                          sb.writeln('To align context with the current workspace state, you must also read the recent conversation history in `.ai_bridge/conversation_history.md` and the database dump in `.ai_bridge/db_dump.json` using your file-reading tools.\n');
                                           
                                           sb.writeln('\n# TASKS TO ADDRESS');
                                           sb.writeln('Task: ${existingTask!.name}');

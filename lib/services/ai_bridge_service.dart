@@ -14,6 +14,8 @@ import 'package:antigravity_sdk/antigravity_sdk.dart';
 import 'backend_process_manager.dart';
 import 'system_logs_service.dart';
 import 'error_scanner.dart';
+import 'antigravity_status_service.dart';
+import '../db/app_database.dart';
 
 enum UpdateCoverType { hotReload, hotRestart, rebuild }
 
@@ -425,10 +427,118 @@ class QueuedPrompt {
 class AiBridgeService extends ChangeNotifier with WindowListener {
   static final AiBridgeService instance = AiBridgeService._internal();
 
-  late final AntigravityClient antigravityClient;
+  late AntigravityClient antigravityClient;
+  AppDatabase? _db;
 
   AiBridgeService._internal() {
     _initClient();
+    AntigravityStatusService.instance.statusFilePath = '$_dirPath/agent_status.txt';
+  }
+
+  void initialize(AppDatabase db) {
+    _db = db;
+    AntigravityStatusService.instance.statusFilePath = '$_dirPath/agent_status.txt';
+    syncDatabaseDump();
+    syncConversationHistory();
+  }
+
+  Future<List<File>> _getBrainFiles(Directory brainDir) async {
+    try {
+      final exists = await brainDir.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
+      if (!exists) return const [];
+    } catch (_) {
+      return const [];
+    }
+
+    final List<File> files = [];
+
+    // Check root folder (for unit test compatibility or direct files)
+    final rootTranscript = File('${brainDir.path}/transcript.jsonl');
+    final rootOverview = File('${brainDir.path}/overview.txt');
+
+    try {
+      final rootChecks = await Future.wait([
+        rootTranscript.exists().timeout(const Duration(milliseconds: 300), onTimeout: () => false),
+        rootOverview.exists().timeout(const Duration(milliseconds: 300), onTimeout: () => false),
+      ]);
+      if (rootChecks[0]) files.add(rootTranscript);
+      if (rootChecks[1]) files.add(rootOverview);
+
+      final List<FileSystemEntity> entities = await brainDir
+          .list(recursive: false)
+          .toList()
+          .timeout(const Duration(milliseconds: 1000), onTimeout: () => []);
+          
+      final subdirs = entities.whereType<Directory>();
+      final List<Future<void>> subdirChecks = [];
+      
+      for (final subdir in subdirs) {
+        subdirChecks.add(() async {
+          final transcript = File('${subdir.path}/.system_generated/logs/transcript.jsonl');
+          final overview = File('${subdir.path}/overview.txt');
+          final overviewSys = File('${subdir.path}/.system_generated/overview.txt');
+          
+          final checks = await Future.wait([
+            transcript.exists().timeout(const Duration(milliseconds: 300), onTimeout: () => false),
+            overview.exists().timeout(const Duration(milliseconds: 300), onTimeout: () => false),
+            overviewSys.exists().timeout(const Duration(milliseconds: 300), onTimeout: () => false),
+          ]);
+          
+          if (checks[0]) files.add(transcript);
+          if (checks[1]) files.add(overview);
+          if (checks[2]) files.add(overviewSys);
+        }());
+      }
+      
+      await Future.wait(subdirChecks).timeout(const Duration(milliseconds: 1500), onTimeout: () => []);
+    } catch (e) {
+      debugPrint('[AiBridgeService] Error getting brain files: $e');
+    }
+    return files;
+  }
+
+  Future<void> syncDatabaseDump() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      debugPrint('[AiBridgeService] Skipping database dump sync in unit test environment.');
+      return;
+    }
+    final db = _db;
+    if (db == null) return;
+    try {
+      final assetsList = await db.select(db.assets).get();
+      final stringsList = await db.select(db.strings).get();
+      final translationsList = await db.select(db.translations).get();
+      final assetTagsList = await db.select(db.assetTags).get();
+
+      final dump = {
+        'assets': assetsList.map((e) => e.toJson()).toList(),
+        'strings': stringsList.map((e) => e.toJson()).toList(),
+        'translations': translationsList.map((e) => e.toJson()).toList(),
+        'assetTags': assetTagsList.map((e) => e.toJson()).toList(),
+      };
+
+      final dumpDir = Directory('.ai_bridge');
+      if (!await dumpDir.exists()) {
+        await dumpDir.create(recursive: true);
+      }
+      final dumpFile = File('.ai_bridge/db_dump.json');
+      final newContent = const JsonEncoder.withIndent('  ').convert(dump);
+      if (await dumpFile.exists()) {
+        final currentContent = await dumpFile.readAsString();
+        if (currentContent == newContent) {
+          return;
+        }
+      }
+      await dumpFile.writeAsString(newContent, flush: true);
+      debugPrint('[AiBridgeService] Synced database dump to .ai_bridge/db_dump.json');
+    } catch (e) {
+      debugPrint('[AiBridgeService] Error syncing database dump: $e');
+    }
+  }
+
+  Future<void> syncConversationHistory() async {
+    // Disabled for now to prevent unnecessary background file reads and CPU usage.
+    return;
   }
 
   Future<void> _ensureBackendRunning() async {
@@ -733,8 +843,35 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     );
   }
 
-  final String _dirPath = '.ai_bridge';
-  final String _filePath = '.ai_bridge/tasks.json';
+  String _dirPath = '.ai_bridge';
+  String _filePath = '.ai_bridge/tasks.json';
+
+  @visibleForTesting
+  set testDirPath(String path) {
+    _dirPath = path;
+    AntigravityStatusService.instance.statusFilePath = '$path/agent_status.txt';
+  }
+
+  @visibleForTesting
+  set testFilePath(String path) {
+    _filePath = path;
+  }
+
+  @visibleForTesting
+  String get filePath => _filePath;
+
+  bool forceDiskSaveInTests = false;
+
+  Future<void> loadFromFileForTesting() async {
+    final wasSaving = _isSavingLocally;
+    _isSavingLocally = false;
+    try {
+      await _loadFromFile();
+    } finally {
+      _isSavingLocally = wasSaving;
+    }
+  }
+
 
   StreamSubscription<FileSystemEvent>? _watchSubscription;
   StreamSubscription<FileSystemEvent>? _libWatchSubscription;
@@ -743,11 +880,13 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   int _lastProcessedLogIndex = 0;
   Timer? _errorDebounceTimer;
   final List<DetectedError> _errorBuffer = [];
+  bool _isLogListenerRegistered = false;
 
   @override
   void dispose() {
     windowManager.removeListener(this);
     SystemLogsService.instance.removeListener(_handleSystemLogsChanged);
+    _isLogListenerRegistered = false;
     _errorDebounceTimer?.cancel();
     _watchSubscription?.cancel();
     _libWatchSubscription?.cancel();
@@ -777,9 +916,11 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   UpdateCoverType get updateCoverType => _updateCoverType;
 
   UpdateCoverType? _pendingUpdateType;
+  bool _isTriggeringUpdate = false;
 
   bool _isQueuePaused = false;
   bool get isQueuePaused => _isQueuePaused;
+  bool _isProcessingQueue = false;
 
   bool _wasQueuePausedForFocus = false;
 
@@ -871,6 +1012,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   void _writeCurrentTaskFile(String taskId) {
+    if (Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests) {
+      return;
+    }
     try {
       final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
       if (taskIdx == -1) return;
@@ -881,9 +1025,13 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
         final List<dynamic> vcList = json['verificationCriteria'] as List<dynamic>;
         json['verificationCriteria'] = vcList.where((e) => e['isPreview'] != true).toList();
       }
-      File('$_dirPath/current_task.json').writeAsStringSync(jsonEncode(json));
+      File('$_dirPath/current_task.json')
+          .writeAsString(jsonEncode(json), flush: true)
+          .catchError((e) {
+        debugPrint('Failed to write current_task.json: $e');
+      });
     } catch (e) {
-      debugPrint('Failed to write current_task.json: $e');
+      debugPrint('Failed to initiate current_task.json write: $e');
     }
   }
 
@@ -926,6 +1074,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   Future<void> executeTask(AiTask task) async {
     await _ensureBackendRunning();
+    await syncDatabaseDump();
     await compilePrimaryDirectivesFile();
     _antigravityLastChangeObservedAt = DateTime.now();
     final json = task.toJson();
@@ -934,12 +1083,12 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     _activeAgents[task.id] = connection;
     notifyListeners();
 
-    connection.statusStream.listen((status) {
+    connection.statusStream.listen((status) async {
       if (status == "Completed") {
         _activeAgents.remove(task.id);
         _isAntigravityBusy = false;
         _antigravityLastChangeObservedAt = null;
-        triggerPendingUpdate(force: true);
+        await triggerPendingUpdate(force: true);
       }
       notifyListeners();
     });
@@ -997,61 +1146,138 @@ wshShell.AppActivate $myPid
   }
 
   Future<void> _processQueue() async {
-    if (_isQueuePaused) return;
+    if (_isQueuePaused || _isProcessingQueue) return;
 
-    if (_activeProcessingTaskId != null || _activePrompt != null) {
+    if (_activeProcessingTaskId != null ||
+        _activePrompt != null ||
+        _isAntigravityBusy ||
+        _pendingUpdateType != null ||
+        _isTriggeringUpdate) {
       return;
     }
 
-    if (_pendingPrompts.isNotEmpty) {
-      final nextPrompt = _pendingPrompts.first;
+    _isProcessingQueue = true;
+    try {
+      if (_pendingPrompts.isNotEmpty) {
+        final nextPrompt = _pendingPrompts.first;
 
-      if (nextPrompt.taskIds != null && nextPrompt.taskIds!.isNotEmpty) {
-        _activeProcessingTaskId = nextPrompt.taskIds!.first;
-        _activeProcessingTaskAssignedAt = DateTime.now();
+        if (nextPrompt.taskIds != null && nextPrompt.taskIds!.isNotEmpty) {
+          _activeProcessingTaskId = nextPrompt.taskIds!.first;
+          _activeProcessingTaskAssignedAt = DateTime.now();
 
-        try {
-          final task = _tasks.firstWhere((t) => t.id == _activeProcessingTaskId!);
-          if (task.priority == AiTaskPriority.high || task.priority == AiTaskPriority.urgent) {
-             final desc = 'Auto-Checkpoint before ${task.name}';
-             final hash = await VersionControlService.instance.createRestorePoint(desc);
-             if (hash.isNotEmpty && !hash.startsWith('No changes') && !hash.startsWith('Failed') && !hash.startsWith('Local')) {
-               await appendCheckpointToTimeline(desc, hash, taskIds: [task.id]);
-             }
-          }
-        } catch (_) {}
-      } else {
-        _activeProcessingTaskId = null;
-        _activeProcessingTaskAssignedAt = null;
+          try {
+            final task = _tasks.firstWhere((t) => t.id == _activeProcessingTaskId!);
+            if (task.priority == AiTaskPriority.high || task.priority == AiTaskPriority.urgent) {
+               final desc = 'Auto-Checkpoint before ${task.name}';
+               final hash = await VersionControlService.instance.createRestorePoint(desc);
+               if (hash.isNotEmpty && !hash.startsWith('No changes') && !hash.startsWith('Failed') && !hash.startsWith('Local')) {
+                 await appendCheckpointToTimeline(desc, hash, taskIds: [task.id]);
+               }
+            }
+          } catch (_) {}
+        } else {
+          _activeProcessingTaskId = null;
+          _activeProcessingTaskAssignedAt = null;
+        }
+
+        _activePrompt = nextPrompt;
+        _pendingPrompts.removeAt(0);
+        await _saveQueueState();
+        notifyListeners();
+
+        // Natively wait configured seconds before dispatch to IDE to guarantee the queue settles perfectly and hot reloads reset focus securely
+        final prefs = await SharedPreferences.getInstance();
+        final delayVal = prefs.get('ai_tasks_delay_seconds');
+        double delaySeconds = 5.0;
+        if (delayVal != null && delayVal is num) {
+          delaySeconds = delayVal.toDouble().clamp(0.0, 5.0);
+        }
+        await Future.delayed(Duration(milliseconds: (delaySeconds * 1000).round()));
+
+        await syncDatabaseDump();
+        await _sendToAiAgent(nextPrompt.text);
+        setScreenBlockerEnabled(nextPrompt.block);
       }
-
-      _activePrompt = nextPrompt;
-      _pendingPrompts.removeAt(0);
-      await _saveQueueState();
-      notifyListeners();
-
-      // Natively wait configured seconds before dispatch to IDE to guarantee the queue settles perfectly and hot reloads reset focus securely
-      final prefs = await SharedPreferences.getInstance();
-      final delayVal = prefs.get('ai_tasks_delay_seconds');
-      double delaySeconds = 5.0;
-      if (delayVal != null && delayVal is num) {
-        delaySeconds = delayVal.toDouble().clamp(0.0, 5.0);
-      }
-      await Future.delayed(Duration(milliseconds: (delaySeconds * 1000).round()));
-
-      await _sendToAiAgent(nextPrompt.text);
-      setScreenBlockerEnabled(nextPrompt.block);
+    } finally {
+      _isProcessingQueue = false;
     }
   }
 
-  void clearQueue() {
+  Future<void> clearQueue() async {
+    _errorDebounceTimer?.cancel();
+    _errorBuffer.clear();
+    _pendingUpdateType = null;
+    _isHandlingAgentStatus = false;
+    _isProcessingQueue = false;
+
+    for (final connection in _activeAgents.values) {
+      try {
+        connection.close();
+      } catch (e) {
+        debugPrint('Error closing subagent connection: $e');
+      }
+    }
     _activeAgents.clear();
     _activeProcessingTaskId = null;
     _activePrompt = null;
     _pendingPrompts.clear();
     _completedPrompts.clear();
-    _saveQueueState();
+    _isAntigravityBusy = false;
+    _antigravityLastChangeObservedAt = null;
+    _isTriggeringUpdate = false;
+    setScreenBlockerEnabled(false);
+
+    try {
+      final statusFile = File('$_dirPath/agent_status.txt');
+      if (!await statusFile.parent.exists()) {
+        await statusFile.parent.create(recursive: true);
+      }
+      await statusFile.writeAsString('IDLE', flush: true);
+    } catch (e) {
+      debugPrint('Failed to write IDLE to agent_status.txt: $e');
+    }
+
+    await _saveQueueState();
     notifyListeners();
+  }
+
+  Future<void> forceResetIdle() async {
+    _isAntigravityBusy = false;
+    _antigravityLastChangeObservedAt = null;
+    _isTriggeringUpdate = false;
+
+    for (final connection in _activeAgents.values) {
+      try {
+        connection.close();
+      } catch (e) {
+        debugPrint('Error closing subagent connection: $e');
+      }
+    }
+    _activeAgents.clear();
+
+    if (_activePrompt != null) {
+      _activePrompt!.completedAt = DateTime.now();
+      _completedPrompts.add(_activePrompt!);
+      _activePrompt = null;
+    }
+    _activeProcessingTaskId = null;
+    _activeProcessingTaskAssignedAt = null;
+
+    setScreenBlockerEnabled(false);
+
+    try {
+      final statusFile = File('$_dirPath/agent_status.txt');
+      if (!await statusFile.parent.exists()) {
+        await statusFile.parent.create(recursive: true);
+      }
+      await statusFile.writeAsString('IDLE', flush: true);
+    } catch (e) {
+      debugPrint('Failed to write IDLE to agent_status.txt: $e');
+    }
+
+    await _saveQueueState();
+    notifyListeners();
+    _processQueue();
   }
 
   void removeFromQueue(QueuedPrompt prompt) {
@@ -1140,6 +1366,9 @@ wshShell.AppActivate $myPid
 
   void _handleSystemLogsChanged() {
     final logs = SystemLogsService.instance.logs;
+    if (logs.length < _lastProcessedLogIndex) {
+      _lastProcessedLogIndex = 0;
+    }
     if (logs.length <= _lastProcessedLogIndex) {
       _lastProcessedLogIndex = logs.length;
       return;
@@ -1168,6 +1397,10 @@ wshShell.AppActivate $myPid
   }
 
   Future<void> _dispatchBufferedErrors() async {
+    if (!isThinking) {
+      _errorBuffer.clear();
+      return;
+    }
     if (_errorBuffer.isEmpty) return;
 
     final errorsToDispatch = List<DetectedError>.from(_errorBuffer);
@@ -1329,10 +1562,10 @@ wshShell.AppActivate $myPid
   bool isWindowFocused = true;
 
   @override
-  void onWindowFocus() {
+  void onWindowFocus() async {
     isWindowFocused = true;
     if (_pendingUpdateType != null && !isThinking) {
-      triggerPendingUpdate();
+      await triggerPendingUpdate();
     }
   }
 
@@ -1403,6 +1636,8 @@ wshShell.AppActivate $myPid
   }
 
 
+  bool _isWatchingPoll = false;
+
   void _startWatchingAntigravity() {
     if (kIsWeb || (!Platform.isWindows && !Platform.isMacOS)) return;
 
@@ -1412,41 +1647,48 @@ wshShell.AppActivate $myPid
         Directory('$userProfile\\.gemini\\antigravity\\brain');
 
     _antigravityPollTimer =
-        Timer.periodic(const Duration(seconds: 2), (_) async {
+        Timer.periodic(const Duration(seconds: 4), (_) async {
+      if (_isWatchingPoll) return;
+      _isWatchingPoll = true;
       try {
-        bool foundBusy = false;
-        if (brainDir.existsSync()) {
-          final entities = brainDir.listSync(recursive: true, followLinks: false).whereType<File>();
+        if (await brainDir.exists()) {
+          final entities = await _getBrainFiles(brainDir);
           for (final file in entities) {
-            if (file.path.endsWith('transcript.jsonl') ||
-                file.path.endsWith('overview.txt')) {
-              final stat = file.statSync();
-              final prev = _antigravityLastModifiedTimes[file.path];
-              if (prev != stat.modified) {
-                _antigravityLastChangeObservedAt = DateTime.now();
-              }
-              _antigravityLastModifiedTimes[file.path] = stat.modified;
+            FileStat? stat;
+            try {
+              stat = await file.stat().timeout(const Duration(milliseconds: 500));
+            } catch (_) {}
+            if (stat == null) continue;
+            final prev = _antigravityLastModifiedTimes[file.path];
+            if (prev != stat.modified) {
+              _antigravityLastChangeObservedAt = DateTime.now();
+              await syncConversationHistory();
             }
+            _antigravityLastModifiedTimes[file.path] = stat.modified;
           }
         }
-        if (_antigravityLastChangeObservedAt != null &&
-            DateTime.now()
-                    .difference(_antigravityLastChangeObservedAt!)
-                    .inSeconds <
-                5) {
-          foundBusy = true;
+
+        // Use direct HTTP/process checks for busy status
+        final foundBusy = await AntigravityStatusService.instance.isCliBusy();
+
+        if (foundBusy) {
+          _antigravityLastChangeObservedAt = DateTime.now();
         }
+
         if (_isAntigravityBusy != foundBusy) {
           _isAntigravityBusy = foundBusy;
           notifyListeners();
           if (!foundBusy && _pendingUpdateType != null) {
-            triggerPendingUpdate();
+            await triggerPendingUpdate();
           }
         }
 
         // Detect AI Bridge Sync Error
         await checkForSyncError();
-      } catch (_) {}
+      } catch (_) {
+      } finally {
+        _isWatchingPoll = false;
+      }
     });
   }
 
@@ -1543,27 +1785,58 @@ wshShell.AppActivate $myPid
     final targetBrainDir = customBrainDir ?? Directory('${Platform.environment['USERPROFILE'] ?? ''}\\.gemini\\antigravity\\brain');
     final now = customNow ?? DateTime.now();
 
+    // Check if the agent is still busy and working on stuff
+    try {
+      if (await AntigravityStatusService.instance.isCliBusy().timeout(const Duration(seconds: 2), onTimeout: () => false)) {
+        return;
+      }
+      final statusFile = File('$_dirPath/agent_status.txt');
+      final hasStatusFile = await statusFile.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
+      if (hasStatusFile) {
+        final statusContent = (await statusFile.readAsString().timeout(const Duration(milliseconds: 500), onTimeout: () => '')).trim();
+        if (statusContent == 'BUSY') {
+          // Agent is still busy working, do not flag out of sync
+          return;
+        }
+      }
+    } catch (_) {}
+
     if (!_isSyncErrorDetected &&
         (_activePrompt != null || _activeAgents.isNotEmpty) &&
         _antigravityLastChangeObservedAt != null &&
         now.difference(_antigravityLastChangeObservedAt!).inSeconds > 15) {
       File? latestTranscript;
-      if (targetBrainDir.existsSync()) {
+      final targetExists = await targetBrainDir.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
+      if (targetExists) {
         try {
-          final files = targetBrainDir
-              .listSync(recursive: true, followLinks: false)
-              .whereType<File>()
+          final brainFiles = await _getBrainFiles(targetBrainDir);
+          final files = brainFiles
               .where((f) => f.path.endsWith('transcript.jsonl'))
               .toList();
           if (files.isNotEmpty) {
-            files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+            final fileTimes = <File, DateTime>{};
+            await Future.wait(files.map((file) async {
+              try {
+                fileTimes[file] = await file.lastModified().timeout(
+                  const Duration(milliseconds: 500),
+                  onTimeout: () => DateTime.fromMillisecondsSinceEpoch(0),
+                );
+              } catch (_) {
+                fileTimes[file] = DateTime.fromMillisecondsSinceEpoch(0);
+              }
+            }));
+            files.sort((a, b) => (fileTimes[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
+                .compareTo(fileTimes[a] ?? DateTime.fromMillisecondsSinceEpoch(0)));
             latestTranscript = files.first;
           }
         } catch (_) {}
       }
       if (latestTranscript != null) {
         try {
-          final lines = latestTranscript.readAsLinesSync();
+          final lines = await latestTranscript.readAsLines().timeout(
+            const Duration(milliseconds: 1500),
+            onTimeout: () => const [],
+          );
           Map<String, dynamic>? lastStep;
           for (int i = lines.length - 1; i >= 0; i--) {
             final line = lines[i].trim();
@@ -1599,6 +1872,9 @@ wshShell.AppActivate $myPid
   }
 
   Future<void> compilePrimaryDirectivesFile() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests) {
+      return;
+    }
     try {
       final dir = Directory(_dirPath);
       if (!await dir.exists()) {
@@ -1715,34 +1991,43 @@ wshShell.AppActivate $myPid
 
       final dir = Directory(_dirPath);
       if (!await dir.exists()) {
-        await dir.create(recursive: true);
+        if (!(Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests)) {
+          await dir.create(recursive: true);
+        }
       } else {
-        // Clean up any stale files from a previous run/crash
-        final notesFile = File('$_dirPath/latest_notes.json');
-        if (notesFile.existsSync()) {
-          try {
-            notesFile.deleteSync();
-          } catch (_) {}
-        }
-        final verificationFile = File('$_dirPath/latest_verification.json');
-        if (verificationFile.existsSync()) {
-          try {
-            verificationFile.deleteSync();
-          } catch (_) {}
-        }
-        final previewFile = File('$_dirPath/latest_preview.json');
-        if (previewFile.existsSync()) {
-          try {
-            previewFile.deleteSync();
-          } catch (_) {}
+        if (!(Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests)) {
+          // Clean up any stale files from a previous run/crash
+          final notesFile = File('$_dirPath/latest_notes.json');
+          if (notesFile.existsSync()) {
+            try {
+              notesFile.deleteSync();
+            } catch (_) {}
+          }
+          final verificationFile = File('$_dirPath/latest_verification.json');
+          if (verificationFile.existsSync()) {
+            try {
+              verificationFile.deleteSync();
+            } catch (_) {}
+          }
+          final previewFile = File('$_dirPath/latest_preview.json');
+          if (previewFile.existsSync()) {
+            try {
+              previewFile.deleteSync();
+            } catch (_) {}
+          }
         }
       }
       await _loadFromFile();
-      _startWatching();
-      _startWatchingAntigravity();
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        _startWatching();
+        _startWatchingAntigravity();
+      }
 
-      _lastProcessedLogIndex = SystemLogsService.instance.logs.length;
-      SystemLogsService.instance.addListener(_handleSystemLogsChanged);
+      if (!_isLogListenerRegistered) {
+        _lastProcessedLogIndex = SystemLogsService.instance.logs.length;
+        SystemLogsService.instance.addListener(_handleSystemLogsChanged);
+        _isLogListenerRegistered = true;
+      }
 
       try {
         if (!kIsWeb &&
@@ -1751,24 +2036,26 @@ wshShell.AppActivate $myPid
         }
       } catch (_) {}
 
-      _queueCleanupTimer =
-          Timer.periodic(const Duration(seconds: 10), (_) async {
-        try {
-          final p = await SharedPreferences.getInstance();
-          final clearMins = p.getInt('queueClearCompletedMinutes') ?? -1;
-          if (clearMins >= 0 && _completedPrompts.isNotEmpty) {
-            final cutoff =
-                DateTime.now().subtract(Duration(minutes: clearMins));
-            final int beforeLength = _completedPrompts.length;
-            _completedPrompts.removeWhere((p) =>
-                p.completedAt != null && p.completedAt!.isBefore(cutoff));
-            if (_completedPrompts.length != beforeLength) {
-              _saveQueueState();
-              notifyListeners();
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        _queueCleanupTimer =
+            Timer.periodic(const Duration(seconds: 10), (_) async {
+          try {
+            final p = await SharedPreferences.getInstance();
+            final clearMins = p.getInt('queueClearCompletedMinutes') ?? -1;
+            if (clearMins >= 0 && _completedPrompts.isNotEmpty) {
+              final cutoff =
+                  DateTime.now().subtract(Duration(minutes: clearMins));
+              final int beforeLength = _completedPrompts.length;
+              _completedPrompts.removeWhere((p) =>
+                  p.completedAt != null && p.completedAt!.isBefore(cutoff));
+              if (_completedPrompts.length != beforeLength) {
+                _saveQueueState();
+                notifyListeners();
+              }
             }
-          }
-        } catch (_) {}
-      });
+          } catch (_) {}
+        });
+      }
     } catch (e, st) {
       debugPrint('Error initializing AiBridgeService: $e');
       try {
@@ -1868,6 +2155,10 @@ wshShell.AppActivate $myPid
         }
 
         if (normPath.endsWith('agent_status.txt')) {
+          if (!isThinking) {
+            print('[AiBridge] agent_status.txt changed but isThinking is false. Ignoring event.');
+            return;
+          }
           if (_bridgeMode == AntigravityBridgeMode.sdk) {
             await Future.delayed(const Duration(milliseconds: 100));
             try {
@@ -1878,7 +2169,7 @@ wshShell.AppActivate $myPid
                   _activeAgents.clear();
                   _isAntigravityBusy = false;
                   _antigravityLastChangeObservedAt = null;
-                  triggerPendingUpdate(force: true);
+                  await triggerPendingUpdate(force: true);
                 }
               }
             } catch (_) {}
@@ -1963,21 +2254,29 @@ wshShell.AppActivate $myPid
                               Platform.environment['USERPROFILE'] ?? '';
                           final brainDir = Directory(
                               '$userProfile\\.gemini\\antigravity\\brain');
-                          if (brainDir.existsSync()) {
-                            final overviewFiles = brainDir
-                                .listSync(recursive: true, followLinks: false)
-                                .whereType<File>()
-                                .where((f) =>
-                                    f.path.endsWith('transcript.jsonl') ||
-                                    f.path.endsWith('overview.txt'))
-                                .toList();
+                          final hasBrainDir = await brainDir.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
+                          if (hasBrainDir) {
+                            final overviewFiles = await _getBrainFiles(brainDir);
                             if (overviewFiles.isNotEmpty) {
-                              overviewFiles.sort((a, b) => b
-                                  .lastModifiedSync()
-                                  .compareTo(a.lastModifiedSync()));
+                              final fileTimes = <File, DateTime>{};
+                              await Future.wait(overviewFiles.map((file) async {
+                                try {
+                                  fileTimes[file] = await file.lastModified().timeout(
+                                    const Duration(milliseconds: 500),
+                                    onTimeout: () => DateTime.fromMillisecondsSinceEpoch(0),
+                                  );
+                                } catch (_) {
+                                  fileTimes[file] = DateTime.fromMillisecondsSinceEpoch(0);
+                                }
+                              }));
+                              overviewFiles.sort((a, b) => (fileTimes[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
+                                  .compareTo(fileTimes[a] ?? DateTime.fromMillisecondsSinceEpoch(0)));
                               final latest = overviewFiles.first;
                               try {
-                                final lines = latest.readAsLinesSync();
+                                final lines = await latest.readAsLines().timeout(
+                                  const Duration(milliseconds: 1500),
+                                  onTimeout: () => const [],
+                                );
                                 for (int i = lines.length - 1; i >= 0; i--) {
                                   try {
                                     final line = lines[i].trim();
@@ -2280,7 +2579,7 @@ wshShell.AppActivate $myPid
                     _pendingUpdateType = UpdateCoverType.hotReload;
                   }
                   print('[AiBridge] Triggering pending update. Type: $_pendingUpdateType');
-                  triggerPendingUpdate(force: true);
+                  await triggerPendingUpdate(force: true);
 
                   print('[AiBridge] Executing _processQueue() for any remaining prompts.');
                   _processQueue();
@@ -2336,20 +2635,73 @@ wshShell.AppActivate $myPid
     if (_isSavingLocally) return;
     try {
       final file = File(_filePath);
+      final backupFile = File('$_filePath.bak');
+
+      bool shouldRestore = false;
+      dynamic jsonTop;
+      String? restoreErrorReason;
+
       if (await file.exists()) {
-        dynamic jsonTop;
-        for (int i = 0; i < 5; i++) {
-          try {
-            final contents = await file.readAsString();
-            if (contents.isNotEmpty) {
-              jsonTop = jsonDecode(contents);
-              break;
+        try {
+          String contents = '';
+          for (int i = 0; i < 5; i++) {
+            try {
+              contents = await file.readAsString();
+              if (contents.isNotEmpty) {
+                break;
+              }
+            } catch (e) {
+              if (i == 4) rethrow;
             }
-          } catch (e) {
-            if (i == 4) rethrow;
+            await Future.delayed(const Duration(milliseconds: 150));
           }
-          await Future.delayed(const Duration(milliseconds: 150));
+
+          if (contents.isEmpty) {
+            shouldRestore = true;
+            restoreErrorReason = 'File is empty';
+          } else {
+            try {
+              jsonTop = jsonDecode(contents);
+              if (jsonTop is Map) {
+                if (!jsonTop.containsKey('tasks') && !jsonTop.containsKey('primaryDirectives')) {
+                  shouldRestore = true;
+                  restoreErrorReason = 'Invalid schema: missing tasks and primaryDirectives';
+                }
+              } else if (jsonTop is! List) {
+                shouldRestore = true;
+                restoreErrorReason = 'Invalid format: top level is neither Map nor List';
+              }
+            } catch (e) {
+              shouldRestore = true;
+              restoreErrorReason = 'JSON parse error: $e';
+            }
+          }
+        } catch (e) {
+          shouldRestore = true;
+          restoreErrorReason = 'Read error: $e';
         }
+
+        if (shouldRestore) {
+          if (await backupFile.exists()) {
+            try {
+              final backupContent = await backupFile.readAsString();
+              jsonTop = jsonDecode(backupContent);
+              if (!(Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests)) {
+                await file.writeAsString(backupContent, mode: FileMode.write, flush: true);
+              }
+              _lastJsonParseError = 'restored from backup: $restoreErrorReason';
+              debugPrint('[AiBridge] Main task file corrupted ($restoreErrorReason). Successfully restored from backup.');
+            } catch (backupErr) {
+              _lastJsonParseError = 'Failed to load and restore from backup: $backupErr';
+              debugPrint('[AiBridge] Failed to restore from backup: $backupErr');
+              rethrow;
+            }
+          } else {
+            _lastJsonParseError = 'File corrupted and no backup file found: $restoreErrorReason';
+            debugPrint('[AiBridge] File corrupted and no backup file found: $restoreErrorReason');
+          }
+        }
+
         if (jsonTop != null) {
           List<dynamic> jsonList;
           if (jsonTop is Map<String, dynamic>) {
@@ -2612,7 +2964,7 @@ wshShell.AppActivate $myPid
           }
 
           if (!isThinkingNow && _pendingUpdateType != null) {
-            triggerPendingUpdate();
+            await triggerPendingUpdate();
           }
 
           if (requiresSave) {
@@ -2629,39 +2981,49 @@ wshShell.AppActivate $myPid
     } catch (e, st) {
       debugPrint('Error reloading tasks dynamically: $e');
       try {
-        File('$_dirPath/bridge_error.txt')
-            .writeAsStringSync('Bridge CRASH in file watcher:\n$e\n$st');
+        if (!(Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests)) {
+          File('$_dirPath/bridge_error.txt')
+              .writeAsString('Bridge CRASH in file watcher:\n$e\n$st', flush: true)
+              .catchError((_) => File('$_dirPath/bridge_error.txt'));
+        }
       } catch (_) {}
     }
   }
 
-  bool get hasPendingUpdate => _pendingUpdateType != null && !isThinking;
+  bool get hasPendingUpdate => _pendingUpdateType != null && !isThinking && !_isTriggeringUpdate;
 
   Future<void> Function(UpdateCoverType)? onAutoReloadTriggered;
 
-  void triggerPendingUpdate({bool force = false}) async {
+  Future<void> triggerPendingUpdate({bool force = false}) async {
+    if (_isTriggeringUpdate) return;
     if ((force || !isThinking) && _pendingUpdateType != null) {
+      _isTriggeringUpdate = true;
+      try {
+        // We no longer require the window to be focused to trigger a hot reload.
+        // This allows the app to visually update side-by-side while the user is typing in their IDE.
 
+        SystemSound.play(SystemSoundType.alert);
+        final type = _pendingUpdateType!;
 
-      // We no longer require the window to be focused to trigger a hot reload.
-      // This allows the app to visually update side-by-side while the user is typing in their IDE.
+        await MacroService.instance.executeTrigger('BeforeReload');
 
-      SystemSound.play(SystemSoundType.alert);
-      final type = _pendingUpdateType!;
-
-      await MacroService.instance.executeTrigger('BeforeReload');
-
-      if (_screenBlockerEnabledForCurrentTaskPhase &&
-          onAutoReloadTriggered != null) {
-        _pendingUpdateType = null;
-        await onAutoReloadTriggered!(type);
-      } else {
-        showUpdateCoverFor(type);
-        _pendingUpdateType = null;
+        if (_screenBlockerEnabledForCurrentTaskPhase &&
+            onAutoReloadTriggered != null) {
+          await onAutoReloadTriggered!(type);
+          _pendingUpdateType = null;
+        } else {
+          showUpdateCoverFor(type);
+          _pendingUpdateType = null;
+        }
+      } finally {
+        _isTriggeringUpdate = false;
       }
     }
   }
   Future<void> _save() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests) {
+      return;
+    }
     _isSavingLocally = true;
     try {
       final dir = Directory(_dirPath);
@@ -2698,7 +3060,12 @@ wshShell.AppActivate $myPid
         'tasks': jsonTasksList
       };
       const encoder = JsonEncoder.withIndent('  ');
-      await file.writeAsString(encoder.convert(outPayload),
+      final serializedPayload = encoder.convert(outPayload);
+      await file.writeAsString(serializedPayload,
+          mode: FileMode.write, flush: true);
+
+      final backupFile = File('$_filePath.bak');
+      await backupFile.writeAsString(serializedPayload,
           mode: FileMode.write, flush: true);
 
       final sandboxFile = File('$_dirPath/sandbox.json');
@@ -2707,12 +3074,17 @@ wshShell.AppActivate $myPid
       final timelineFile = File('$_dirPath/timeline_history.json');
       await timelineFile.writeAsString(encoder.convert(_timelineHistory.map((e) => e.toJson()).toList()), mode: FileMode.write, flush: true);
 
+      await syncDatabaseDump();
+
       notifyListeners();
     } catch (e, st) {
       debugPrint('Error saving AI tasks: $e');
       try {
-        File('$_dirPath/bridge_error.txt')
-            .writeAsStringSync('Bridge CRASH at saveTasks():\n$e\n$st');
+        if (!(Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests)) {
+          File('$_dirPath/bridge_error.txt')
+              .writeAsString('Bridge CRASH at saveTasks():\n$e\n$st', flush: true)
+              .catchError((_) => File('$_dirPath/bridge_error.txt'));
+        }
       } catch (_) {}
     } finally {
       Future.delayed(const Duration(milliseconds: 500), () {
@@ -3489,3 +3861,4 @@ wshShell.AppActivate $myPid
     await _save();
   }
 }
+

@@ -15,6 +15,7 @@ import '../../../db/app_database.dart';
 import 'package:dio/dio.dart';
 import '../../../services/backend_process_manager.dart';
 import '../../../services/ai_bridge_service.dart';
+import '../../../services/antigravity_status_service.dart';
 import 'package:antigravity_sdk/antigravity_sdk.dart';
 import '../visual_editor_screen.dart';
 import '../../../constants.dart';
@@ -301,6 +302,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   int _ollamaTimeoutMs = 120000;
 
   bool _isTestingAntigravity = false;
+  bool _isTestingCli = false;
   bool _isSyncing = false;
   int _syncTotal = 0;
   int _syncProgress = 0;
@@ -1273,6 +1275,72 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       }
     } finally {
       if (mounted) setState(() => _isTestingAntigravity = false);
+    }
+  }
+
+  Future<void> _testCliConnection() async {
+    setState(() => _isTestingCli = true);
+    try {
+      final statusMap = await AntigravityStatusService.instance.getHttpBridgeStatus();
+      if (statusMap != null) {
+        final state = (statusMap['status'] ?? 'IDLE').toString();
+        final activeJobs = statusMap['active_jobs'] ?? 0;
+        
+        // Also verify the SDK connection (checking binary path, CSRF token, and gRPC connection)
+        try {
+          final models = await AntigravityClient().models.list();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                'CLI Connected successfully!\n'
+                'HTTP Bridge: Online (State: $state, Active Jobs: $activeJobs)\n'
+                'SDK Status: Connected (${models.length} models available)'
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 5),
+            ));
+          }
+        } catch (sdkError) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                'HTTP Bridge is online (State: $state), but SDK connection failed.\n'
+                'Error: $sdkError\n'
+                'Please check your CSRF Token or binary path configuration.'
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 6),
+            ));
+          }
+        }
+      } else {
+        final processRunning = await AntigravityStatusService.instance.isProcessRunning();
+        if (mounted) {
+          if (processRunning) {
+            final url = await AntigravityStatusService.instance.getBridgeUrl();
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('CLI daemon process is running, but HTTP bridge ($url) is unresponsive.'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 4),
+            ));
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('CLI daemon is offline. Start it in your project folder using "agy ."'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ));
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error testing CLI connection: $e'),
+          backgroundColor: Colors.red,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isTestingCli = false);
     }
   }
 
@@ -2657,16 +2725,33 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                               },
                             )),
                             const SizedBox(height: 32),
-                            ElevatedButton.icon(
-                              onPressed: _isTestingAntigravity ? null : _testAntigravityConnection,
-                              icon: _isTestingAntigravity ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
-                              label: Text('Test Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF2A2A2A),
-                                foregroundColor: Colors.deepPurpleAccent,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                side: const BorderSide(color: Colors.deepPurpleAccent, width: 1)
-                              ),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: _isTestingAntigravity ? null : _testAntigravityConnection,
+                                  icon: _isTestingAntigravity ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
+                                  label: Text('Test Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2A2A2A),
+                                    foregroundColor: Colors.deepPurpleAccent,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                    side: const BorderSide(color: Colors.deepPurpleAccent, width: 1)
+                                  ),
+                                ),
+                                ElevatedButton.icon(
+                                  onPressed: _isTestingCli ? null : _testCliConnection,
+                                  icon: _isTestingCli ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.terminal),
+                                  label: Text('Test CLI Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2A2A2A),
+                                    foregroundColor: Colors.tealAccent,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                    side: const BorderSide(color: Colors.tealAccent, width: 1)
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
