@@ -26,12 +26,12 @@ Drift is configured at `lib/db/app_database.dart`. Key tables include:
 - **SyncQueue (`SyncQueue`):** Tracks offline data operations pending Supabase synchronization.
 
 ## AI Bridge & CLI Context Sync Protocol (CRITICAL)
-The visual editor (GUI) and CLI/IDE agents synchronize task state via `.ai_bridge/` files. Editor rule files (`.cursorrules`, `.clinerules`, `.windsurfrules`, and `.github/copilot-instructions.md`) are configured to automatically force starting CLI agents to read these files to align context:
-1. **Active Task Context:** Read `.ai_bridge/current_task.json` for details of the task currently active in the GUI.
-2. **Global Task List:** Read `.ai_bridge/tasks.json` to inspect all worksheets and tasks hierarchy.
-3. **Master Directives:** Read `.ai_bridge/primary_directives.md` for safety rules and instructions.
-4. **Database Dump:** Read `.ai_bridge/db_dump.json` to inspect the GUI's local database state including Assets, Strings (Tags/taxonomy), Translations, and AssetTags.
-5. **Conversation History:** Read `.ai_bridge/conversation_history.md` for recent conversation transcripts/logs between GUI subagents/parent conversations and users.
+The visual editor (GUI) and CLI/IDE agents synchronize task state via `.ai_bridge/` files. Editor rule files (`.cursorrules`, `.clinerules`, `.windsurfrules`, and `.github/copilot-instructions.md`) are configured to automatically force starting CLI agents to perform these tasks:
+- [ ] CRITICAL: Read `.ai_bridge/primary_directives.md` natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.
+- [ ] Read the recent conversation history in `.ai_bridge/conversation_history.md` using your file-reading tools to align context with the current workspace state.
+- [ ] Read the database dump in `.ai_bridge/db_dump.json` using your file-reading tools.
+- [ ] Read the active task context in `.ai_bridge/current_task.json`.
+- [ ] Read the global task list/worksheets hierarchy in `.ai_bridge/tasks.json`.
 6. **Log Notes:** Write task summaries and notes to `.ai_bridge/latest_notes.json` formatted as:
    `{"notes": "detailed markdown updates", "summary": "short commit summary style"}`
 7. **Verification Proof:** Write proofs for verification criteria to `.ai_bridge/latest_verification.json`:

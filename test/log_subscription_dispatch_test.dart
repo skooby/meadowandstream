@@ -1,13 +1,32 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:music_app/services/ai_bridge_service.dart';
 import 'package:music_app/services/system_logs_service.dart';
+import 'package:music_app/services/antigravity_status_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  late Directory tempBridgeDir;
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    tempBridgeDir = Directory.systemTemp.createTempSync('ai_bridge_test_dir');
+    AiBridgeService.instance.testDirPath = tempBridgeDir.path;
+    AiBridgeService.instance.testFilePath = '${tempBridgeDir.path}/tasks.json';
+    AntigravityStatusService.instance.statusFilePath = '${tempBridgeDir.path}/agent_status.txt';
+    AntigravityStatusService.instance.resetState();
+  });
+
+  tearDown(() {
+    AiBridgeService.instance.testDirPath = '.ai_bridge';
+    AiBridgeService.instance.testFilePath = '.ai_bridge/tasks.json';
+    AntigravityStatusService.instance.statusFilePath = '.ai_bridge/agent_status.txt';
+    AntigravityStatusService.instance.resetState();
+    if (tempBridgeDir.existsSync()) {
+      tempBridgeDir.deleteSync(recursive: true);
+    }
   });
 
   test('Log subscription intercepts runtime errors, debounces, and dispatches task', () async {

@@ -358,6 +358,10 @@ class _SystemLogsWindowState extends State<SystemLogsWindow> {
                             tagColor = Colors.tealAccent;
                           else if (log.category == LogCategory.VC)
                             tagColor = Colors.blueAccent;
+                          else if (log.category == LogCategory.CLI)
+                            tagColor = Colors.cyanAccent;
+                          else if (log.category == LogCategory.SYNC)
+                            tagColor = Colors.orangeAccent;
 
                           return Padding(
                             padding: const EdgeInsets.symmetric(

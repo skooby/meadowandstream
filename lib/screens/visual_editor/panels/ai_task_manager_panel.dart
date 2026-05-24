@@ -157,6 +157,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   final TextEditingController _systemHooksInstController = TextEditingController();
   final TextEditingController _missingFilesInstController = TextEditingController();
   final TextEditingController _syncErrorInstController = TextEditingController();
+  final TextEditingController _endingInstController = TextEditingController();
 
   bool _blockOnCopy = false;
   bool _blockOnReview = false;
@@ -224,6 +225,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     _systemHooksInstController.text = AiBridgeService.instance.systemHooksInstructions;
     _missingFilesInstController.text = AiBridgeService.instance.missingFilesInstructions;
     _syncErrorInstController.text = AiBridgeService.instance.syncErrorInstructions;
+    _endingInstController.text = AiBridgeService.instance.endingInstructions;
     AiBridgeService.instance.addListener(_syncInstructions);
     AiBridgeService.instance.addListener(_syncUnassignedState);
     AiBridgeService.instance.addListener(_checkRestoreActiveTask);
@@ -345,6 +347,13 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
         _syncErrorInstController.text = AiBridgeService.instance.syncErrorInstructions;
       }
     }
+    if (_endingInstController.text !=
+        AiBridgeService.instance.endingInstructions) {
+      if (!_endingInstController.value.selection.isValid ||
+          _endingInstController.text.isEmpty) {
+        _endingInstController.text = AiBridgeService.instance.endingInstructions;
+      }
+    }
   }
 
   @override
@@ -364,6 +373,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     _systemHooksInstController.dispose();
     _missingFilesInstController.dispose();
     _syncErrorInstController.dispose();
+    _endingInstController.dispose();
     _tsController.dispose();
     _fsController.dispose();
     _dsController.dispose();
@@ -2487,7 +2497,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                     _previewRejectedInstController.text,
                                                     _systemHooksInstController.text,
                                                     _missingFilesInstController.text,
-                                                    _syncErrorInstController.text),
+                                                    _syncErrorInstController.text,
+                                                    _endingInstController.text),
                                                 AppColors.error,
                                               ),
                                               buildRule(
@@ -2505,7 +2516,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewRejectedInstController.text,
                                                         _systemHooksInstController.text,
                                                         _missingFilesInstController.text,
-                                                        _syncErrorInstController.text),
+                                                        _syncErrorInstController.text,
+                                                        _endingInstController.text),
                                                 AppColors.folder,
                                               ),
                                               buildRule(
@@ -2523,7 +2535,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewRejectedInstController.text,
                                                         _systemHooksInstController.text,
                                                         _missingFilesInstController.text,
-                                                        _syncErrorInstController.text),
+                                                        _syncErrorInstController.text,
+                                                        _endingInstController.text),
                                                 Colors.purpleAccent,
                                               ),
                                               buildRule(
@@ -2541,7 +2554,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewRejectedInstController.text,
                                                         _systemHooksInstController.text,
                                                         _missingFilesInstController.text,
-                                                        _syncErrorInstController.text),
+                                                        _syncErrorInstController.text,
+                                                        _endingInstController.text),
                                                 AppColors.accent,
                                               ),
                                               buildRule(
@@ -2559,7 +2573,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewRejectedInstController.text,
                                                         _systemHooksInstController.text,
                                                         _missingFilesInstController.text,
-                                                        _syncErrorInstController.text),
+                                                        _syncErrorInstController.text,
+                                                        _endingInstController.text),
                                                 Colors.greenAccent,
                                               ),
                                               buildRule(
@@ -2577,7 +2592,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         val,
                                                         _systemHooksInstController.text,
                                                         _missingFilesInstController.text,
-                                                        _syncErrorInstController.text),
+                                                        _syncErrorInstController.text,
+                                                        _endingInstController.text),
                                                 AppColors.error,
                                               ),
                                               buildRule(
@@ -2595,7 +2611,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewRejectedInstController.text,
                                                         val,
                                                         _missingFilesInstController.text,
-                                                        _syncErrorInstController.text),
+                                                        _syncErrorInstController.text,
+                                                        _endingInstController.text),
                                                 AppColors.summary,
                                               ),
                                               buildRule(
@@ -2613,7 +2630,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewRejectedInstController.text,
                                                         _systemHooksInstController.text,
                                                         val,
-                                                        _syncErrorInstController.text),
+                                                        _syncErrorInstController.text,
+                                                        _endingInstController.text),
                                                 AppColors.folder,
                                               ),
                                               buildRule(
@@ -2631,8 +2649,28 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _previewRejectedInstController.text,
                                                         _systemHooksInstController.text,
                                                         _missingFilesInstController.text,
-                                                        val),
+                                                        val,
+                                                        _endingInstController.text),
                                                 AppColors.error,
+                                              ),
+                                              buildRule(
+                                                'Ending Instructions Helper:',
+                                                _endingInstController,
+                                                'Rules strictly attached to the very end of all prompts...',
+                                                (val) => AiBridgeService
+                                                    .instance
+                                                    .updateInstructions(
+                                                        _primaryDirectivesController.text,
+                                                        _instController.text,
+                                                        _quickInstController.text,
+                                                        _previewModeInstController.text,
+                                                        _previewApprovedInstController.text,
+                                                        _previewRejectedInstController.text,
+                                                        _systemHooksInstController.text,
+                                                        _missingFilesInstController.text,
+                                                        _syncErrorInstController.text,
+                                                        val),
+                                                AppColors.accent,
                                               ),
                                             ],
                                           );
@@ -2925,26 +2963,6 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     final completeStatus =
         prefs.getString('ai_tasks_bridge_complete_status') ?? 'inTesting';
 
-    final uncheckedTasks = task.verificationCriteria.where((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview)).toList();
-    if (uncheckedTasks.isNotEmpty) {
-      uncheckedTasks.first.status = AiVerificationStatus.pendingReview;
-      final updatedCriteria = task.verificationCriteria.map((e) => AiVerificationCriteria(
-        description: e.description,
-        goal: e.goal,
-        isVerified: e.isVerified,
-        status: e.status,
-        proof: e.proof,
-        requestClarification: e.requestClarification,
-        tryCount: e.tryCount,
-        attachments: List.from(e.attachments),
-        isCommitted: e.isCommitted,
-        isPreview: e.isPreview,
-      )).toList();
-      await AiBridgeService.instance.updateTaskDetails(task.id, task.name, task.description, verificationCriteria: updatedCriteria, status: AiTaskStatus.inTesting);
-    } else {
-      await AiBridgeService.instance.updateTaskStatus(task.id, AiTaskStatus.inTesting);
-    }
-
     final updatedTask = AiBridgeService.instance.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
 
     bool block = _blockOnQuick;
@@ -2970,23 +2988,19 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
           }
        }
     } catch (_) {}
-    
-    await AiBridgeService.instance.compilePrimaryDirectivesFile(updatedTask);
-    final basePrompt = await AiBridgeService.instance.buildTaskPrompt(updatedTask);
-    
-    String prompt = basePrompt;
-    if (replyTypeDirective.isNotEmpty) {
-      final index = prompt.indexOf('\n\n');
-      if (index != -1) {
-        prompt = prompt.substring(0, index + 2) + replyTypeDirective + '\n' + prompt.substring(index + 2);
-      } else {
-        prompt = '$replyTypeDirective\n$prompt';
-      }
-    }
-
-    final fullPrompt = crashSb.isEmpty ? prompt : '${crashSb.toString()}$prompt';
 
     if (copyOnly) {
+      final basePrompt = await AiBridgeService.instance.buildTaskPrompt(updatedTask);
+      String prompt = basePrompt;
+      if (replyTypeDirective.isNotEmpty) {
+        final index = prompt.indexOf('\n\n');
+        if (index != -1) {
+          prompt = prompt.substring(0, index + 2) + replyTypeDirective + '\n' + prompt.substring(index + 2);
+        } else {
+          prompt = '$replyTypeDirective\n$prompt';
+        }
+      }
+      final fullPrompt = crashSb.isEmpty ? prompt : '${crashSb.toString()}$prompt';
       await Clipboard.setData(ClipboardData(text: fullPrompt));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -2996,7 +3010,12 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
       return;
     }
 
-    await AiBridgeService.instance.sendToQueue(fullPrompt, block, taskIds: [task.id]);
+    await AiBridgeService.instance.submitTaskChecklist(
+      updatedTask,
+      blockScreen: block,
+      replyTypeDirective: replyTypeDirective,
+      crashInfo: crashSb.toString(),
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('$modeName for "${task.name}" copied to queue!'),

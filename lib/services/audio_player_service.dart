@@ -76,11 +76,15 @@ class AudioPlayerService {
           final file = File(path);
           final exists = await file.exists();
           if (!exists) {
-             throw Exception('AudioPlayerService FATAL: The explicitly mapped local absolute file path does not physically exist on disk: $path');
+             debugPrint('AudioPlayerService WARNING: The explicitly mapped local absolute file path does not physically exist on disk: $path. Falling back to dummy source.');
+             audioSources.add(AudioSource.uri(Uri.parse('http://localhost/dummy_failed_track.mp3'), tag: item));
+             continue;
           }
           final length = await file.length();
           if (length == 0) {
-             throw Exception('AudioPlayerService FATAL: Native crash prevention. The target mapped file exists but explicitly has 0 bytes (empty dummy file). FFmpeg probing segfaults on these structures natively: $path');
+             debugPrint('AudioPlayerService WARNING: The target mapped file exists but has 0 bytes: $path. Falling back to dummy source to prevent native crash.');
+             audioSources.add(AudioSource.uri(Uri.parse('http://localhost/dummy_failed_track.mp3'), tag: item));
+             continue;
           }
           
           final mbSize = (length / (1024 * 1024)).toStringAsFixed(2);

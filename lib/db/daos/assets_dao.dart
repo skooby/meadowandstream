@@ -33,6 +33,10 @@ class AssetsDao extends DatabaseAccessor<AppDatabase> with _$AssetsDaoMixin {
     return (select(assets)..where((t) => t.storagePath.equals(path))).getSingleOrNull();
   }
 
+  Future<Asset?> getAssetByName(String name) {
+    return (select(assets)..where((t) => t.name.equals(name))).getSingleOrNull();
+  }
+
   Future<int> insertAsset(AssetsCompanion asset) => into(assets).insert(asset);
   
   Future<void> updateAsset(AssetsCompanion asset) => update(assets).replace(asset);

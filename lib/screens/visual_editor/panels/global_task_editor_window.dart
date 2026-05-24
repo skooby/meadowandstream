@@ -91,9 +91,11 @@ class _ChecklistItemContainerState extends State<ChecklistItemContainer> with Si
                   ? Colors.green
                   : widget.status == AiVerificationStatus.pendingReview
                       ? Colors.orange
-                      : widget.status == AiVerificationStatus.ignored
-                          ? Colors.grey.withOpacity(0.5)
-                          : AppColors.controlBorder),
+                      : widget.status == AiVerificationStatus.submitted
+                          ? Colors.blueAccent
+                          : widget.status == AiVerificationStatus.ignored
+                              ? Colors.grey.withOpacity(0.5)
+                              : AppColors.controlBorder),
         ),
         child: widget.child,
       );
@@ -531,19 +533,21 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     existingTask!.isWorksheet = isWorksheet;
     existingTask!.parentId = activeParentId;
     existingTask!.notes = notesController.text.trim();
-    existingTask!.verificationCriteria = verificationCriteriaList
-        .map((e) => AiVerificationCriteria(
-            description: e.description,
-            goal: e.goal,
-            isVerified: e.isVerified,
-            status: e.status,
-            proof: e.proof,
-            requestClarification: e.requestClarification,
-            tryCount: e.tryCount,
-            attachments: List.from(e.attachments),
-            isCommitted: e.isCommitted,
-            isPreview: e.isPreview))
-        .toList();
+    existingTask!.verificationCriteria = isFolder
+        ? <AiVerificationCriteria>[]
+        : verificationCriteriaList
+            .map((e) => AiVerificationCriteria(
+                description: e.description,
+                goal: e.goal,
+                isVerified: e.isVerified,
+                status: e.status,
+                proof: e.proof,
+                requestClarification: e.requestClarification,
+                tryCount: e.tryCount,
+                attachments: List.from(e.attachments),
+                isCommitted: e.isCommitted,
+                isPreview: e.isPreview))
+            .toList();
     existingTask!.reviewQuestions = reviewQuestionsList
         .map((e) => AiReviewQuestion(
             question: e.question,
@@ -989,6 +993,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
 
       isFolder = (existingTask?.isFolder) ?? forceFolderCreation;
       isWorksheet = (existingTask?.isWorksheet) ?? false;
+      _selectedTabIndex = (isFolder || isWorksheet) ? 1 : 0;
       isNote = (existingTask?.isNote) ?? forceNoteCreation;
       isKnowledgeSummary = (existingTask?.isKnowledgeSummary) ?? false;
       worksheetId = existingTask?.worksheetId;
@@ -1357,6 +1362,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     }
 
     Widget _buildVerificationCriteriaSection() {
+      if (isFolder || isWorksheet) return const SizedBox.shrink();
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1510,7 +1516,10 @@ verificationCriteriaList[i].isCommitted = false;
                                       : verificationCriteriaList[i].status ==
                                               AiVerificationStatus.pendingReview
                                           ? Icons.check_box
-                                          : Icons.check_box_outline_blank,
+                                          : verificationCriteriaList[i].status ==
+                                                  AiVerificationStatus.submitted
+                                              ? Icons.hourglass_top
+                                              : Icons.check_box_outline_blank,
                                   size: 18,
                                   color: verificationCriteriaList[i].status ==
                                           AiVerificationStatus.verified
@@ -1518,9 +1527,12 @@ verificationCriteriaList[i].isCommitted = false;
                                       : verificationCriteriaList[i].status ==
                                               AiVerificationStatus.pendingReview
                                           ? Colors.orange
-                                          : verificationCriteriaList[i].status == AiVerificationStatus.ignored
-                                              ? Colors.grey.withOpacity(0.5)
-                                              : AppColors.controlBorder,
+                                          : verificationCriteriaList[i].status ==
+                                                  AiVerificationStatus.submitted
+                                              ? Colors.blueAccent
+                                              : verificationCriteriaList[i].status == AiVerificationStatus.ignored
+                                                  ? Colors.grey.withOpacity(0.5)
+                                                  : AppColors.controlBorder,
                                 ),
                               ),
                             ),
@@ -2310,7 +2322,12 @@ verificationCriteriaList[i].isCommitted = false;
                           fontWeight: FontWeight.bold),
                       cursorColor: AppColors.folder,
                       minLines: 1,
-                      maxLines: 2,
+                      maxLines: 1,
+                      keyboardType: TextInputType.text,
+                      textInputAction: TextInputAction.done,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.singleLineFormatter,
+                      ],
                       decoration: InputDecoration(
                         isDense: true,
                         hintText: existingTask == null
@@ -2515,9 +2532,20 @@ verificationCriteriaList[i].isCommitted = false;
                                             }
                                             sb.writeln('\nCRITICAL FOCUS CONSTRAINT:');
                                             sb.writeln('Your ONLY objective for this run is to satisfy Checklist Item #1 above. Do not attempt to work on, address, or implement any other features, checklist items, or criteria. Focus entirely on completing this single item, verify it is working, and then output your notes and verification proofs as requested.');
+                                            final endingInst = AiBridgeService.instance.endingInstructions;
+                                            if (endingInst.isNotEmpty) {
+                                              sb.writeln('');
+                                              sb.writeln(endingInst);
+                                            }
                                             
                                             item.status =
-                                                AiVerificationStatus.pendingReview;
+                                                AiVerificationStatus.submitted;
+                                          } else {
+                                            final endingInst = AiBridgeService.instance.endingInstructions;
+                                            if (endingInst.isNotEmpty) {
+                                              sb.writeln('');
+                                              sb.writeln(endingInst);
+                                            }
                                           }
 
                                           if (fileAttachments.isNotEmpty) {
@@ -2539,7 +2567,8 @@ verificationCriteriaList[i].isCommitted = false;
                                           sb.writeln('---');
                                           await AiBridgeService.instance.sendToQueue(
                                               sb.toString(), true,
-                                              taskIds: [existingTask!.id]);
+                                              taskIds: [existingTask!.id],
+                                              targetCriteriaDescription: uncheckedTasks.isNotEmpty ? uncheckedTasks.first.description : null);
                                           ScaffoldMessenger.of(context)
                                               .showSnackBar(const SnackBar(
                                             content:
@@ -3203,6 +3232,21 @@ verificationCriteriaList[i].isCommitted = false;
                                                           .fileAttachments),
                                                   hyperlinks: List.from(
                                                       existingTask!.hyperlinks),
+                                                  verificationCriteria: existingTask!
+                                                      .verificationCriteria
+                                                      .map((item) => AiVerificationCriteria(
+                                                            description: item.description,
+                                                            goal: item.goal,
+                                                            isVerified: item.isVerified,
+                                                            status: item.status,
+                                                            proof: item.proof,
+                                                            requestClarification: item.requestClarification,
+                                                            tryCount: item.tryCount,
+                                                            isCommitted: item.isCommitted,
+                                                            isPreview: item.isPreview,
+                                                            attachments: List<String>.from(item.attachments),
+                                                          ))
+                                                      .toList(),
                                                 );
                                                 setStateBuilder(() =>
                                                     isForceClosing = true);

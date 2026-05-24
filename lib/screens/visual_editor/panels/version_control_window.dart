@@ -369,44 +369,9 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
   }
 
   Future<void> _sendTaskToAiBridge(BuildContext context, AiTask task) async {
-    final uncheckedTasks = task.verificationCriteria
-        .where((e) => (e.status != AiVerificationStatus.verified &&
-            e.status != AiVerificationStatus.ignored &&
-            !e.isPreview))
-        .toList();
-    if (uncheckedTasks.isNotEmpty) {
-      uncheckedTasks.first.status = AiVerificationStatus.pendingReview;
-      final updatedCriteria = task.verificationCriteria
-          .map((e) => AiVerificationCriteria(
-                description: e.description,
-                goal: e.goal,
-                isVerified: e.isVerified,
-                status: e.status,
-                proof: e.proof,
-                requestClarification: e.requestClarification,
-                tryCount: e.tryCount,
-                attachments: List.from(e.attachments),
-                isCommitted: e.isCommitted,
-                isPreview: e.isPreview,
-              ))
-          .toList();
-      await AiBridgeService.instance.updateTaskDetails(
-        task.id,
-        task.name,
-        task.description,
-        verificationCriteria: updatedCriteria,
-        status: AiTaskStatus.inTesting,
-      );
-    } else {
-      await AiBridgeService.instance.updateTaskStatus(task.id, AiTaskStatus.inTesting);
-    }
-
     final updatedTask = AiBridgeService.instance.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
 
-    await AiBridgeService.instance.compilePrimaryDirectivesFile(updatedTask);
-    final prompt = await AiBridgeService.instance.buildTaskPrompt(updatedTask);
-
-    await AiBridgeService.instance.sendToQueue(prompt, true, taskIds: [task.id]);
+    await AiBridgeService.instance.submitTaskChecklist(updatedTask, blockScreen: true);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -575,6 +540,9 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                     } else if (vc.status == AiVerificationStatus.pendingReview) {
                                       iconData = Icons.hourglass_empty;
                                       iconColor = Colors.orange;
+                                    } else if (vc.status == AiVerificationStatus.submitted) {
+                                      iconData = Icons.hourglass_top;
+                                      iconColor = Colors.blueAccent;
                                     } else if (vc.status == AiVerificationStatus.ignored) {
                                       iconData = Icons.block;
                                       iconColor = Colors.redAccent;

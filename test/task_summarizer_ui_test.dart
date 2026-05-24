@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -221,6 +222,10 @@ void main() {
       // 2. Pump the widget
       await tester.pumpWidget(
         MaterialApp(
+          theme: ThemeData(
+            useMaterial3: true,
+            splashFactory: NoSplash.splashFactory,
+          ),
           home: Scaffold(
             body: GlobalTaskEditorWindow(
               key: const ValueKey('task_editor'),
@@ -267,6 +272,58 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.byTooltip('Generate Summary with AI'), findsOneWidget);
       expect(find.byTooltip('Review Prompt with AI'), findsOneWidget);
+    });
+
+    testWidgets('GlobalTaskEditorWindow name field is single line and blocks newlines', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 1024);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final mockTask = AiTask(
+        id: 'test_task_456',
+        name: 'Single Line Task Name',
+        description: 'Testing the name field constraints.',
+      );
+
+      AiBridgeService.instance.tasks.clear();
+      AiBridgeService.instance.tasks.add(mockTask);
+      GlobalTaskEditorState.instance.requestEdit(existingTask: mockTask);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: Scaffold(
+            body: GlobalTaskEditorWindow(
+              key: const ValueKey('task_editor_name_test'),
+              isDocked: true,
+              onClose: () {},
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Find the TextField by its initial/hint text or containing value
+      final nameTextFieldFinder = find.byWidgetPredicate((widget) =>
+          widget is TextField &&
+          widget.controller != null &&
+          widget.controller!.text == 'Single Line Task Name');
+
+      expect(nameTextFieldFinder, findsOneWidget);
+
+      final TextField nameTextField = tester.widget<TextField>(nameTextFieldFinder);
+      expect(nameTextField.maxLines, equals(1));
+      expect(nameTextField.minLines, equals(1));
+      expect(nameTextField.keyboardType, equals(TextInputType.text));
+      expect(nameTextField.textInputAction, equals(TextInputAction.done));
+      
+      // Verify singleLineFormatter is present in inputFormatters
+      expect(nameTextField.inputFormatters, isNotNull);
+      expect(nameTextField.inputFormatters!.contains(FilteringTextInputFormatter.singleLineFormatter), isTrue);
     });
   });
 }

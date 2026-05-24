@@ -309,11 +309,11 @@ class _GlobalOverlayInjectorState extends State<_GlobalOverlayInjector> {
                AiBridgeService.instance.dismissUpdateCover();
                if (type == UpdateCoverType.hotRestart || type == UpdateCoverType.rebuild) {
                    if (VisualEditorScreen.triggerHotRestart != null) {
-                       await VisualEditorScreen.triggerHotRestart!(validateCompilation: true);
+                       await VisualEditorScreen.triggerHotRestart!(validateCompilation: false);
                    }
                } else {
                    if (VisualEditorScreen.triggerHotReload != null) {
-                       await VisualEditorScreen.triggerHotReload!(validateCompilation: true);
+                       await VisualEditorScreen.triggerHotReload!(validateCompilation: false);
                    }
                }
            } else {

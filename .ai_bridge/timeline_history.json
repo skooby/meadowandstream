@@ -1,5 +1,38 @@
 [
   {
+    "id": "20064957c00592f0b9a5fe806410c08633d0e510",
+    "taskIds": [
+      "1779468603941"
+    ],
+    "title": "BRIDGE MONITOR [perf: optimize brain directory scan by sorting and checking only top 3 subdirectories]",
+    "summary": "",
+    "commitHash": "20064957c00592f0b9a5fe806410c08633d0e510",
+    "commitDate": "2026-05-23T16:45:06-06:00",
+    "verifiedNotes": "- Test Bridge Sync\n- conversation_history.md in our log outcomes monitor is crashing the app... remove it"
+  },
+  {
+    "id": "212876424c527edd8e240f8d5bdd5e706b0a19a6",
+    "taskIds": [
+      "1779468603941"
+    ],
+    "title": "BRIDGE MONITOR [test: run complete test suite and verify AI Bridge sync]",
+    "summary": "",
+    "commitHash": "212876424c527edd8e240f8d5bdd5e706b0a19a6",
+    "commitDate": "2026-05-23T08:40:07-06:00",
+    "verifiedNotes": "- Test 1"
+  },
+  {
+    "id": "7383ff3699431bdae0fbff044c8f8ebdd83582f8",
+    "taskIds": [
+      "1779468603941"
+    ],
+    "title": "BRIDGE MONITOR",
+    "summary": "",
+    "commitHash": "7383ff3699431bdae0fbff044c8f8ebdd83582f8",
+    "commitDate": "2026-05-22T17:09:16-06:00",
+    "verifiedNotes": "- Add a tab to the Bridge Monitor for doing a dry run... we will want to see all of the commands and prompts that will be going out in a simulated environment."
+  },
+  {
     "id": "62730daf0e00d95134df0d7bef76dbdf77699a80",
     "taskIds": [
       "1779468603941"

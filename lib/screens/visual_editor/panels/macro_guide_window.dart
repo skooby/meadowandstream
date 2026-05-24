@@ -255,6 +255,11 @@ class _MacroGuideWindowState extends State<MacroGuideWindow> {
                         [ 'AppendClipboard("String")', 'Append a string to the clipboard queue' ],
                         [ 'SetClipboard()', 'Sets clipboard to the 0 index of the clipboard queue' ],
                         [ 'NextClipboard()', 'Iterates to the next item in the clipboard queue and sets the clipboard' ],
+                        [ 'GetBridgeMode()', 'Returns active AI Bridge mode string ("sdk", "desktop", "cli", "handsfree")' ],
+                        [ 'LogPixelColor()', 'Logs Hex color of pixel currently under mouse cursor' ],
+                        [ 'var name = value', 'Declare and initialize a local variable (JavaScript/C# style)' ],
+                        [ '==  !=  <  >  <=  >=', 'Comparison operators (automatically translated to PowerShell -eq, -ne, etc.)' ],
+                        [ 'expr1 + expr2', 'String concatenation (automatically grouped in parentheses for execution)' ],
                       ].map((row) => TableRow(
                         children: [
                           Padding(padding: const EdgeInsets.only(right: 16, bottom: 8), child: SelectableText(row[0], style: const TextStyle(color: Colors.greenAccent, fontFamily: 'monospace'))),
@@ -320,6 +325,24 @@ class _MacroGuideWindowState extends State<MacroGuideWindow> {
                           width: double.infinity,
                           child: const SelectableText('// Is it further than 15 color units away from pure black? (i.e. is it lit up?)\nif (PixelMoreThan("#000000", 15)) {\n  Log("Button is active!")\n}', style: TextStyle(color: Colors.greenAccent, fontFamily: 'monospace')),
                         ),
+                        
+                        Text('AI Bridge Mode Conditional', style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold, fontSize: AppUIConfig.rootFontSize)),
+                        Container(
+                          margin: const EdgeInsets.only(top: 4, bottom: 16),
+                          padding: const EdgeInsets.all(8),
+                          color: AppColors.windowBackground,
+                          width: double.infinity,
+                          child: const SelectableText('var bridgeMode = GetBridgeMode()\nif (bridgeMode == "desktop") {\n  Log("Running inside Desktop (Windows) integration mode!")\n} else {\n  Log("Active mode: \$bridgeMode")\n}', style: TextStyle(color: Colors.greenAccent, fontFamily: 'monospace')),
+                        ),
+
+                        Text('Looping and Variables', style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold, fontSize: AppUIConfig.rootFontSize)),
+                        Container(
+                          margin: const EdgeInsets.only(top: 4, bottom: 16),
+                          padding: const EdgeInsets.all(8),
+                          color: AppColors.windowBackground,
+                          width: double.infinity,
+                          child: const SelectableText('var count = 5\nfor (var i = 0; i < count; i++) {\n  Log("Iteration: " + i)\n  WaitMs(100)\n}', style: TextStyle(color: Colors.greenAccent, fontFamily: 'monospace')),
+                        ),
                       ]
                     ),
                   ),
@@ -331,6 +354,11 @@ class _MacroGuideWindowState extends State<MacroGuideWindow> {
                       },
                       defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                       children: [
+                        [ 'var x = value', 'Translated to PowerShell variable (\$x = value)' ],
+                        [ 'x == y', 'Translated to PowerShell equality check (\$x -eq \$y)' ],
+                        [ 'x != y', 'Translated to PowerShell inequality check (\$x -ne \$y)' ],
+                        [ 'x < y / x > y', 'Translated to PowerShell comparisons (\$x -lt \$y / \$x -gt \$y)' ],
+                        [ 'x + y', 'Grouped as native expression parentheses e.g. (\$x + \$y)' ],
                         [ '\$var = "Hello"', 'Declare and assign variables' ],
                         [ 'if (\$a -eq "Hello") { }', 'Standard PowerShell comparison (-eq, -ne, -gt, -lt)' ],
                         [ 'Start-Process "notepad.exe"', 'Launch an external application or executable' ],

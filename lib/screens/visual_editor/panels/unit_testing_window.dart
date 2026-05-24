@@ -305,14 +305,13 @@ class _UnitTestingWindowState extends State<UnitTestingWindow> {
                            sb.writeln('Update file when complete\\n');
                            
                            sb.writeln('# TASKS TO ADDRESS');
-                           sb.writeln('Task: Mock Unit Test Task');
+                           sb.writeln('Task: Mock Unit Test (Visual Preview Only)');
                            sb.writeln('Area: PIPELINE TEST BED > SIMPLE THREE POINT TEST');
                            sb.writeln('Status: IN PROGRESS');
                            sb.writeln('---');
                            
                            String directive = sb.toString().trim();
                            
-                           print('\\n\\n=== AI BRIDGE PROMPT PAYLOAD ===\\n\$directive\\n===============================\\n\\n');
                            dev.log('\\n=== AI BRIDGE PROMPT PAYLOAD ===\\n\$directive\\n===============================', name: 'UNIT_TEST');
                            
                            _runMockTest('Primary Directive Logic', true, directive);

@@ -41,8 +41,10 @@ class _MacroManagerPanelState extends State<MacroManagerPanel> {
   final TextEditingController _nameController = TextEditingController();
   double _width = 600;
   double _height = 500;
+  double _leftPaneWidth = 250;
   double _bgOpacity = 0.4;
   Offset _offset = const Offset(200, 200);
+  String? _editingMacroId;
 
   @override
   void initState() {
@@ -67,6 +69,7 @@ class _MacroManagerPanelState extends State<MacroManagerPanel> {
 
         _width = prefs.getDouble(VisualEditorScreen.getPrefKey('macro_width')) ?? 600;
         _height = prefs.getDouble(VisualEditorScreen.getPrefKey('macro_height')) ?? 500;
+        _leftPaneWidth = prefs.getDouble(VisualEditorScreen.getPrefKey('macro_left_pane_width')) ?? 250;
         _bgOpacity = prefs.getDouble('ve_toolWindowOpacity') ?? 0.4;
         double dx = prefs.getDouble(VisualEditorScreen.getPrefKey('macro_dx')) ?? 200;
         double dy = prefs.getDouble(VisualEditorScreen.getPrefKey('macro_dy')) ?? 200;
@@ -79,12 +82,13 @@ class _MacroManagerPanelState extends State<MacroManagerPanel> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(VisualEditorScreen.getPrefKey('macro_width'), _width);
     await prefs.setDouble(VisualEditorScreen.getPrefKey('macro_height'), _height);
+    await prefs.setDouble(VisualEditorScreen.getPrefKey('macro_left_pane_width'), _leftPaneWidth);
     await prefs.setDouble(VisualEditorScreen.getPrefKey('macro_dx'), _offset.dx);
     await prefs.setDouble(VisualEditorScreen.getPrefKey('macro_dy'), _offset.dy);
   }
 
   void _fetchSmartSnippet(BuildContext context, String captureMode) async {
-    if (['SendText', 'Send', 'WaitMs', 'LeftClick', 'RightClick', 'LeftDoubleClick', 'MiddleClick', 'ReturnToApp', 'Log', 'SaveWindowPosSize', 'RestoreWindowPosSize', 'PixelMoreThan', 'WinMove', 'BlockInput', 'AppendClipboard', 'SetClipboard', 'NextClipboard'].contains(captureMode)) {
+    if (['SendText', 'Send', 'WaitMs', 'LeftClick', 'RightClick', 'LeftDoubleClick', 'MiddleClick', 'ReturnToApp', 'Log', 'SaveWindowPosSize', 'RestoreWindowPosSize', 'PixelMoreThan', 'WinMove', 'BlockInput', 'AppendClipboard', 'SetClipboard', 'NextClipboard', 'GetBridgeMode'].contains(captureMode)) {
        String snip = captureMode;
        if (captureMode == 'SendText') snip = 'SendText("Sample")';
        if (captureMode == 'Send') snip = 'Send("^v")';
@@ -98,6 +102,7 @@ class _MacroManagerPanelState extends State<MacroManagerPanel> {
        if (captureMode == 'AppendClipboard') snip = 'AppendClipboard("String")';
        if (captureMode == 'SetClipboard') snip = 'SetClipboard()';
        if (captureMode == 'NextClipboard') snip = 'NextClipboard()';
+       if (captureMode == 'GetBridgeMode') snip = 'GetBridgeMode()';
        
        Clipboard.setData(ClipboardData(text: '$snip\nWaitMs(200)'));
        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -139,12 +144,24 @@ public class Win32 {
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
+    
+    [DllImport("user32.dll")]
+    public static extern IntPtr WindowFromPoint(POINT Point);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetParent(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 }
 "@
-
+ 
 $point = New-Object Win32+POINT
 [Win32]::GetCursorPos([ref]$point) | Out-Null
-
+ 
 $hdc = [Win32]::GetDC([IntPtr]::Zero)
 $pixel = [Win32]::GetPixel($hdc, $point.X, $point.Y)
 [Win32]::ReleaseDC([IntPtr]::Zero, $hdc) | Out-Null
@@ -152,17 +169,49 @@ $r =  $pixel -band 0xFF
 $g = ($pixel -shr 8) -band 0xFF
 $b = ($pixel -shr 16) -band 0xFF
 $hex = "#{0:X2}{1:X2}{2:X2}" -f $r, $g, $b
+ 
+$hwnd = [Win32]::WindowFromPoint($point)
+if ($hwnd -eq [IntPtr]::Zero) {
+    $hwnd = [Win32]::GetForegroundWindow()
+}
 
-$hwnd = [Win32]::GetForegroundWindow()
+$titles = @()
+$curr = $hwnd
+$rootHwnd = $hwnd
+while ($curr -ne [IntPtr]::Zero) {
+    $sb = New-Object System.Text.StringBuilder 256
+    [Win32]::GetWindowText($curr, $sb, $sb.Capacity) | Out-Null
+    $t = $sb.ToString().Trim()
+    if ($t -and $titles -notcontains $t) {
+        $titles += $t
+    }
+    $rootHwnd = $curr
+    $curr = [Win32]::GetParent($curr)
+}
+
+# Add process metadata for $hwnd
+$procTitles = @()
+$targetPid = 0
+[Win32]::GetWindowThreadProcessId($hwnd, [ref]$targetPid) | Out-Null
+if ($targetPid -ne 0) {
+    $proc = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
+    if ($proc) {
+        if ($proc.ProcessName -and $procTitles -notcontains $proc.ProcessName) {
+            $procTitles += $proc.ProcessName
+        }
+        if ($proc.Product -and $procTitles -notcontains $proc.Product) {
+            $procTitles += $proc.Product
+        }
+        if ($proc.Description -and $procTitles -notcontains $proc.Description) {
+            $procTitles += $proc.Description
+        }
+    }
+}
+ 
 $rect = New-Object Win32+RECT
-[Win32]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
-
-$hwnd = [Win32]::GetForegroundWindow()
-$sb = New-Object System.Text.StringBuilder 256
-[Win32]::GetWindowText($hwnd, $sb, $sb.Capacity) | Out-Null
-$title = $sb.ToString()
-
-Write-Output "$($point.X),$($point.Y),$($rect.Left),$($rect.Top),$($rect.Right),$($rect.Bottom),$hex|$title"
+[Win32]::GetWindowRect($rootHwnd, [ref]$rect) | Out-Null
+ 
+Write-Output "$($point.X),$($point.Y),$($rect.Left),$($rect.Top),$($rect.Right),$($rect.Bottom),$hex|$($titles -join ';')|$($procTitles -join ';')"
 ''';
 
     final tempFile = File('.ai_bridge/capture.ps1');
@@ -171,9 +220,12 @@ Write-Output "$($point.X),$($point.Y),$($rect.Left),$($rect.Top),$($rect.Right),
     final out = result.stdout.toString().trim();
     if (out.isNotEmpty && out.contains('|')) {
       final parts = out.split('|');
-      if (parts.length == 2) {
+      if (parts.length >= 2) {
         final coords = parts[0].split(',');
-        final title = parts[1];
+        final titlesStr = parts[1];
+        final titles = titlesStr.split(';').where((t) => t.trim().isNotEmpty).toList();
+        final procTitlesStr = parts.length >= 3 ? parts[2] : '';
+        final procTitles = procTitlesStr.split(';').where((t) => t.trim().isNotEmpty).toList();
         if (coords.length >= 6 && mounted) {
            final x = int.tryParse(coords[0]) ?? 0;
            final y = int.tryParse(coords[1]) ?? 0;
@@ -183,19 +235,35 @@ Write-Output "$($point.X),$($point.Y),$($rect.Left),$($rect.Top),$($rect.Right),
            final sBottom = int.tryParse(coords[5]) ?? 0;
            final hex = coords.length == 7 ? coords[6] : '#FFFFFF';
            
+           final mainTitle = titles.isNotEmpty ? titles.last : '';
+           final childTitles = titles.isNotEmpty ? titles.sublist(0, titles.length - 1) : <String>[];
+           final cleanProcTitles = procTitles.where((t) => t != mainTitle && !childTitles.contains(t)).toList();
+           
+           String comment = '';
+           final List<String> commentParts = [];
+           if (cleanProcTitles.isNotEmpty) {
+             commentParts.add('Process: ${cleanProcTitles.map((t) => '"$t"').join(', ')}');
+           }
+           if (childTitles.isNotEmpty) {
+             commentParts.add('Child: ${childTitles.map((t) => '"$t"').join(', ')}');
+           }
+           if (commentParts.isNotEmpty) {
+             comment = ' // ${commentParts.join(', ')}';
+           }
+           
            String snippet = '';
            if (captureMode == 'ClickAt') {
-               snippet = 'SwitchWindow("$title")\nMoveMouse($x, $y)\nLeftClick()\nWaitMs(100)\nReturnToApp()';
+               snippet = 'SwitchWindow("$mainTitle")$comment\nMoveMouse($x, $y)\nLeftClick()\nWaitMs(100)\nReturnToApp()';
            } else if (captureMode == 'TopLeft') {
-               snippet = 'SwitchWindow("$title")\nRelativeMouseMove("TopLeft", ${(x - sLeft).abs()}, ${(y - sTop).abs()})\nLeftClick()\nWaitMs(100)\nReturnToApp()';
+               snippet = 'SwitchWindow("$mainTitle")$comment\nRelativeMouseMove("TopLeft", ${(x - sLeft).abs()}, ${(y - sTop).abs()})\nLeftClick()\nWaitMs(100)\nReturnToApp()';
            } else if (captureMode == 'TopRight') {
-               snippet = 'SwitchWindow("$title")\nRelativeMouseMove("TopRight", ${(sRight - x).abs()}, ${(y - sTop).abs()})\nLeftClick()\nWaitMs(100)\nReturnToApp()';
+               snippet = 'SwitchWindow("$mainTitle")$comment\nRelativeMouseMove("TopRight", ${(sRight - x).abs()}, ${(y - sTop).abs()})\nLeftClick()\nWaitMs(100)\nReturnToApp()';
            } else if (captureMode == 'BottomLeft') {
-               snippet = 'SwitchWindow("$title")\nRelativeMouseMove("BottomLeft", ${(x - sLeft).abs()}, ${(sBottom - y).abs()})\nLeftClick()\nWaitMs(100)\nReturnToApp()';
+               snippet = 'SwitchWindow("$mainTitle")$comment\nRelativeMouseMove("BottomLeft", ${(x - sLeft).abs()}, ${(sBottom - y).abs()})\nLeftClick()\nWaitMs(100)\nReturnToApp()';
            } else if (captureMode == 'BottomRight') {
-               snippet = 'SwitchWindow("$title")\nRelativeMouseMove("BottomRight", ${(sRight - x).abs()}, ${(sBottom - y).abs()})\nLeftClick()\nWaitMs(100)\nReturnToApp()';
+               snippet = 'SwitchWindow("$mainTitle")$comment\nRelativeMouseMove("BottomRight", ${(sRight - x).abs()}, ${(sBottom - y).abs()})\nLeftClick()\nWaitMs(100)\nReturnToApp()';
            } else if (captureMode == 'WindowName') {
-               snippet = 'SwitchWindow("$title")\nWaitMs(100)';
+               snippet = 'SwitchWindow("$mainTitle")$comment\nWaitMs(100)';
            } else if (captureMode == 'PixelIs') {
                snippet = 'PixelIs("$hex")';
            } else if (captureMode == 'PixelMoreThan') {
@@ -306,584 +374,577 @@ Write-Output "$($point.X),$($point.Y),$($rect.Left),$($rect.Top),$($rect.Right),
   }
 
   void _editMacro(Macro macro) {
-    String selectedMode = 'ClickAt';
-    
-    MacroService.instance.setEditing(macro.id, true);
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        final ctrl = CodeController(
-          text: macro.script.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
-          language: powershell,
-          params: const EditorParams(tabSpaces: 4),
-          modifiers: const [],
-        );
-        ctrl.autocompleter.setCustomWords([
-          'ClickAt', 'TopLeft', 'TopRight', 'BottomLeft', 'BottomRight', 
-          'PixelIs', 'PixelIsNot', 'PixelMoreThan', 'WindowName', 'SendText', 'Send', 
-          'WaitMs', 'LeftClick', 'RightClick', 'LeftDoubleClick', 
-          'MiddleClick', 'ReturnToApp', 'Log', 'SaveWindowPosSize', 
-          'RestoreWindowPosSize', 'MoveMouse', 'RelativeMouseMove', 
-          'SwitchWindow', 'Run', 'if', 'else', 'WinMove', 'BlockInput',
-          'AppendClipboard', 'SetClipboard', 'NextClipboard'
-        ]);
-        
-        final List<TextEditingValue> history = [ctrl.value];
-        int historyIndex = 0;
-        bool isUndoing = false;
-        int lastEditTime = 0;
-
-        ctrl.addListener(() {
-          if (isUndoing) return;
-          if (historyIndex >= 0 && historyIndex < history.length) {
-            final currentState = ctrl.value;
-            final lastState = history[historyIndex];
-            if (lastState.text != currentState.text) {
-               int now = DateTime.now().millisecondsSinceEpoch;
-               if (historyIndex < history.length - 1) {
-                  history.removeRange(historyIndex + 1, history.length);
-               }
-               int lenDiff = (currentState.text.length - lastState.text.length).abs();
-               if (now - lastEditTime < 1000 && lenDiff <= 1 && historyIndex > 0) {
-                  history[historyIndex] = currentState;
-               } else {
-                  history.add(currentState);
-                  if (history.length > 300) history.removeAt(0);
-                  historyIndex = history.length - 1;
-               }
-               lastEditTime = now;
-            } else if (lastState.selection != currentState.selection) {
-               history[historyIndex] = currentState;
-            }
-          }
-        });
-
-        void performUndo() {
-          if (historyIndex > 0) {
-            isUndoing = true;
-            historyIndex--;
-            ctrl.value = history[historyIndex];
-            isUndoing = false;
-          }
-        }
-
-        void performRedo() {
-          if (historyIndex < history.length - 1) {
-            isUndoing = true;
-            historyIndex++;
-            ctrl.value = history[historyIndex];
-            isUndoing = false;
-          }
-        }
-
-        final focusNode = FocusNode(
-          onKeyEvent: (node, event) {
-            if (HardwareKeyboard.instance.isControlPressed) {
-               if (event.logicalKey == LogicalKeyboardKey.keyZ) {
-                   if (event is KeyDownEvent || event is KeyRepeatEvent) {
-                       if (HardwareKeyboard.instance.isShiftPressed) {
-                          performRedo();
-                       } else {
-                          performUndo();
-                       }
-                   }
-                   return KeyEventResult.handled;
-               }
-               if (event.logicalKey == LogicalKeyboardKey.keyY) {
-                   if (event is KeyDownEvent || event is KeyRepeatEvent) {
-                       performRedo();
-                   }
-                   return KeyEventResult.handled;
-               }
-            }
-            return KeyEventResult.ignored;
-          }
-        );
-
-        final descCtrl = TextEditingController(text: macro.description);
-        final nameCtrl = TextEditingController(text: macro.name);
-        final scrollCtrl = ScrollController();
-        return StatefulBuilder(
-          builder: (context, setStateBuilder) {
-            return AlertDialog(
-              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-              backgroundColor: AppColors.windowBackground,
-              title: Row(
-                children: [
-                  Text('Edit Macro', style: TextStyle(color: AppColors.panelTextPrimary)),
-                  const Spacer(),
-                  DropdownButton<String>(
-                    value: selectedMode,
-                    dropdownColor: AppColors.panelBackground,
-                    style: TextStyle(color: AppColors.panelTextPrimary),
-                    underline: const SizedBox(),
-                    items: ['ClickAt', 'TopLeft', 'TopRight', 'BottomLeft', 'BottomRight', 'PixelIs', 'PixelMoreThan', 'WindowName', 'SendText', 'Send', 'WaitMs', 'LeftClick', 'RightClick', 'LeftDoubleClick', 'MiddleClick', 'ReturnToApp', 'Log', 'SaveWindowPosSize', 'RestoreWindowPosSize', 'WinMove', 'BlockInput', 'AppendClipboard', 'SetClipboard', 'NextClipboard']
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e == 'ClickAt' ? 'Absolute' : (e.startsWith('Top') || e.startsWith('Bottom') ? 'Rel: $e' : e))))
-                        .toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setStateBuilder(() => selectedMode = val);
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => _fetchSmartSnippet(context, selectedMode),
-                    icon: Icon(AppToolWindows.getDef('macro').icon, size: 16, color: AppToolWindows.getDef('macro').color),
-                      label: Text('Capture Snippet', style: TextStyle(color: AppColors.panelTextPrimary)),
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.overlaySubtle),
-                  ),
-                ],
-              ),
-              content: SizedBox(
-                width: 700,
-                height: 600,
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: nameCtrl,
-                      style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold),
-                      decoration: InputDecoration(
-                        hintText: 'Macro Name...',
-                        hintStyle: TextStyle(color: AppColors.panelTextSecondary),
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      ),
-                      onChanged: (val) {
-                         macro.name = val;
-                         MacroService.instance.updateMacro(macro);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: descCtrl,
-                      style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize),
-                      decoration: InputDecoration(
-                        hintText: 'Macro Description (optional)...',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      ),
-                      onChanged: (val) {
-                         macro.description = val;
-                         MacroService.instance.updateMacro(macro);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(border: Border.all(color: AppColors.borderSubtle)),
-                        child: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: Scrollbar(
-                                controller: scrollCtrl,
-                                thumbVisibility: true,
-                                child: SingleChildScrollView(
-                                  controller: scrollCtrl,
-                                  child: TextField(
-                                    controller: ctrl,
-                                    focusNode: focusNode,
-                                    maxLines: null,
-                                    keyboardType: TextInputType.multiline,
-                                    style: TextStyle(fontFamily: 'monospace', fontSize: AppUIConfig.rootFontSize, color: AppColors.panelTextPrimary),
-                                    decoration: InputDecoration(
-                                      border: InputBorder.none,
-                                      contentPadding: EdgeInsets.all(8),
-                                    ),
-                                    onChanged: (val) {
-                                       macro.script = val.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-                                       MacroService.instance.updateMacro(macro);
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: 8,
-                              right: 24,
-                              child: IconButton(
-                                icon: Icon(Icons.help_outline, size: 20, color: AppColors.folder),
-                                tooltip: 'Coding Guide',
-                                onPressed: () => showMacroGuideWindow(context),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                     MacroService.instance.playMacro(macro.id);
-                  },
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                       Icon(Icons.play_arrow, color: Colors.green, size: 16),
-                       SizedBox(width: 4),
-                       Text('Test Macro', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                    ]
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text('Close', style: TextStyle(color: AppColors.panelTextSecondary)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    ).then((_) {
-      MacroService.instance.setEditing(macro.id, false);
+    setState(() {
+      _editingMacroId = macro.id;
     });
+    MacroService.instance.setEditing(macro.id, true);
   }
 
-  Widget _buildMacroContent() { return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+  Widget _buildMacroContent() {
+    if (_editingMacroId != null) {
+      final macro = MacroService.instance.macros.firstWhere(
+        (m) => m.id == _editingMacroId,
+        orElse: () => Macro(id: '', name: '', script: ''),
+      );
+      if (macro.id.isEmpty) {
+        _editingMacroId = null;
+      } else {
+        final double width = widget.isDocked ? MediaQuery.of(context).size.width : _width;
+        if (width >= 600) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: _leftPaneWidth,
+                child: _buildMacroList(isSplit: true),
+              ),
+              MouseRegion(
+                cursor: SystemMouseCursors.resizeLeftRight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragUpdate: (details) {
+                    setState(() {
+                      final double maxLeftWidth = width - 150;
+                      _leftPaneWidth = (_leftPaneWidth + details.delta.dx).clamp(150.0, maxLeftWidth);
+                    });
+                  },
+                  onHorizontalDragEnd: (_) {
+                    _savePreferences();
+                  },
+                  child: Container(
+                    width: 8,
+                    color: Colors.transparent,
+                    child: Center(
+                      child: Container(
+                        width: 1,
+                        color: AppColors.borderSubtle,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: MacroInlineEditor(
+                  macro: macro,
+                  onClose: () {
+                    setState(() {
+                      _editingMacroId = null;
+                    });
+                    MacroService.instance.setEditing(macro.id, false);
+                  },
+                  onFetchSmartSnippet: (mode) => _fetchSmartSnippet(context, mode),
+                ),
+              ),
+            ],
+          );
+        } else {
+          return MacroInlineEditor(
+            macro: macro,
+            onClose: () {
+              setState(() {
+                _editingMacroId = null;
+              });
+              MacroService.instance.setEditing(macro.id, false);
+            },
+            onFetchSmartSnippet: (mode) => _fetchSmartSnippet(context, mode),
+          );
+        }
+      }
+    }
+
+    return _buildMacroList(isSplit: false);
+  }
+
+  Widget _buildMacroList({bool isSplit = false}) { return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
 Expanded(
   child: ListenableBuilder(
                           listenable: MacroService.instance,
                           builder: (context, _) {
                             final macros = MacroService.instance.displayMacros;
                             return Container(
-                              padding: const EdgeInsets.all(16.0),
+                              padding: isSplit ? const EdgeInsets.all(8.0) : const EdgeInsets.all(16.0),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _nameController,
-                        style: TextStyle(color: AppColors.panelTextPrimary),
-                        decoration: InputDecoration(
-                          hintText: 'New Macro Name...',
-                          hintStyle: TextStyle(color: AppColors.panelTextSecondary),
-                          fillColor: AppColors.panelBackground,
-                          filled: true,
-                          border: OutlineInputBorder(borderSide: BorderSide.none),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        if (_nameController.text.trim().isNotEmpty) {
-                          MacroService.instance.addMacro(Macro(
-                            id: DateTime.now().millisecondsSinceEpoch.toString(),
-                            name: _nameController.text.trim(),
-                            script: '',
-                          ));
-                          _nameController.clear();
-                        }
-                      },
-                      icon: const Icon(Icons.add, color: Colors.green),
-                        label: Text('Add Macro', style: TextStyle(color: AppColors.panelTextPrimary)),
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.overlaySubtle),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        if (_nameController.text.trim().isNotEmpty) {
-                          MacroService.instance.addFolder(_nameController.text.trim());
-                          _nameController.clear();
-                        }
-                      },
-                      icon: Icon(Icons.folder_open, color: AppColors.folder),
-                        label: Text('Add Folder', style: TextStyle(color: AppColors.panelTextPrimary)),
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.overlaySubtle),
-                    ),
-                  ],
-                ),
-              const SizedBox(height: 16),
-              Divider(color: AppColors.borderSubtle),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('SAVED MACROS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold)),
-                  Row(
-                    children: [
-                      Text('Trace Execution', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize)),
-                      Transform.scale(
-                        scale: 0.7,
-                        child: Switch(
-                          value: MacroService.instance.debugMode,
-                          onChanged: MacroService.instance.toggleDebugMode,
-                          activeThumbColor: AppColors.folder,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: macros.isEmpty
-                    ? Center(child: Text('No macros recorded yet.', style: TextStyle(color: AppColors.panelTextSecondary)))
-                    : ListView.builder(
-                        itemCount: macros.length + 1,
-                        itemBuilder: (context, index) {
-                          if (index == macros.length) {
-                            return DragTarget<String>(
-                              onAcceptWithDetails: (d) => MacroService.instance.moveMacro(d.data, ''),
-                              builder: (ctx, cand, _) => Container(
-                                height: 60,
-                                color: cand.isNotEmpty ? AppColors.folder.withOpacity(0.1) : Colors.transparent,
-                              )
-                            );
-                          }
-                          final macro = macros[index];
-                          int depth = 0;
-                          String pId = macro.parentId;
-                          while (pId.isNotEmpty) {
-                            depth++;
-                            final p = MacroService.instance.macros.where((m) => m.id == pId).firstOrNull;
-                            if (p == null) break;
-                            pId = p.parentId;
-                          }
-
-                          Widget finalContent;
-                          if (macro.isFolder) {
-                            finalContent = DragTarget<String>(
-                              onWillAcceptWithDetails: (d) => d.data != macro.id,
-                              onAcceptWithDetails: (d) => MacroService.instance.moveMacro(d.data, macro.id),
-                              builder: (ctx, cand, _) => Container(
-                                color: cand.isNotEmpty ? AppColors.folder.withOpacity(0.2) : AppColors.panelBackground,
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                child: Row(
-                                  children: [
-                                    MouseRegion(
-                                      cursor: SystemMouseCursors.grab,
-                                      child: Icon(Icons.drag_handle, color: AppColors.borderSubtle, size: 14),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: GestureDetector(
-                                        onTap: () => MacroService.instance.toggleFolder(macro.id),
-                                        behavior: HitTestBehavior.opaque,
-                                        child: Row(
+                                  isSplit
+                                      ? Column(
+                                          crossAxisAlignment: CrossAxisAlignment.stretch,
                                           children: [
-                                            Icon(
-                                              macro.isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
-                                              color: AppColors.folder,
-                                              size: 16,
+                                            TextField(
+                                              controller: _nameController,
+                                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize),
+                                              decoration: InputDecoration(
+                                                hintText: 'New Macro/Folder...',
+                                                hintStyle: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.smallFontSize),
+                                                fillColor: AppColors.panelBackground,
+                                                filled: true,
+                                                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                border: OutlineInputBorder(borderSide: BorderSide.none),
+                                              ),
                                             ),
-                                            const SizedBox(width: 4),
-                                            Icon(
-                                              macro.isExpanded ? Icons.folder_open : Icons.folder,
-                                              color: AppColors.folder,
-                                              size: 16,
+                                            const SizedBox(height: 6),
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: ElevatedButton.icon(
+                                                    onPressed: () {
+                                                      if (_nameController.text.trim().isNotEmpty) {
+                                                        MacroService.instance.addMacro(Macro(
+                                                          id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                                          name: _nameController.text.trim(),
+                                                          script: '',
+                                                        ));
+                                                        _nameController.clear();
+                                                      }
+                                                    },
+                                                    icon: const Icon(Icons.add, color: Colors.green, size: 14),
+                                                    label: Text('Macro', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize)),
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: AppColors.overlaySubtle,
+                                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Expanded(
+                                                  child: ElevatedButton.icon(
+                                                    onPressed: () {
+                                                      if (_nameController.text.trim().isNotEmpty) {
+                                                        MacroService.instance.addFolder(_nameController.text.trim());
+                                                        _nameController.clear();
+                                                      }
+                                                    },
+                                                    icon: Icon(Icons.folder_open, color: AppColors.folder, size: 14),
+                                                    label: Text('Folder', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize)),
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: AppColors.overlaySubtle,
+                                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        )
+                                      : Row(
+                                          children: [
+                                            Expanded(
+                                              child: TextField(
+                                                controller: _nameController,
+                                                style: TextStyle(color: AppColors.panelTextPrimary),
+                                                decoration: InputDecoration(
+                                                  hintText: 'New Macro Name...',
+                                                  hintStyle: TextStyle(color: AppColors.panelTextSecondary),
+                                                  fillColor: AppColors.panelBackground,
+                                                  filled: true,
+                                                  border: OutlineInputBorder(borderSide: BorderSide.none),
+                                                ),
+                                              ),
                                             ),
                                             const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(macro.name, style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold)),
+                                            ElevatedButton.icon(
+                                              onPressed: () {
+                                                if (_nameController.text.trim().isNotEmpty) {
+                                                  MacroService.instance.addMacro(Macro(
+                                                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                                    name: _nameController.text.trim(),
+                                                    script: '',
+                                                  ));
+                                                  _nameController.clear();
+                                                }
+                                              },
+                                              icon: const Icon(Icons.add, color: Colors.green),
+                                              label: Text('Add Macro', style: TextStyle(color: AppColors.panelTextPrimary)),
+                                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.overlaySubtle),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            ElevatedButton.icon(
+                                              onPressed: () {
+                                                if (_nameController.text.trim().isNotEmpty) {
+                                                  MacroService.instance.addFolder(_nameController.text.trim());
+                                                  _nameController.clear();
+                                                }
+                                              },
+                                              icon: Icon(Icons.folder_open, color: AppColors.folder),
+                                              label: Text('Add Folder', style: TextStyle(color: AppColors.panelTextPrimary)),
+                                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.overlaySubtle),
                                             ),
                                           ],
                                         ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: Icon(Icons.edit, color: AppColors.accent, size: 14),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      splashRadius: 16,
-                                      onPressed: () => _editFolderName(macro),
-                                      tooltip: 'Edit Folder Name',
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: Icon(Icons.delete, color: AppColors.error, size: 14),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      splashRadius: 16,
-                                      onPressed: () => MacroService.instance.deleteMacro(macro.id),
-                                      tooltip: 'Delete Folder',
-                                    ),
-                                    const SizedBox(width: 24),
-                                  ],
-                                ),
-                              ),
-                            );
-                          } else {
-                            finalContent = Container(
-                              color: Colors.transparent,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    MouseRegion(
-                                      cursor: SystemMouseCursors.grab,
-                                      child: Icon(Icons.drag_handle, color: AppColors.borderSubtle, size: 14),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(macro.name, style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                          Text(macro.description.isNotEmpty ? macro.description : "${macro.script.split('\n').length} Lines", style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.smallFontSize), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                        ],
-                                      ),
-                                    ),
-                                    if (macro.hotkey.isNotEmpty)
-                                      Padding(
-                                        padding: const EdgeInsets.only(right: 8),
-                                        child: Text('[${macro.hotkey}]', style: TextStyle(color: AppColors.note, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold)),
-                                      ),
-                                    IconButton(
-                                      icon: Icon(Icons.keyboard, color: AppColors.note, size: 14),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      splashRadius: 16,
-                                      onPressed: () {
-                                        if (macro.executionTiming != 'System') {
-                                          SystemLogsService.instance.addLog('Error: Global hotkeys can only be assigned to System macros.', category: LogCategory.SYSTEM);
-                                        } else {
-                                          _showHotkeyDialog(macro);
-                                        }
-                                      },
-                                      tooltip: 'Set Global Hotkey',
-                                    ),
-                                    const SizedBox(width: 8),
-                                    DropdownButton<String>(
-                                      value: macro.executionTiming,
-                                      isDense: true,
-                                      dropdownColor: AppColors.panelBackground,
-                                      style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize),
-                                      underline: const SizedBox(),
-                                      items: ['Manual', 'System', 'BeforeReload', 'AfterReload', 'BridgeConnect']
-                                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                                          .toList(),
-                                      onChanged: (val) {
-                                        if (val != null) {
-                                          macro.executionTiming = val;
-                                          MacroService.instance.updateMacro(macro);
-                                        }
-                                      },
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: const Icon(Icons.play_arrow, color: Colors.green, size: 14),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      splashRadius: 16,
-                                      onPressed: () => MacroService.instance.playMacro(macro.id),
-                                      tooltip: 'Run Macro',
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: Icon(Icons.edit, color: AppColors.accent, size: 14),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      splashRadius: 16,
-                                      onPressed: () => _editMacro(macro),
-                                      tooltip: 'Edit Macro',
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: Icon(Icons.copy, color: AppColors.panelTextSecondary, size: 14),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      splashRadius: 16,
-                                      onPressed: () => MacroService.instance.duplicateMacro(macro.id),
-                                      tooltip: 'Duplicate Macro',
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: Icon(Icons.delete, color: AppColors.error, size: 14),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      splashRadius: 16,
-                                      onPressed: () => MacroService.instance.deleteMacro(macro.id),
-                                      tooltip: 'Delete Macro',
-                                    ),
-                                    const SizedBox(width: 24),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }
+                                  const SizedBox(height: 16),
+                                  Divider(color: AppColors.borderSubtle),
+                                  const SizedBox(height: 8),
+                                  isSplit
+                                      ? Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text('SAVED MACROS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.smallFontSize, fontWeight: FontWeight.bold)),
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Text('Trace Execution', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.smallFontSize)),
+                                                Transform.scale(
+                                                  scale: 0.6,
+                                                  child: Switch(
+                                                    value: MacroService.instance.debugMode,
+                                                    onChanged: MacroService.instance.toggleDebugMode,
+                                                    activeThumbColor: AppColors.folder,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        )
+                                      : Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text('SAVED MACROS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold)),
+                                            Row(
+                                              children: [
+                                                Text('Trace Execution', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize)),
+                                                Transform.scale(
+                                                  scale: 0.7,
+                                                  child: Switch(
+                                                    value: MacroService.instance.debugMode,
+                                                    onChanged: MacroService.instance.toggleDebugMode,
+                                                    activeThumbColor: AppColors.folder,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                  const SizedBox(height: 8),
+                                  Expanded(
+                                    child: macros.isEmpty
+                                        ? Center(child: Text('No macros recorded yet.', style: TextStyle(color: AppColors.panelTextSecondary)))
+                                        : ListView.builder(
+                                            itemCount: macros.length + 1,
+                                            itemBuilder: (context, index) {
+                                              if (index == macros.length) {
+                                                return DragTarget<String>(
+                                                  onAcceptWithDetails: (d) => MacroService.instance.moveMacro(d.data, ''),
+                                                  builder: (ctx, cand, _) => Container(
+                                                    height: 60,
+                                                    color: cand.isNotEmpty ? AppColors.folder.withOpacity(0.1) : Colors.transparent,
+                                                  )
+                                                );
+                                              }
+                                              final macro = macros[index];
+                                              int depth = 0;
+                                              String pId = macro.parentId;
+                                              while (pId.isNotEmpty) {
+                                                depth++;
+                                                final p = MacroService.instance.macros.where((m) => m.id == pId).firstOrNull;
+                                                if (p == null) break;
+                                                pId = p.parentId;
+                                              }
 
-                          return Row(
-                            key: ValueKey(macro.id),
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Builder(builder: (ctx) {
-                                bool effectivelyEnabled = MacroService.instance.isMacroEffectivelyEnabled(macro.id);
-                                Color iconColor = macro.isEnabled 
-                                    ? (effectivelyEnabled ? AppColors.accent : AppColors.accent.withOpacity(0.3)) 
-                                    : AppColors.panelTextSecondary;
-                                return IconButton(
-                                  icon: Icon(macro.isEnabled ? Icons.visibility : Icons.visibility_off, color: iconColor, size: 16),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  splashRadius: 16,
-                                  onPressed: () {
-                                    macro.isEnabled = !macro.isEnabled;
-                                    MacroService.instance.updateMacro(macro);
-                                  },
-                                  tooltip: macro.isEnabled 
-                                      ? (effectivelyEnabled ? 'Macro Enabled' : 'Macro Enabled (Disabled by Parent)') 
-                                      : 'Macro Disabled',
-                                );
-                              }),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Padding(
-                                  padding: EdgeInsets.only(left: depth * 16.0),
-                                  child: LongPressDraggable<String>(
-                                    delay: const Duration(milliseconds: 250),
-                                    data: macro.id,
-                                    feedback: Material(
-                                      color: Colors.transparent,
-                                      child: Opacity(
-                                        opacity: 0.8,
-                                        child: SizedBox(width: 450, child: finalContent),
-                                      ),
-                                    ),
-                                    childWhenDragging: Opacity(opacity: 0.3, child: finalContent),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                                      children: [
-                                        DragTarget<String>(
-                                          onWillAcceptWithDetails: (d) => d.data != macro.id,
-                                          onAcceptWithDetails: (d) => MacroService.instance.reorderBefore(d.data, macro.id),
-                                          builder: (ctx, cand, _) => Container(
-                                            height: 6,
-                                            color: cand.isNotEmpty ? AppColors.accent : Colors.transparent,
+                                              Widget finalContent;
+                                              if (macro.isFolder) {
+                                                finalContent = DragTarget<String>(
+                                                  onWillAcceptWithDetails: (d) => d.data != macro.id,
+                                                  onAcceptWithDetails: (d) => MacroService.instance.moveMacro(d.data, macro.id),
+                                                  builder: (ctx, cand, _) => Container(
+                                                    color: cand.isNotEmpty ? AppColors.folder.withOpacity(0.2) : AppColors.panelBackground,
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                                    child: Row(
+                                                      children: [
+                                                        MouseRegion(
+                                                          cursor: SystemMouseCursors.grab,
+                                                          child: Icon(Icons.drag_handle, color: AppColors.borderSubtle, size: 14),
+                                                        ),
+                                                        const SizedBox(width: 8),
+                                                        Expanded(
+                                                          child: GestureDetector(
+                                                            onTap: () => MacroService.instance.toggleFolder(macro.id),
+                                                            behavior: HitTestBehavior.opaque,
+                                                            child: Row(
+                                                              children: [
+                                                                Icon(
+                                                                  macro.isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                                                                  color: AppColors.folder,
+                                                                  size: 16,
+                                                                ),
+                                                                const SizedBox(width: 4),
+                                                                Icon(
+                                                                  macro.isExpanded ? Icons.folder_open : Icons.folder,
+                                                                  color: AppColors.folder,
+                                                                  size: 16,
+                                                                ),
+                                                                const SizedBox(width: 8),
+                                                                Expanded(
+                                                                  child: Text(
+                                                                    macro.name,
+                                                                    style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold),
+                                                                    maxLines: 1,
+                                                                    overflow: TextOverflow.ellipsis,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        if (isSplit) ...[
+                                                          PopupMenuButton<String>(
+                                                            icon: Icon(Icons.more_vert, color: AppColors.panelTextSecondary, size: 16),
+                                                            padding: EdgeInsets.zero,
+                                                            constraints: const BoxConstraints(),
+                                                            itemBuilder: (ctx) => [
+                                                              PopupMenuItem(value: 'rename', child: Text('Rename Folder', style: TextStyle(fontSize: AppUIConfig.smallFontSize))),
+                                                              PopupMenuItem(value: 'delete', child: Text('Delete Folder', style: TextStyle(color: AppColors.error, fontSize: AppUIConfig.smallFontSize))),
+                                                            ],
+                                                            onSelected: (val) {
+                                                              if (val == 'rename') _editFolderName(macro);
+                                                              if (val == 'delete') MacroService.instance.deleteMacro(macro.id);
+                                                            },
+                                                          ),
+                                                        ] else ...[
+                                                          IconButton(
+                                                            icon: Icon(Icons.edit, color: AppColors.accent, size: 14),
+                                                            padding: EdgeInsets.zero,
+                                                            constraints: const BoxConstraints(),
+                                                            splashRadius: 16,
+                                                            onPressed: () => _editFolderName(macro),
+                                                            tooltip: 'Edit Folder Name',
+                                                          ),
+                                                          const SizedBox(width: 8),
+                                                          IconButton(
+                                                            icon: Icon(Icons.delete, color: AppColors.error, size: 14),
+                                                            padding: EdgeInsets.zero,
+                                                            constraints: const BoxConstraints(),
+                                                            splashRadius: 16,
+                                                            onPressed: () => MacroService.instance.deleteMacro(macro.id),
+                                                            tooltip: 'Delete Folder',
+                                                          ),
+                                                        ],
+                                                        const SizedBox(width: 8),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                );
+                                              } else {
+                                                finalContent = Container(
+                                                  color: Colors.transparent,
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                                    child: GestureDetector(
+                                                      onTap: () => _editMacro(macro),
+                                                      behavior: HitTestBehavior.opaque,
+                                                      child: Row(
+                                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                                        children: [
+                                                          MouseRegion(
+                                                            cursor: SystemMouseCursors.grab,
+                                                            child: Icon(Icons.drag_handle, color: AppColors.borderSubtle, size: 14),
+                                                          ),
+                                                          const SizedBox(width: 8),
+                                                          Expanded(
+                                                            child: Column(
+                                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                                              children: [
+                                                                Text(macro.name, style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                                Text(macro.description.isNotEmpty ? macro.description : "${macro.script.split('\n').length} Lines", style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.smallFontSize), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          if (macro.hotkey.isNotEmpty)
+                                                            Padding(
+                                                              padding: const EdgeInsets.only(right: 8),
+                                                              child: Text('[${macro.hotkey}]', style: TextStyle(color: AppColors.note, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold)),
+                                                            ),
+                                                          if (isSplit) ...[
+                                                            PopupMenuButton<String>(
+                                                              icon: Icon(Icons.more_vert, color: AppColors.panelTextSecondary, size: 16),
+                                                              padding: EdgeInsets.zero,
+                                                              constraints: const BoxConstraints(),
+                                                              onSelected: (val) {
+                                                                if (val == 'play') MacroService.instance.playMacro(macro.id);
+                                                                if (val == 'edit') _editMacro(macro);
+                                                                if (val == 'copy') MacroService.instance.duplicateMacro(macro.id);
+                                                                if (val == 'delete') MacroService.instance.deleteMacro(macro.id);
+                                                                if (val == 'hotkey') {
+                                                                  if (macro.executionTiming != 'System') {
+                                                                    SystemLogsService.instance.addLog('Error: Global hotkeys can only be assigned to System macros.', category: LogCategory.SYSTEM);
+                                                                  } else {
+                                                                    _showHotkeyDialog(macro);
+                                                                  }
+                                                                }
+                                                                if (['Manual', 'System', 'BeforeReload', 'AfterReload', 'BridgeConnect'].contains(val)) {
+                                                                  macro.executionTiming = val;
+                                                                  MacroService.instance.updateMacro(macro);
+                                                                }
+                                                              },
+                                                              itemBuilder: (ctx) => [
+                                                                PopupMenuItem(value: 'play', child: Row(children: [Icon(Icons.play_arrow, color: Colors.green, size: 16), SizedBox(width: 8), Text('Run', style: TextStyle(fontSize: AppUIConfig.smallFontSize))])),
+                                                                PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: AppColors.accent, size: 16), SizedBox(width: 8), Text('Edit', style: TextStyle(fontSize: AppUIConfig.smallFontSize))])),
+                                                                PopupMenuItem(value: 'copy', child: Row(children: [Icon(Icons.copy, color: AppColors.panelTextSecondary, size: 16), SizedBox(width: 8), Text('Duplicate', style: TextStyle(fontSize: AppUIConfig.smallFontSize))])),
+                                                                PopupMenuItem(value: 'hotkey', child: Row(children: [Icon(Icons.keyboard, color: AppColors.note, size: 16), SizedBox(width: 8), Text('Set Hotkey', style: TextStyle(fontSize: AppUIConfig.smallFontSize))])),
+                                                                const PopupMenuDivider(),
+                                                                PopupMenuItem(
+                                                                  enabled: false,
+                                                                  child: Text('Execution Timing', style: TextStyle(fontSize: AppUIConfig.smallFontSize, fontWeight: FontWeight.bold, color: AppColors.panelTextSecondary))
+                                                                ),
+                                                                ...['Manual', 'System', 'BeforeReload', 'AfterReload', 'BridgeConnect'].map((e) => CheckedPopupMenuItem(
+                                                                  value: e,
+                                                                  checked: macro.executionTiming == e,
+                                                                  child: Text(e, style: TextStyle(fontSize: AppUIConfig.smallFontSize)),
+                                                                )),
+                                                                const PopupMenuDivider(),
+                                                                PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: AppColors.error, size: 16), SizedBox(width: 8), Text('Delete', style: TextStyle(color: AppColors.error, fontSize: AppUIConfig.smallFontSize))])),
+                                                              ],
+                                                            ),
+                                                          ] else ...[
+                                                            IconButton(
+                                                              icon: Icon(Icons.keyboard, color: AppColors.note, size: 14),
+                                                              padding: EdgeInsets.zero,
+                                                              constraints: const BoxConstraints(),
+                                                              splashRadius: 16,
+                                                              onPressed: () {
+                                                                if (macro.executionTiming != 'System') {
+                                                                  SystemLogsService.instance.addLog('Error: Global hotkeys can only be assigned to System macros.', category: LogCategory.SYSTEM);
+                                                                } else {
+                                                                  _showHotkeyDialog(macro);
+                                                                }
+                                                              },
+                                                              tooltip: 'Set Global Hotkey',
+                                                            ),
+                                                            const SizedBox(width: 8),
+                                                            DropdownButton<String>(
+                                                              value: macro.executionTiming,
+                                                              isDense: true,
+                                                              dropdownColor: AppColors.panelBackground,
+                                                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize),
+                                                              underline: const SizedBox(),
+                                                              items: ['Manual', 'System', 'BeforeReload', 'AfterReload', 'BridgeConnect']
+                                                                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                                                                  .toList(),
+                                                              onChanged: (val) {
+                                                                if (val != null) {
+                                                                  macro.executionTiming = val;
+                                                                  MacroService.instance.updateMacro(macro);
+                                                                }
+                                                              },
+                                                            ),
+                                                            const SizedBox(width: 8),
+                                                            IconButton(
+                                                              icon: const Icon(Icons.play_arrow, color: Colors.green, size: 14),
+                                                              padding: EdgeInsets.zero,
+                                                              constraints: const BoxConstraints(),
+                                                              splashRadius: 16,
+                                                              onPressed: () => MacroService.instance.playMacro(macro.id),
+                                                              tooltip: 'Run Macro',
+                                                            ),
+                                                            const SizedBox(width: 8),
+                                                            IconButton(
+                                                              icon: Icon(Icons.edit, color: AppColors.accent, size: 14),
+                                                              padding: EdgeInsets.zero,
+                                                              constraints: const BoxConstraints(),
+                                                              splashRadius: 16,
+                                                              onPressed: () => _editMacro(macro),
+                                                              tooltip: 'Edit Macro',
+                                                            ),
+                                                            const SizedBox(width: 8),
+                                                            IconButton(
+                                                              icon: Icon(Icons.copy, color: AppColors.panelTextSecondary, size: 14),
+                                                              padding: EdgeInsets.zero,
+                                                              constraints: const BoxConstraints(),
+                                                              splashRadius: 16,
+                                                              onPressed: () => MacroService.instance.duplicateMacro(macro.id),
+                                                              tooltip: 'Duplicate Macro',
+                                                            ),
+                                                            const SizedBox(width: 8),
+                                                            IconButton(
+                                                              icon: Icon(Icons.delete, color: AppColors.error, size: 14),
+                                                              padding: EdgeInsets.zero,
+                                                              constraints: const BoxConstraints(),
+                                                              splashRadius: 16,
+                                                              onPressed: () => MacroService.instance.deleteMacro(macro.id),
+                                                              tooltip: 'Delete Macro',
+                                                            ),
+                                                          ],
+                                                          const SizedBox(width: 8),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+
+                                              return Row(
+                                                key: ValueKey(macro.id),
+                                                crossAxisAlignment: CrossAxisAlignment.center,
+                                                children: [
+                                                  Builder(builder: (ctx) {
+                                                    bool effectivelyEnabled = MacroService.instance.isMacroEffectivelyEnabled(macro.id);
+                                                    Color iconColor = macro.isEnabled 
+                                                        ? (effectivelyEnabled ? AppColors.accent : AppColors.accent.withOpacity(0.3)) 
+                                                        : AppColors.panelTextSecondary;
+                                                    return IconButton(
+                                                      icon: Icon(macro.isEnabled ? Icons.visibility : Icons.visibility_off, color: iconColor, size: 16),
+                                                      padding: EdgeInsets.zero,
+                                                      constraints: const BoxConstraints(),
+                                                      splashRadius: 16,
+                                                      onPressed: () {
+                                                        macro.isEnabled = !macro.isEnabled;
+                                                        MacroService.instance.updateMacro(macro);
+                                                      },
+                                                      tooltip: macro.isEnabled 
+                                                          ? (effectivelyEnabled ? 'Macro Enabled' : 'Macro Enabled (Disabled by Parent)') 
+                                                          : 'Macro Disabled',
+                                                    );
+                                                  }),
+                                                  const SizedBox(width: 4),
+                                                  Expanded(
+                                                    child: Padding(
+                                                      padding: EdgeInsets.only(left: depth * 16.0),
+                                                      child: LongPressDraggable<String>(
+                                                        delay: const Duration(milliseconds: 250),
+                                                        data: macro.id,
+                                                        feedback: Material(
+                                                          color: Colors.transparent,
+                                                          child: Opacity(
+                                                            opacity: 0.8,
+                                                            child: SizedBox(width: 450, child: finalContent),
+                                                          ),
+                                                        ),
+                                                        childWhenDragging: Opacity(opacity: 0.3, child: finalContent),
+                                                        child: Column(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                          children: [
+                                                            DragTarget<String>(
+                                                              onWillAcceptWithDetails: (d) => d.data != macro.id,
+                                                              onAcceptWithDetails: (d) => MacroService.instance.reorderBefore(d.data, macro.id),
+                                                              builder: (ctx, cand, _) => Container(
+                                                                height: 6,
+                                                                color: cand.isNotEmpty ? AppColors.accent : Colors.transparent,
+                                                              ),
+                                                            ),
+                                                            finalContent,
+                                                            DragTarget<String>(
+                                                              onWillAcceptWithDetails: (d) => d.data != macro.id,
+                                                              onAcceptWithDetails: (d) => MacroService.instance.reorderAfter(d.data, macro.id),
+                                                              builder: (ctx, cand, _) => Container(
+                                                                height: 6,
+                                                                color: cand.isNotEmpty ? AppColors.accent : Colors.transparent,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            },
                                           ),
-                                        ),
-                                        finalContent,
-                                        DragTarget<String>(
-                                          onWillAcceptWithDetails: (d) => d.data != macro.id,
-                                          onAcceptWithDetails: (d) => MacroService.instance.reorderAfter(d.data, macro.id),
-                                          builder: (ctx, cand, _) => Container(
-                                            height: 6,
-                                            color: cand.isNotEmpty ? AppColors.accent : Colors.transparent,
-                                          ),
-                                        ),
-                                      ],
                                     ),
-                                  ),
+                                  ],
                                 ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          )
+                              );
+                            },
+                          )
 )
 ]); }
   @override
@@ -1008,6 +1069,277 @@ Expanded(
             ), // end Stack
           );
         },
+      ),
+    );
+  }
+}
+
+class MacroInlineEditor extends StatefulWidget {
+  final Macro macro;
+  final VoidCallback onClose;
+  final Function(String) onFetchSmartSnippet;
+  const MacroInlineEditor({
+    super.key,
+    required this.macro,
+    required this.onClose,
+    required this.onFetchSmartSnippet,
+  });
+
+  @override
+  State<MacroInlineEditor> createState() => _MacroInlineEditorState();
+}
+
+class _MacroInlineEditorState extends State<MacroInlineEditor> {
+  late CodeController _codeCtrl;
+  late TextEditingController _nameCtrl;
+  late TextEditingController _descCtrl;
+  late ScrollController _scrollCtrl;
+  late FocusNode _focusNode;
+  String _selectedMode = 'ClickAt';
+  
+  final List<TextEditingValue> _history = [];
+  int _historyIndex = 0;
+  bool _isUndoing = false;
+  int _lastEditTime = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.macro.name);
+    _descCtrl = TextEditingController(text: widget.macro.description);
+    _scrollCtrl = ScrollController();
+    
+    _codeCtrl = CodeController(
+      text: widget.macro.script.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
+      language: powershell,
+      params: const EditorParams(tabSpaces: 4),
+      modifiers: const [],
+    );
+    _codeCtrl.autocompleter.setCustomWords([
+      'ClickAt', 'TopLeft', 'TopRight', 'BottomLeft', 'BottomRight', 
+      'PixelIs', 'PixelIsNot', 'PixelMoreThan', 'WindowName', 'SendText', 'Send', 
+      'WaitMs', 'LeftClick', 'RightClick', 'LeftDoubleClick', 
+      'MiddleClick', 'ReturnToApp', 'Log', 'SaveWindowPosSize', 
+      'RestoreWindowPosSize', 'MoveMouse', 'RelativeMouseMove', 
+      'SwitchWindow', 'Run', 'if', 'else', 'WinMove', 'BlockInput',
+      'AppendClipboard', 'SetClipboard', 'NextClipboard', 'GetBridgeMode', 'var'
+    ]);
+
+    _history.add(_codeCtrl.value);
+    _codeCtrl.addListener(_onCodeChanged);
+
+    _focusNode = FocusNode(
+      onKeyEvent: (node, event) {
+        if (HardwareKeyboard.instance.isControlPressed) {
+           if (event.logicalKey == LogicalKeyboardKey.keyZ) {
+               if (event is KeyDownEvent || event is KeyRepeatEvent) {
+                   if (HardwareKeyboard.instance.isShiftPressed) {
+                      _performRedo();
+                   } else {
+                      _performUndo();
+                   }
+               }
+               return KeyEventResult.handled;
+           }
+           if (event.logicalKey == LogicalKeyboardKey.keyY) {
+               if (event is KeyDownEvent || event is KeyRepeatEvent) {
+                   _performRedo();
+               }
+               return KeyEventResult.handled;
+           }
+        }
+        return KeyEventResult.ignored;
+      }
+    );
+  }
+
+  @override
+  void dispose() {
+    _codeCtrl.removeListener(_onCodeChanged);
+    _codeCtrl.dispose();
+    _nameCtrl.dispose();
+    _descCtrl.dispose();
+    _scrollCtrl.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onCodeChanged() {
+    if (_isUndoing) return;
+    if (_historyIndex >= 0 && _historyIndex < _history.length) {
+      final currentState = _codeCtrl.value;
+      final lastState = _history[_historyIndex];
+      if (lastState.text != currentState.text) {
+         int now = DateTime.now().millisecondsSinceEpoch;
+         if (_historyIndex < _history.length - 1) {
+            _history.removeRange(_historyIndex + 1, _history.length);
+         }
+         int lenDiff = (currentState.text.length - lastState.text.length).abs();
+         if (now - _lastEditTime < 1000 && lenDiff <= 1 && _historyIndex > 0) {
+            _history[_historyIndex] = currentState;
+         } else {
+            _history.add(currentState);
+            if (_history.length > 300) _history.removeAt(0);
+            _historyIndex = _history.length - 1;
+         }
+         _lastEditTime = now;
+      } else if (lastState.selection != currentState.selection) {
+         _history[_historyIndex] = currentState;
+      }
+    }
+  }
+
+  void _performUndo() {
+    if (_historyIndex > 0) {
+      _isUndoing = true;
+      _historyIndex--;
+      _codeCtrl.value = _history[_historyIndex];
+      _isUndoing = false;
+    }
+  }
+
+  void _performRedo() {
+    if (_historyIndex < _history.length - 1) {
+      _isUndoing = true;
+      _historyIndex++;
+      _codeCtrl.value = _history[_historyIndex];
+      _isUndoing = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.windowBackground,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('Edit Macro', style: TextStyle(color: AppColors.panelTextPrimary, fontWeight: FontWeight.bold, fontSize: AppUIConfig.headerFontSize)),
+              const Spacer(),
+              DropdownButton<String>(
+                value: _selectedMode,
+                dropdownColor: AppColors.panelBackground,
+                style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize),
+                underline: const SizedBox(),
+                items: ['ClickAt', 'TopLeft', 'TopRight', 'BottomLeft', 'BottomRight', 'PixelIs', 'PixelMoreThan', 'WindowName', 'SendText', 'Send', 'WaitMs', 'LeftClick', 'RightClick', 'LeftDoubleClick', 'MiddleClick', 'ReturnToApp', 'Log', 'SaveWindowPosSize', 'RestoreWindowPosSize', 'WinMove', 'BlockInput', 'AppendClipboard', 'SetClipboard', 'NextClipboard', 'GetBridgeMode']
+                    .map((e) => DropdownMenuItem(value: e, child: Text(e == 'ClickAt' ? 'Absolute' : (e.startsWith('Top') || e.startsWith('Bottom') ? 'Rel: $e' : e))))
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _selectedMode = val);
+                  }
+                },
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: () => widget.onFetchSmartSnippet(_selectedMode),
+                icon: Icon(AppToolWindows.getDef('macro').icon, size: 16, color: AppToolWindows.getDef('macro').color),
+                label: Text('Capture Snippet', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize)),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.overlaySubtle),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _nameCtrl,
+            style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              hintText: 'Macro Name...',
+              hintStyle: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+              border: const OutlineInputBorder(),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            onChanged: (val) {
+               widget.macro.name = val;
+               MacroService.instance.updateMacro(widget.macro);
+            },
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _descCtrl,
+            style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize),
+            decoration: InputDecoration(
+              hintText: 'Macro Description (optional)...',
+              hintStyle: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+              border: const OutlineInputBorder(),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            onChanged: (val) {
+               widget.macro.description = val;
+               MacroService.instance.updateMacro(widget.macro);
+            },
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(border: Border.all(color: AppColors.borderSubtle)),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Scrollbar(
+                      controller: _scrollCtrl,
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        controller: _scrollCtrl,
+                        child: TextField(
+                          controller: _codeCtrl,
+                          focusNode: _focusNode,
+                          maxLines: null,
+                          keyboardType: TextInputType.multiline,
+                          style: TextStyle(fontFamily: 'monospace', fontSize: AppUIConfig.rootFontSize, color: AppColors.panelTextPrimary),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.all(8),
+                          ),
+                          onChanged: (val) {
+                             widget.macro.script = val.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+                             MacroService.instance.updateMacro(widget.macro);
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 24,
+                    child: IconButton(
+                      icon: Icon(Icons.help_outline, size: 20, color: AppColors.folder),
+                      tooltip: 'Coding Guide',
+                      onPressed: () => showMacroGuideWindow(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () {
+                   MacroService.instance.playMacro(widget.macro.id);
+                },
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                     Icon(Icons.play_arrow, color: Colors.green, size: 16),
+                     SizedBox(width: 4),
+                     Text('Test Macro', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                  ]
+                ),
+              ),
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: widget.onClose,
+                child: Text('Close Editor', style: TextStyle(color: AppColors.panelTextSecondary)),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

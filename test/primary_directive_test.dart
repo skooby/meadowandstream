@@ -32,18 +32,7 @@ void main() {
     sb.writeln('If any `error` level syntax issues exist, DO NOT release the queue. Rapidly patch them dynamically using internal tool calls until the build passes.');
     sb.writeln('\\nOnce verified: As your ABSOLUTE FINAL STEP after exhausting all operations and completing your internal pipeline, you MUST overwrite the `.ai_bridge/agent_status.txt` file with the exact physical unquoted text `IDLE`. This will unblock the overarching queue and release the next task to you.');
     sb.writeln('Update file when complete\\n');
-    
-    sb.writeln('# TASKS TO ADDRESS');
-    sb.writeln('Task: Delete Test String from test bed window');
-    sb.writeln('Area: PIPELINE TEST BED > SIMPLE THREE POINT TEST');
-    sb.writeln('Status: IN PROGRESS');
-    sb.writeln('---');
-    
     final directiveBlock = sb.toString().trim();
-    
-    print('\\n\\n=== CURRENT PRIMARY DIRECTIVE GENERATION LOGIC ===\\n');
-    print(directiveBlock);
-    print('\\n==================================================\\n\\n');
     
     // Ensure that the newly added conditional preview logic exists if in preview mode
     if (bridge.isPreviewMode) {

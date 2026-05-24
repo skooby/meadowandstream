@@ -11,8 +11,9 @@ class AntigravityStatusService {
   
   AntigravityStatusService._();
 
+  bool _isSpawning = false;
+
   /// Path to the agent status file, configurable for testing.
-  @visibleForTesting
   String statusFilePath = '.ai_bridge/agent_status.txt';
 
   String? _lastGlobalState;
@@ -21,6 +22,8 @@ class AntigravityStatusService {
   bool? _lastIsOnline;
   String? _lastBridgeLog;
   bool _enableLogs = false;
+  DateTime? _lastProcessCheckTime;
+  bool _lastProcessCheckResult = false;
 
   @visibleForTesting
   void resetState() {
@@ -29,6 +32,8 @@ class AntigravityStatusService {
     _lastIsBusy = null;
     _lastIsOnline = null;
     _lastBridgeLog = null;
+    _lastProcessCheckTime = null;
+    _lastProcessCheckResult = false;
   }
 
   Future<void> _updateLogSetting() async {
@@ -84,6 +89,16 @@ class AntigravityStatusService {
   Future<Map<String, dynamic>?> getHttpBridgeStatus() async {
     await _updateLogSetting();
     try {
+      final statusFile = File(statusFilePath);
+      final bridgeDir = statusFile.parent.path;
+      final activeModeFile = File('$bridgeDir/active_mode.txt');
+      if (activeModeFile.existsSync()) {
+        final mode = activeModeFile.readAsStringSync().trim().toLowerCase();
+        if (mode != 'sdk') {
+          return null;
+        }
+      }
+
       final url = await getBridgeUrl();
       final response = await _dio.get(url);
       if (response.statusCode == 200) {
@@ -109,9 +124,9 @@ class AntigravityStatusService {
         }
       }
       return null;
-    } on DioException catch (e) {
+    } on DioException catch (_) {
       return null;
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
@@ -163,19 +178,26 @@ class AntigravityStatusService {
   }
 
   /// Scans running OS processes to see if the Antigravity daemon is currently active.
+  /// Caches results for 5 seconds to prevent performance bottlenecks from rapid process queries.
   Future<bool> isProcessRunning() async {
     if (kIsWeb) return false;
+    final now = DateTime.now();
+    final isTest = Platform.environment.containsKey('FLUTTER_TEST');
+    if (!isTest && _lastProcessCheckTime != null && now.difference(_lastProcessCheckTime!).inSeconds < 5) {
+      return _lastProcessCheckResult;
+    }
     try {
       final result = await Process.run(
         Platform.isWindows ? 'tasklist' : 'ps',
-        Platform.isWindows ? [] : ['-ax'],
+        Platform.isWindows ? ['/v'] : ['-ax'],
       );
       final output = result.stdout.toString().toLowerCase();
-      final isRunning = output.contains('antigravity-server') || 
-                        output.contains('language_server.exe') || 
-                        output.contains('language_server') ||
-                        output.contains('kiro');
+      final isRunning = Platform.isWindows 
+          ? (output.contains('antigravity cli') || output.contains('agy.exe') || output.contains('antigravity.exe') || output.contains('antigravity'))
+          : (output.contains('agy ') || output.contains('/agy') || output.contains('antigravity-server'));
       debugPrint('[AntigravityStatusService] Process running check: $isRunning');
+      _lastProcessCheckTime = now;
+      _lastProcessCheckResult = isRunning;
       return isRunning;
     } catch (e) {
       debugPrint('[AntigravityStatusService] Process check: offline');
@@ -202,16 +224,16 @@ class AntigravityStatusService {
             final stat = statusFile.statSync();
             final lastModified = stat.modified;
             final age = DateTime.now().difference(lastModified);
-            if (age.inMinutes < 10) {
+            if (age.inMinutes < 60) {
               debugPrint('[AntigravityStatusService] $statusFilePath is BUSY and was updated recently (${age.inSeconds}s ago). Assuming active.');
               return true;
             }
           } catch (_) {}
 
-          // Only scan processes if the file is older than 10 minutes to verify if the process is still running
+          // Only scan processes if the file is older than 60 minutes to verify if the process is still running
           final isRunning = await isProcessRunning();
           if (!isRunning) {
-            debugPrint('[AntigravityStatusService] agent_status.txt is BUSY (starts with BU) and older than 10 minutes, HTTP bridge is offline and process is not running. Auto-recovering status to IDLE.');
+            debugPrint('[AntigravityStatusService] agent_status.txt is BUSY (starts with BU) and older than 60 minutes, HTTP bridge is offline and process is not running. Auto-recovering status to IDLE.');
             try {
               statusFile.writeAsStringSync('IDLE');
             } catch (_) {}
@@ -224,5 +246,99 @@ class AntigravityStatusService {
     } catch (_) {}
 
     return false;
+  }
+
+  /// Spawns the CLI terminal if it isn't running.
+  Future<void> ensureTerminalDaemonRunning() async {
+    if (kIsWeb) return;
+    if (_isSpawning) {
+      debugPrint('[AntigravityStatusService] Spawning already in progress, skipping...');
+      return;
+    }
+    
+    // Acquire lock synchronously before yielding the thread
+    _isSpawning = true;
+
+    try {
+      // Check if the agy process is running
+      final isProcRunning = await isProcessRunning();
+      
+      if (!isProcRunning) {
+        debugPrint('[AntigravityStatusService] Terminal daemon not found. Spawning one...');
+        try {
+          if (Platform.isWindows) {
+            try {
+              // Try spawning using wt.exe (Windows Terminal)
+              await Process.start(
+                'wt.exe',
+                [
+                  '--title',
+                  'Antigravity CLI',
+                  'powershell.exe',
+                  '-NoExit',
+                  '-Command',
+                  'cd c:\\Development\\Music\\Project; agy .'
+                ],
+              );
+            } catch (_) {
+              // Fallback to cmd.exe /c start with instant title setting to avoid race conditions
+              await Process.start(
+                'cmd.exe',
+                [
+                  '/c',
+                  'start',
+                  'Antigravity CLI',
+                  'powershell.exe',
+                  '-NoExit',
+                  '-Command',
+                  '\$Host.UI.RawUI.WindowTitle = \'Antigravity CLI\'; cd c:\\Development\\Music\\Project; agy .'
+                ],
+              );
+            }
+          } else {
+            // Fallback for macOS/Linux terminal spawning if needed, though target OS is Windows
+            await Process.start(
+              'bash',
+              ['-c', 'cd c:\\Development\\Music\\Project && agy .'],
+              runInShell: true,
+              mode: ProcessStartMode.detached,
+            );
+          }
+          // Hold the lock for 5 seconds to let the OS process spin up and register in tasklist
+          Future.delayed(const Duration(seconds: 5), () {
+            _isSpawning = false;
+          });
+        } catch (spawnError) {
+          _isSpawning = false;
+          rethrow;
+        }
+      } else {
+        // Process is already running, release lock immediately
+        _isSpawning = false;
+        debugPrint('[AntigravityStatusService] Terminal daemon already running (isProcRunning: $isProcRunning)');
+      }
+    } catch (e) {
+      _isSpawning = false;
+      debugPrint('[AntigravityStatusService] Error ensuring terminal daemon: $e');
+    }
+  }
+
+  /// Brings the Antigravity terminal daemon window to the foreground on Windows.
+  Future<void> focusDaemonWindow() async {
+    if (kIsWeb) return;
+    if (!Platform.isWindows) return;
+    try {
+      final vbsFile = File('.ai_bridge/focus_daemon.vbs');
+      if (!vbsFile.parent.existsSync()) {
+        vbsFile.parent.createSync(recursive: true);
+      }
+      await vbsFile.writeAsString('''
+Set wshShell = CreateObject("WScript.Shell")
+wshShell.AppActivate "Antigravity CLI"
+''');
+      await Process.run('wscript', [vbsFile.path]);
+    } catch (e) {
+      debugPrint('[AntigravityStatusService] Error focusing daemon window: $e');
+    }
   }
 }

@@ -119,6 +119,7 @@ class MacroService extends ChangeNotifier {
     _loadMacros();
     _startSystemLoop();
     _initPrefs();
+    _startFileWatcher();
   }
 
   Future<void> _initPrefs() async {
@@ -130,6 +131,73 @@ class MacroService extends ChangeNotifier {
   final String _filePath = '.ai_bridge/macros.json';
   List<Macro> _macros = [];
   List<Macro> get macros => _macros;
+
+  StreamSubscription<FileSystemEvent>? _fileWatchSubscription;
+  DateTime? _lastModified;
+  bool _isWriting = false;
+
+  void _startFileWatcher() {
+    try {
+      final file = File(_filePath);
+      if (!file.parent.existsSync()) {
+        file.parent.createSync(recursive: true);
+      }
+      
+      _fileWatchSubscription = file.parent.watch().listen((event) {
+        if (event.path.replaceAll('\\', '/').endsWith('macros.json')) {
+          if (event.type == FileSystemEvent.modify) {
+            _onFileChanged();
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('[MacroService] Failed to start file watcher: $e');
+    }
+  }
+
+  void _onFileChanged() {
+    if (_isWriting) return;
+    
+    try {
+      final file = File(_filePath);
+      if (file.existsSync()) {
+        final stat = file.statSync();
+        if (_lastModified == stat.modified) return;
+        _lastModified = stat.modified;
+        
+        final content = file.readAsStringSync();
+        final List dynamicList = jsonDecode(content);
+        final newMacros = dynamicList.map((e) => Macro.fromJson(e)).toList();
+        
+        if (_areMacrosEqual(_macros, newMacros)) return;
+        
+        _macros = newMacros;
+        notifyListeners();
+        debugPrint('[MacroService] Macros reloaded from disk.');
+      }
+    } catch (e) {
+      debugPrint('[MacroService] Error reloading macros from disk: $e');
+    }
+  }
+
+  bool _areMacrosEqual(List<Macro> a, List<Macro> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id ||
+          a[i].name != b[i].name ||
+          a[i].script != b[i].script ||
+          a[i].description != b[i].description ||
+          a[i].executionTiming != b[i].executionTiming ||
+          a[i].parentId != b[i].parentId ||
+          a[i].isFolder != b[i].isFolder ||
+          a[i].isExpanded != b[i].isExpanded ||
+          a[i].hotkey != b[i].hotkey ||
+          a[i].isEnabled != b[i].isEnabled) {
+        return false;
+      }
+    }
+    return true;
+  }
   
   Timer? _systemTimer;
   final Set<String> _runningSystemMacros = {};
@@ -201,11 +269,19 @@ class MacroService extends ChangeNotifier {
   }
 
   void _saveMacros() {
-    final file = File(_filePath);
-    if (!file.parent.existsSync()) {
-      file.parent.createSync(recursive: true);
+    _isWriting = true;
+    try {
+      final file = File(_filePath);
+      if (!file.parent.existsSync()) {
+        file.parent.createSync(recursive: true);
+      }
+      file.writeAsStringSync(jsonEncode(_macros.map((e) => e.toJson()).toList()));
+      _lastModified = file.statSync().modified;
+    } finally {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _isWriting = false;
+      });
     }
-    file.writeAsStringSync(jsonEncode(_macros.map((e) => e.toJson()).toList()));
   }
 
   void addMacro(Macro macro) {
@@ -389,92 +465,207 @@ class MacroService extends ChangeNotifier {
     }
   }
 
-  Future<void> playMacro(String id, {bool wait = false}) async {
-    final idx = _macros.indexWhere((element) => element.id == id);
-    String preprocess(String scr) {
-      var p = scr.replaceAll(RegExp(r'/\*'), '<#').replaceAll(RegExp(r'\*/'), '#>');
-      
-      final knownCommands = [
-        'Run', 'WaitMs', 'SwitchWindow', 'ReturnToApp', 'SendText', 'Send', 'Log', 'LogPixelColor', 
-        'PixelIs', 'PixelIsNot', 'PixelMoreThan', 'RelativeMouseMove', 'LeftClick', 
-        'RightClick', 'LeftDoubleClick', 'MiddleClick', 'MoveMouse', 'BlockInput', 'WinMove',
-        'AppendClipboard', 'SetClipboard', 'NextClipboard'
-      ];
-      bool changed = true;
-      int depth = 0;
-      while (changed && depth < 10) {
-        changed = false;
-        String prevP = p;
+  @visibleForTesting
+  String preprocess(String scr, [List<String> visited = const []]) {
+    var p = scr.replaceAll(RegExp(r'/\*'), '<#').replaceAll(RegExp(r'\*/'), '#>');
+    
+    // Preprocess variables and operators
+    final stringRegex = RegExp(r'"[^"\\]*(?:\\.[^"\\]*)*"|' + r"'[^'\\]*(?:\\.[^'\\]*)*'");
+    final declaredVars = <String>{};
+    final varDeclRegex = RegExp(r'\bvar\s+([a-zA-Z_][a-zA-Z0-9_]*)');
+    p.splitMapJoin(
+      stringRegex,
+      onMatch: (m) => m.group(0)!,
+      onNonMatch: (nonMatch) {
+        for (final match in varDeclRegex.allMatches(nonMatch)) {
+          if (match.group(1) != null) {
+            declaredVars.add(match.group(1)!);
+          }
+        }
+        return nonMatch;
+      },
+    );
+    
+    p = p.splitMapJoin(
+      stringRegex,
+      onMatch: (m) => m.group(0)!,
+      onNonMatch: (nonMatch) {
+        var processed = nonMatch;
+        processed = processed.replaceAllMapped(RegExp(r'\bvar\s+([a-zA-Z_][a-zA-Z0-9_]*)'), (m) => '\$${m.group(1)}');
+        for (final varName in declaredVars) {
+          processed = processed.replaceAllMapped(RegExp('(?<!\\\$)\\b$varName\\b'), (m) => '\$$varName');
+        }
+        processed = processed.replaceAll('==', ' -eq ');
+        processed = processed.replaceAll('!=', ' -ne ');
+        processed = processed.replaceAll('>=', ' -ge ');
+        processed = processed.replaceAll('<=', ' -le ');
+        processed = processed.replaceAllMapped(RegExp(r'(?<![-=<>#])>(?![=-])'), (m) => ' -gt ');
+        processed = processed.replaceAllMapped(RegExp(r'(?<![-=<>#])<(?![=#-])'), (m) => ' -lt ');
+        return processed;
+      },
+    );
 
-        final pattern = r'\b(' + knownCommands.join('|') + r')\s*\((.*?)\)';
-        p = p.replaceAllMapped(RegExp(pattern, dotAll: true), (match) {
-          String cmd = match.group(1)!;
-          String argsStr = match.group(2) ?? '';
-          if (argsStr.trim().isEmpty) return cmd;
-          List<String> args = [];
-          String currentArg = '';
+    final knownCommands = [
+      'Run', 'WaitMs', 'SwitchWindow', 'ReturnToApp', 'SendText', 'Send', 'Log', 'LogPixelColor', 
+      'PixelIs', 'PixelIsNot', 'PixelMoreThan', 'RelativeMouseMove', 'LeftClick', 
+      'RightClick', 'LeftDoubleClick', 'MiddleClick', 'MoveMouse', 'BlockInput', 'WinMove',
+      'AppendClipboard', 'SetClipboard', 'NextClipboard', 'GetBridgeMode'
+    ];
+    bool changed = true;
+    int depth = 0;
+    while (changed && depth < 10) {
+      changed = false;
+      String prevP = p;
+
+      bool cmdChanged = true;
+      int cmdDepth = 0;
+      final startPattern = RegExp(r'\b(' + knownCommands.join('|') + r')\s*\(');
+      while (cmdChanged && cmdDepth < 50) {
+        cmdChanged = false;
+        final match = startPattern.firstMatch(p);
+        if (match != null) {
+          final start = match.start;
+          final cmd = match.group(1)!;
+          final openParenIndex = match.end - 1; // index of the '('
+          
+          int parenDepth = 1;
           bool inString = false;
           String stringChar = '';
-          for (int i = 0; i < argsStr.length; i++) {
-            String c = argsStr[i];
-            if ((c == '"' || c == "'") && (i == 0 || argsStr[i-1] != '\\')) {
-              if (!inString) {
+          int closeParenIndex = -1;
+          
+          for (int i = openParenIndex + 1; i < p.length; i++) {
+            final c = p[i];
+            if (c == '\\' && inString) {
+              i++; // skip next char
+              continue;
+            }
+            if (c == '"' || c == "'") {
+              if (inString) {
+                if (c == stringChar) {
+                  inString = false;
+                }
+              } else {
                 inString = true;
                 stringChar = c;
-              } else if (stringChar == c) {
-                inString = false;
+              }
+            } else if (!inString) {
+              if (c == '(') {
+                parenDepth++;
+              } else if (c == ')') {
+                parenDepth--;
+                if (parenDepth == 0) {
+                  closeParenIndex = i;
+                  break;
+                }
               }
             }
-            if (c == ',' && !inString) {
-              args.add(currentArg.trim());
-              currentArg = '';
-            } else {
-              currentArg += c;
-            }
           }
-          if (currentArg.trim().isNotEmpty) args.add(currentArg.trim());
-          return "$cmd ${args.join(' ')}".trim();
-        });
-
-        p = p.replaceAll(RegExp(r'^\s*//', multiLine: true), '#');
-        p = p.replaceAllMapped(RegExp(r'^[\s]*(PixelIs(?:Not)?)\s+#([0-9a-fA-F]{6})\s*\{', multiLine: true), (m) => 'if (${m[1]} "#${m[2]}") {');
-        p = p.replaceAllMapped(RegExp(r'^[\s]*(PixelIs(?:Not)?)\s+#([0-9a-fA-F]{6})\s*$', multiLine: true), (m) => 'if (-not (${m[1]} "#${m[2]}")) { Write-Error "Macro aborted dynamically! Expected underlying pixel state to evaluate TRUE for: ${m[1]} #${m[2]}"; exit 1 }');
-        p = p.replaceAllMapped(RegExp(r'(PixelIs(?:Not)?)\s+#([0-9a-fA-F]{6})'), (m) => '${m[1]} "#${m[2]}"');
-        
-        p = p.replaceAllMapped(RegExp(r'^[\s]*(PixelMoreThan)\s+#([0-9a-fA-F]{6})\s+([0-9]+)\s*\{', multiLine: true), (m) => 'if (${m[1]} "#${m[2]}" ${m[3]}) {');
-        p = p.replaceAllMapped(RegExp(r'^[\s]*(PixelMoreThan)\s+#([0-9a-fA-F]{6})\s+([0-9]+)\s*$', multiLine: true), (m) => 'if (-not (${m[1]} "#${m[2]}" ${m[3]})) { Write-Error "Macro aborted dynamically! Expected underlying pixel state to evaluate TRUE for: ${m[1]} #${m[2]} ${m[3]}"; exit 1 }');
-        p = p.replaceAllMapped(RegExp(r'(PixelMoreThan)\s+#([0-9a-fA-F]{6})\s+([0-9]+)'), (m) => '${m[1]} "#${m[2]}" ${m[3]}');
-
-        p = p.replaceAllMapped(RegExp(r'^[ \t]*Run[ \t]+("([^"]+)"|([^\s\{]+))(?:[ \t]+("([^"]+)"|([^\s\{]+)))?', multiLine: true), (match) {
-            String mName = match.group(2) ?? match.group(3) ?? "";
-            String mArg = match.group(5) ?? match.group(6) ?? "";
+          
+          if (closeParenIndex != -1) {
+            final argsStr = p.substring(openParenIndex + 1, closeParenIndex);
+            List<String> args = [];
+            if (argsStr.trim().isNotEmpty) {
+              String currentArg = '';
+              bool argInString = false;
+              String argStringChar = '';
+              for (int i = 0; i < argsStr.length; i++) {
+                final c = argsStr[i];
+                if (c == '\\' && argInString) {
+                  currentArg += c;
+                  if (i + 1 < argsStr.length) {
+                    currentArg += argsStr[i + 1];
+                    i++;
+                  }
+                  continue;
+                }
+                if (c == '"' || c == "'") {
+                  if (argInString) {
+                    if (c == argStringChar) {
+                      argInString = false;
+                    }
+                  } else {
+                    argInString = true;
+                    argStringChar = c;
+                  }
+                  currentArg += c;
+                } else if (c == ',' && !argInString) {
+                  args.add(currentArg.trim());
+                  currentArg = '';
+                } else {
+                  currentArg += c;
+                }
+              }
+              if (currentArg.trim().isNotEmpty) {
+                args.add(currentArg.trim());
+              }
+            }
             
-            String lower = mName.toLowerCase();
-            if (lower == 'notepad') return 'Start-Process notepad';
-            if (lower == 'reload') {
-               return 'Write-Host "MACRO_CMD|RELOAD"';
-            }
-            if (lower == 'restart') {
-               return 'Write-Host "MACRO_CMD|RESTART"';
-            }
-            if (lower == 'msgbox') {
-               String msg = mArg.isNotEmpty ? mArg : "Execution Paused";
-               return '[System.Windows.Forms.MessageBox]::Show("$msg", "Macro Message")';
-            }
-
-            var targetList = _macros.where((m) => m.name == mName);
-            if (targetList.isNotEmpty) {
-               return targetList.first.script;
-            }
-            return "# Could not find macro: $mName";
-        });
-        
-        if (prevP != p) changed = true;
-        depth++;
+            // Wrap argument in parentheses if it contains '+' operator
+            final processedArgs = args.map((arg) {
+              if (arg.contains('+')) {
+                final stripped = arg.replaceAll(stringRegex, '');
+                if (stripped.contains('+')) {
+                  return '($arg)';
+                }
+              }
+              return arg;
+            }).toList();
+            
+            final replacement = processedArgs.isEmpty ? cmd : "$cmd ${processedArgs.join(' ')}";
+            
+            p = p.replaceRange(start, closeParenIndex + 1, replacement);
+            cmdChanged = true;
+          } else {
+            break;
+          }
+        }
+        cmdDepth++;
       }
-      return p;
-    }
 
+      p = p.replaceAll(RegExp(r'^\s*//', multiLine: true), '#');
+      p = p.replaceAllMapped(RegExp(r'^[\s]*(PixelIs(?:Not)?)\s+#([0-9a-fA-F]{6})\s*\{', multiLine: true), (m) => 'if (${m[1]} "#${m[2]}") {');
+      p = p.replaceAllMapped(RegExp(r'^[\s]*(PixelIs(?:Not)?)\s+#([0-9a-fA-F]{6})\s*$', multiLine: true), (m) => 'if (-not (${m[1]} "#${m[2]}")) { Write-Error "Macro aborted dynamically! Expected underlying pixel state to evaluate TRUE for: ${m[1]} #${m[2]}"; exit 1 }');
+      p = p.replaceAllMapped(RegExp(r'(PixelIs(?:Not)?)\s+#([0-9a-fA-F]{6})'), (m) => '${m[1]} "#${m[2]}"');
+      
+      p = p.replaceAllMapped(RegExp(r'^[\s]*(PixelMoreThan)\s+#([0-9a-fA-F]{6})\s+([0-9]+)\s*\{', multiLine: true), (m) => 'if (${m[1]} "#${m[2]}" ${m[3]}) {');
+      p = p.replaceAllMapped(RegExp(r'^[\s]*(PixelMoreThan)\s+#([0-9a-fA-F]{6})\s+([0-9]+)\s*$', multiLine: true), (m) => 'if (-not (${m[1]} "#${m[2]}" ${m[3]})) { Write-Error "Macro aborted dynamically! Expected underlying pixel state to evaluate TRUE for: ${m[1]} #${m[2]} ${m[3]}"; exit 1 }');
+      p = p.replaceAllMapped(RegExp(r'(PixelMoreThan)\s+#([0-9a-fA-F]{6})\s+([0-9]+)'), (m) => '${m[1]} "#${m[2]}" ${m[3]}');
+
+      p = p.replaceAllMapped(RegExp(r'^[ \t]*Run[ \t]+("([^"]+)"|([^\s\{]+))(?:[ \t]+("([^"]+)"|([^\s\{]+)))?', multiLine: true), (match) {
+          String mName = match.group(2) ?? match.group(3) ?? "";
+          String mArg = match.group(5) ?? match.group(6) ?? "";
+          
+          String lower = mName.toLowerCase();
+          if (lower == 'notepad') return 'Start-Process notepad';
+          if (lower == 'reload') {
+             return 'Write-Host "MACRO_CMD|RELOAD"';
+          }
+          if (lower == 'restart') {
+             return 'Write-Host "MACRO_CMD|RESTART"';
+          }
+          if (lower == 'msgbox') {
+             String msg = mArg.isNotEmpty ? mArg : "Execution Paused";
+             return '[System.Windows.Forms.MessageBox]::Show("$msg", "Macro Message")';
+          }
+
+          var targetList = _macros.where((m) => m.name == mName);
+          if (targetList.isNotEmpty) {
+             if (visited.contains(mName)) {
+                return "# Circular dependency detected for macro: $mName";
+             }
+             return preprocess(targetList.first.script, [...visited, mName]);
+          }
+          return "# Could not find macro: $mName";
+      });
+      
+      if (prevP != p) changed = true;
+      depth++;
+    }
+    return p;
+  }
+
+  Future<void> playMacro(String id, {bool wait = false}) async {
+    final idx = _macros.indexWhere((element) => element.id == id);
     if (idx != -1) {
       final macro = _macros[idx];
       final bool effectiveWait = macro.executionTiming == 'System' ? false : wait;
@@ -766,15 +957,28 @@ function SwitchWindow {
             $winPid = 0
             [Win32]::GetWindowThreadProcessId($winHwnd, [ref]$winPid) | Out-Null
             if ($excludePids -contains $winPid) {
-                # Skip windows belonging to our process tree
-                return $false
+                # Skip windows belonging to our process tree, unless explicitly targeted
+                if ($title -match 'antigravity|ai bridge|music_app|agentic|desktop') {
+                    # Continue to match checks below
+                } else {
+                    return $false
+                }
             }
-            return $_.Title -match $title
+            if ($_.Title -match $title) { return $true }
+            if ($winPid -ne 0) {
+                $proc = Get-Process -Id $winPid -ErrorAction SilentlyContinue
+                if ($proc) {
+                    if ($proc.ProcessName -match $title) { return $true }
+                    if ($proc.Description -match $title) { return $true }
+                    if ($proc.Product -match $title) { return $true }
+                }
+            }
+            return $false
         } | Select-Object -First 1
     }
     
     # 3. Fuzzy fallback matching for terminal/console windows if no direct match is found
-    if (-not $match -and ($title -match 'powershell|pwsh|cmd|terminal')) {
+    if (-not $match -and ($title -match 'powershell|pwsh|cmd|terminal|antigravity|cli')) {
         Write-Host "MACRO_LOG|SwitchWindow: Match not found for '$title', attempting fuzzy match for terminal..."
         if ($windows) {
             $match = $windows | Where-Object {
@@ -782,9 +986,21 @@ function SwitchWindow {
                 $winPid = 0
                 [Win32]::GetWindowThreadProcessId($winHwnd, [ref]$winPid) | Out-Null
                 if ($excludePids -contains $winPid) {
-                    return $false
+                    if ($title -match 'antigravity|ai bridge|music_app|agentic|desktop') {
+                        # Allow it
+                    } else {
+                        return $false
+                    }
                 }
-                return $_.Title -match 'powershell|pwsh|cmd|command prompt|terminal'
+                if ($_.Title -match 'powershell|pwsh|cmd|command prompt|terminal') { return $true }
+                if ($winPid -ne 0) {
+                    $proc = Get-Process -Id $winPid -ErrorAction SilentlyContinue
+                    if ($proc) {
+                        if ($proc.ProcessName -match 'powershell|pwsh|cmd|terminal') { return $true }
+                        if ($proc.Description -match 'powershell|pwsh|cmd|terminal') { return $true }
+                    }
+                }
+                return $false
             } | Select-Object -First 1
         }
     }
@@ -918,6 +1134,38 @@ function NextClipboard {
         }
         Set-Clipboard -Value $global:MacroClipboardQueue[$global:MacroClipboardIndex]
     }
+}
+
+function GetBridgeMode {
+    [System.Diagnostics.DebuggerHidden()]
+    param()
+    $searchDirs = @()
+    if ($PSScriptRoot) {
+        $searchDirs += $PSScriptRoot
+    }
+    $searchDirs += (Get-Location).Path
+    
+    foreach ($baseDir in $searchDirs) {
+        $curr = $baseDir
+        while ($curr) {
+            $checkPath1 = Join-Path $curr "active_mode.txt"
+            $checkPath2 = Join-Path $curr ".ai_bridge/active_mode.txt"
+            
+            if (Test-Path $checkPath1) {
+                return (Get-Content $checkPath1).Trim()
+            }
+            if (Test-Path $checkPath2) {
+                return (Get-Content $checkPath2).Trim()
+            }
+            
+            $parent = Split-Path $curr -Parent
+            if ($parent -eq $curr -or !$parent) {
+                break
+            }
+            $curr = $parent
+        }
+    }
+    return "sdk"
 }
 
 # USER MACRO BEGINS HERE:

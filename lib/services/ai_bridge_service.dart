@@ -19,8 +19,7 @@ import '../db/app_database.dart';
 
 enum UpdateCoverType { hotReload, hotRestart, rebuild }
 
-enum AntigravityBridgeMode { sdk, cli }
-
+enum AntigravityBridgeMode { sdk, desktop, cli, handsfree }
 
 enum AiTaskStatus { open, inProgress, inTesting, inReview, completed, bug }
 
@@ -61,7 +60,7 @@ class AiReviewQuestion {
 }
 
 
-enum AiVerificationStatus { none, pendingReview, verified, ignored }
+enum AiVerificationStatus { none, submitted, pendingReview, verified, ignored }
 
 class AiVerificationCriteria {
   String description;
@@ -404,14 +403,22 @@ class QueuedPrompt {
   final String text;
   final bool block;
   final List<String>? taskIds;
+  final String? targetCriteriaDescription;
   DateTime? completedAt;
 
-  QueuedPrompt(this.text, this.block, this.taskIds, {this.completedAt});
+  QueuedPrompt(
+    this.text,
+    this.block,
+    this.taskIds, {
+    this.targetCriteriaDescription,
+    this.completedAt,
+  });
 
   Map<String, dynamic> toJson() => {
         'text': text,
         'block': block,
         'taskIds': taskIds,
+        'targetCriteriaDescription': targetCriteriaDescription,
         'completedAt': completedAt?.toIso8601String(),
       };
 
@@ -421,6 +428,7 @@ class QueuedPrompt {
       json['text'] as String,
       json['block'] == true,
       taskIdsData?.map((e) => e.toString()).toList(),
+      targetCriteriaDescription: json['targetCriteriaDescription'] as String?,
       completedAt: json['completedAt'] != null
           ? DateTime.tryParse(json['completedAt'])
           : null,
@@ -428,8 +436,44 @@ class QueuedPrompt {
   }
 }
 
+class SimulatedAction {
+  final String type; // 'PROMPT', 'VBS_SCRIPT', 'MACRO', 'API_CALL', 'FILE_WRITE', 'QUEUE', 'METADATA', 'STATE', 'STATUS_WRITE'
+  final String title;
+  final String detail;
+  final DateTime timestamp;
+
+  SimulatedAction({
+    required this.type,
+    required this.title,
+    required this.detail,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+}
+
 class AiBridgeService extends ChangeNotifier with WindowListener {
   static final AiBridgeService instance = AiBridgeService._internal();
+
+  bool _isDryRunMode = false;
+  bool get isDryRunMode => _isDryRunMode;
+
+  final List<SimulatedAction> _simulatedActions = [];
+  List<SimulatedAction> get simulatedActions => _simulatedActions;
+
+  void setDryRunMode(bool enabled) {
+    _isDryRunMode = enabled;
+    _simulatedActions.clear();
+    notifyListeners();
+  }
+
+  void logSimulatedAction(String type, String title, String detail) {
+    _simulatedActions.add(SimulatedAction(type: type, title: title, detail: detail));
+    notifyListeners();
+  }
+
+  void clearSimulatedActions() {
+    _simulatedActions.clear();
+    notifyListeners();
+  }
 
   late AntigravityClient antigravityClient;
   AppDatabase? _db;
@@ -474,10 +518,21 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
           .toList()
           .timeout(const Duration(milliseconds: 1000), onTimeout: () => []);
           
-      final subdirs = entities.whereType<Directory>();
+      final subdirs = entities.whereType<Directory>().toList();
+      final Map<Directory, DateTime> subdirTimes = {};
+      await Future.wait(subdirs.map((dir) async {
+        try {
+          final stat = await dir.stat().timeout(const Duration(milliseconds: 300));
+          subdirTimes[dir] = stat.modified;
+        } catch (_) {
+          subdirTimes[dir] = DateTime.fromMillisecondsSinceEpoch(0);
+        }
+      }));
+      subdirs.sort((a, b) => (subdirTimes[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
+          .compareTo(subdirTimes[a] ?? DateTime.fromMillisecondsSinceEpoch(0)));
+
       final List<Future<void>> subdirChecks = [];
-      
-      for (final subdir in subdirs) {
+      for (final subdir in subdirs.take(3)) {
         subdirChecks.add(() async {
           final transcript = File('${subdir.path}/.system_generated/logs/transcript.jsonl');
           final overview = File('${subdir.path}/overview.txt');
@@ -541,12 +596,210 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     }
   }
 
-  Future<void> syncConversationHistory() async {
-    // Disabled for now to prevent unnecessary background file reads and CPU usage.
-    return;
+  Future<void> syncConversationHistory([File? file]) async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      return;
+    }
+    try {
+      File? targetFile = file;
+      if (targetFile == null) {
+        final String userProfile = Platform.environment['USERPROFILE'] ?? '';
+        if (userProfile.isEmpty) return;
+        final brainDir = Directory('$userProfile\\.gemini\\antigravity\\brain');
+        if (!await brainDir.exists()) return;
+        final files = await _getBrainFiles(brainDir);
+        final transcripts = files.where((f) => f.path.endsWith('transcript.jsonl')).toList();
+        if (transcripts.isEmpty) return;
+        // Sort by last modified to find the active one
+        transcripts.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+        targetFile = transcripts.first;
+      }
+
+      if (!targetFile.existsSync()) return;
+
+      final lines = await targetFile.readAsLines();
+
+      // Check if we need to reset the logged steps index (e.g. new session or file was cleared/shrunk)
+      bool hasReset = false;
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || !trimmed.startsWith('{')) continue;
+        try {
+          final map = jsonDecode(trimmed) as Map<String, dynamic>;
+          final stepIndex = map['step_index'] as int?;
+          if (stepIndex != null && stepIndex < _lastLoggedStepIndex) {
+            hasReset = true;
+            break;
+          }
+        } catch (_) {}
+      }
+      if (hasReset) {
+        _lastLoggedStepIndex = -1;
+      }
+
+      if (_lastLoggedStepIndex == -1 && file == null) {
+        // Startup run: set index to max to avoid dumping old session logs
+        int maxIndex = -1;
+        for (final line in lines) {
+          final trimmed = line.trim();
+          if (trimmed.isEmpty || !trimmed.startsWith('{')) continue;
+          try {
+            final map = jsonDecode(trimmed) as Map<String, dynamic>;
+            final stepIndex = map['step_index'] as int?;
+            if (stepIndex != null && stepIndex > maxIndex) {
+              maxIndex = stepIndex;
+            }
+          } catch (_) {}
+        }
+        _lastLoggedStepIndex = maxIndex;
+      }
+
+      final sb = StringBuffer();
+      sb.writeln('# Conversation History (Realtime Logs)');
+      sb.writeln('Source file: `${targetFile.path}`');
+      sb.writeln('Last Synced: ${DateTime.now().toLocal().toString().split('.').first}');
+      sb.writeln('\n---\n');
+
+      int maxStepIndex = _lastLoggedStepIndex;
+
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || !trimmed.startsWith('{')) continue;
+        try {
+          final map = jsonDecode(trimmed) as Map<String, dynamic>;
+          final stepIndex = map['step_index'] as int?;
+          final type = map['type'] as String?;
+          final source = map['source'] as String?;
+          final content = map['content'] as String? ?? '';
+          final toolCalls = map['tool_calls'] as List?;
+
+          // Format for markdown document
+          if (source == 'USER_EXPLICIT' || type == 'USER_INPUT') {
+            sb.writeln('## 👤 USER');
+            sb.writeln(content);
+            sb.writeln('\n');
+          } else if (source == 'MODEL') {
+            sb.writeln('## 🤖 AGENT');
+            if (content.isNotEmpty) {
+              sb.writeln(content);
+              sb.writeln('\n');
+            }
+            if (toolCalls != null && toolCalls.isNotEmpty) {
+              sb.writeln('**Tool Calls**:');
+              for (final call in toolCalls) {
+                final name = call['name'] ?? call['method'] ?? 'unknown_tool';
+                final args = call['args'] ?? call['arguments'] ?? {};
+                sb.writeln('- Tool: `$name`');
+                sb.writeln('  Arguments: `${jsonEncode(args)}`');
+              }
+              sb.writeln('\n');
+            }
+          } else if (source == 'SYSTEM') {
+            if (type == 'TOOL_RESPONSE' || content.isNotEmpty) {
+              sb.writeln('> **System/Tool Result**:');
+              sb.writeln('> ${content.replaceAll('\n', '\n> ')}');
+              sb.writeln('\n');
+            }
+          }
+
+          // Output to SystemLogsService for real-time viewing if it hasn't been logged yet
+          if (stepIndex != null && stepIndex > _lastLoggedStepIndex) {
+            if (stepIndex > maxStepIndex) {
+              maxStepIndex = stepIndex;
+            }
+
+            final String prefix;
+            switch (_bridgeMode) {
+              case AntigravityBridgeMode.sdk:
+                prefix = '[SDK]';
+                break;
+              case AntigravityBridgeMode.desktop:
+                prefix = '[Desktop]';
+                break;
+              case AntigravityBridgeMode.cli:
+                prefix = '[CLI]';
+                break;
+              case AntigravityBridgeMode.handsfree:
+                prefix = '[Handsfree]';
+                break;
+            }
+
+            if (source == 'USER_EXPLICIT' || type == 'USER_INPUT') {
+              final cleanContent = content.trim().replaceAll('\n', ' ');
+              final disp = cleanContent.length > 120 ? '${cleanContent.substring(0, 120)}...' : cleanContent;
+              SystemLogsService.instance.addLog('$prefix USER: "$disp"', category: LogCategory.CLI);
+            } else if (source == 'MODEL' && type == 'PLANNER_RESPONSE') {
+              if (content.isNotEmpty) {
+                // Strip XML tags and markdown blocks, extract first line or short summary of thoughts
+                final clean = content.replaceAll(RegExp(r'<[^>]*>'), '').trim().replaceAll('\n', ' ');
+                final disp = clean.length > 120 ? '${clean.substring(0, 120)}...' : clean;
+                if (disp.isNotEmpty) {
+                  SystemLogsService.instance.addLog('$prefix AGENT: $disp', category: LogCategory.CLI);
+                }
+              }
+              if (toolCalls != null && toolCalls.isNotEmpty) {
+                for (final call in toolCalls) {
+                  final name = call['name'] ?? call['method'] ?? 'tool';
+                  final args = call['args'] ?? call['arguments'] ?? {};
+                  
+                  // Extract key details based on tool name
+                  String details = '';
+                  if (name == 'view_file' || name == 'write_to_file' || name == 'replace_file_content' || name == 'multi_replace_file_content') {
+                    final path = args['AbsolutePath'] ?? args['TargetFile'] ?? '';
+                    final filename = path.toString().split('/').last.split('\\').last;
+                    details = 'File: $filename';
+                  } else if (name == 'grep_search') {
+                    details = 'Query: "${args['Query']}"';
+                  } else if (name == 'run_command') {
+                    details = 'Cmd: "${args['CommandLine']}"';
+                  } else if (name == 'list_dir') {
+                    final path = args['DirectoryPath'] ?? '';
+                    final dirName = path.toString().split('/').last.split('\\').last;
+                    details = 'Dir: $dirName';
+                  } else {
+                    details = args.keys.take(2).map((k) => '$k: ${args[k]}').join(', ');
+                  }
+                  
+                  SystemLogsService.instance.addLog('$prefix AGENT: Calling tool `$name` ($details)', category: LogCategory.CLI);
+                }
+              }
+            } else if (source == 'SYSTEM') {
+              if (content.isNotEmpty) {
+                final isErr = content.toLowerCase().contains('error') || content.toLowerCase().contains('failed') || content.toLowerCase().contains('exception');
+                if (isErr) {
+                  final cleanErr = content.trim().replaceAll('\n', ' ');
+                  final dispErr = cleanErr.length > 150 ? '${cleanErr.substring(0, 150)}...' : cleanErr;
+                  SystemLogsService.instance.addLog('$prefix TOOL ERROR: $dispErr', category: LogCategory.CLI);
+                } else {
+                  SystemLogsService.instance.addLog('$prefix TOOL RESULT: Completed successfully (${content.length} bytes returned)', category: LogCategory.CLI);
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      _lastLoggedStepIndex = maxStepIndex;
+
+      // Disabled writing to conversation_history.md and logging per user request: "lets stop processing this for now..."
+      /*
+      final destFile = File('.ai_bridge/conversation_history.md');
+      if (!destFile.parent.existsSync()) {
+        destFile.parent.createSync(recursive: true);
+      }
+      await destFile.writeAsString(sb.toString(), flush: true);
+      debugPrint('[AiBridgeService] Synced conversation history to .ai_bridge/conversation_history.md');
+      */
+    } catch (e) {
+      debugPrint('[AiBridgeService] Error syncing conversation history: $e');
+    }
   }
 
   Future<void> _ensureBackendRunning() async {
+    if (_sendViaClipboard) {
+      debugPrint('[AiBridgeService] Skipping background HTTP daemon startup because Send via clipboard paste to the CLI is enabled.');
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     final startupCmd = prefs.getString('antigravity_startup_command') ?? 'antigravity-server';
     final resolvedCmd = BackendProcessManager().getResolvedStartupCommand(startupCmd);
@@ -574,118 +827,133 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> _initClient() async {
-    final prefs = await SharedPreferences.getInstance();
-    final binaryPath = prefs.getString('antigravity_binary_path') ?? '';
-    final startupCmd = prefs.getString('antigravity_startup_command') ?? 'antigravity-server';
-    final resolvedCmd = BackendProcessManager().getResolvedStartupCommand(startupCmd);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final binaryPath = prefs.getString('antigravity_binary_path') ?? '';
+      final startupCmd = prefs.getString('antigravity_startup_command') ?? 'antigravity-server';
+      final resolvedCmd = BackendProcessManager().getResolvedStartupCommand(startupCmd);
 
-    // Dynamically parse CSRF token from the startup command
-    String csrfToken = '6c867a8e-96cc-483d-a132-178ab094abe3';
-    final csrfMatch = RegExp(r'--csrf_token\s+([^\s]+)').firstMatch(resolvedCmd);
-    if (csrfMatch != null) {
-      csrfToken = csrfMatch.group(1)!.replaceAll('"', '').replaceAll("'", "");
-    }
-
-    // Dynamically parse address / hostport from preferences or startup command
-    final baseUrl = prefs.getString('antigravity_base_url') ?? 'http://localhost:8080';
-    var lsAddress = baseUrl.replaceFirst(RegExp(r'^https?://'), '');
-    if (lsAddress.endsWith('/')) {
-      lsAddress = lsAddress.substring(0, lsAddress.length - 1);
-    }
-    if (lsAddress.startsWith('localhost')) {
-      lsAddress = lsAddress.replaceFirst('localhost', '127.0.0.1');
-    }
-    
-    // If the base url has a host but no port, or if we want to fallback to the parsed port from startup command
-    if (!lsAddress.contains(':')) {
-      final portMatch = RegExp(r'--http_server_port\s+([^\s]+)').firstMatch(resolvedCmd);
-      if (portMatch != null) {
-        final port = portMatch.group(1)!.replaceAll('"', '').replaceAll("'", "");
-        lsAddress = '$lsAddress:$port';
-      } else {
-        lsAddress = '$lsAddress:8080';
+      // Dynamically parse CSRF token from the startup command
+      String csrfToken = '6c867a8e-96cc-483d-a132-178ab094abe3';
+      final csrfMatch = RegExp(r'--csrf_token\s+([^\s]+)').firstMatch(resolvedCmd);
+      if (csrfMatch != null) {
+        csrfToken = csrfMatch.group(1)!.replaceAll('"', '').replaceAll("'", "");
       }
-    }
 
-    // Dynamically resolve the project ID for the current workspace
-    String projectId = '';
-    final envId = Platform.environment['ANTIGRAVITY_PROJECT_ID'];
-    if (envId != null && envId.isNotEmpty) {
-      projectId = envId;
-    } else {
-      try {
-        final userProfile = Platform.environment['USERPROFILE'] ?? '';
-        final projectsDir = Directory('$userProfile\\.gemini\\config\\projects');
-        if (await projectsDir.exists()) {
-          final currentPathNormalized = Directory.current.absolute.path.replaceAll('\\', '/').toLowerCase();
-          await for (final entity in projectsDir.list()) {
-            if (entity is File && entity.path.endsWith('.json')) {
-              try {
-                final content = await entity.readAsString();
-                final json = jsonDecode(content);
-                final id = json['id'] as String?;
-                final resources = json['projectResources']?['resources'] as List?;
-                if (resources != null && id != null) {
-                  for (final res in resources) {
-                    final folderUri = res['gitFolder']?['folderUri'] as String?;
-                    if (folderUri != null) {
-                      final decodedUri = Uri.decodeFull(folderUri).replaceAll('\\', '/').toLowerCase();
-                      if (decodedUri.contains(currentPathNormalized)) {
-                        projectId = id;
-                        break;
+      // Dynamically parse address / hostport from preferences or startup command
+      final baseUrl = prefs.getString('antigravity_base_url') ?? 'http://localhost:8080';
+      var lsAddress = baseUrl.replaceFirst(RegExp(r'^https?://'), '');
+      if (lsAddress.endsWith('/')) {
+        lsAddress = lsAddress.substring(0, lsAddress.length - 1);
+      }
+      if (lsAddress.startsWith('localhost')) {
+        lsAddress = lsAddress.replaceFirst('localhost', '127.0.0.1');
+      }
+      
+      // If the base url has a host but no port, or if we want to fallback to the parsed port from startup command
+      if (!lsAddress.contains(':')) {
+        final portMatch = RegExp(r'--http_server_port\s+([^\s]+)').firstMatch(resolvedCmd);
+        if (portMatch != null) {
+          final port = portMatch.group(1)!.replaceAll('"', '').replaceAll("'", "");
+          lsAddress = '$lsAddress:$port';
+        } else {
+          lsAddress = '$lsAddress:8080';
+        }
+      }
+
+      // Dynamically resolve the project ID for the current workspace
+      String projectId = '';
+      final envId = Platform.environment['ANTIGRAVITY_PROJECT_ID'];
+      if (envId != null && envId.isNotEmpty) {
+        projectId = envId;
+      } else {
+        try {
+          final userProfile = Platform.environment['USERPROFILE'] ?? '';
+          final projectsDir = Directory('$userProfile\\.gemini\\config\\projects');
+          if (await projectsDir.exists()) {
+            final currentPathNormalized = Directory.current.absolute.path.replaceAll('\\', '/').toLowerCase();
+            await for (final entity in projectsDir.list()) {
+              if (entity is File && entity.path.endsWith('.json')) {
+                try {
+                  final content = await entity.readAsString();
+                  final json = jsonDecode(content);
+                  final id = json['id'] as String?;
+                  final resources = json['projectResources']?['resources'] as List?;
+                  if (resources != null && id != null) {
+                    for (final res in resources) {
+                      final folderUri = res['gitFolder']?['folderUri'] as String?;
+                      if (folderUri != null) {
+                        final decodedUri = Uri.decodeFull(folderUri).replaceAll('\\', '/').toLowerCase();
+                        if (decodedUri.contains(currentPathNormalized)) {
+                          projectId = id;
+                          break;
+                        }
                       }
                     }
                   }
-                }
-              } catch (_) {}
-              if (projectId.isNotEmpty) break;
+                } catch (_) {}
+                if (projectId.isNotEmpty) break;
+              }
             }
           }
+        } catch (e) {
+          debugPrint('[AiBridgeService] Error scanning projects configuration directory: $e');
         }
-      } catch (e) {
-        debugPrint('[AiBridgeService] Error scanning projects configuration directory: $e');
       }
+
+      final targetModel = prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
+
+      debugPrint('[AiBridgeService] Configured Antigravity SDK with address: $lsAddress, token: $csrfToken, projectId: $projectId, model: $targetModel');
+
+      final apiKey = prefs.getString('antigravity_api_key') ?? '';
+
+      antigravityClient = AntigravityClient.custom(
+        config: AntigravityConfig(
+          binaryPath: binaryPath,
+          lsAddress: lsAddress,
+          csrfToken: csrfToken,
+          projectId: projectId,
+          targetModel: targetModel,
+          apiKey: apiKey,
+        ),
+        onLog: (logMessage) {
+          SystemLogsService.instance.addLog(logMessage, category: LogCategory.AI);
+        },
+      );
+      AntigravityClient.instance = antigravityClient;
+
+      // Fetch and log available models at start for testing
+      Future.microtask(() async {
+        try {
+          final models = await AntigravityClient().models.list();
+          final sb = StringBuffer('Available Antigravity Models:\n');
+          for (final m in models) {
+            sb.writeln('  - ${m.id} (${m.displayName}) [reasoning: ${m.supportsReasoning}]');
+          }
+          final logMsg = sb.toString();
+          debugPrint('[AiBridgeService] $logMsg');
+          SystemLogsService.instance.addLog('[AiBridgeService] $logMsg', category: LogCategory.AI);
+        } catch (e) {
+          final errMsg = 'Error listing models at startup: $e';
+          debugPrint('[AiBridgeService] $errMsg');
+          SystemLogsService.instance.addLog('[AiBridgeService] $errMsg', category: LogCategory.AI);
+        }
+      });
+    } catch (e) {
+      debugPrint('[AiBridgeService] Error initializing client: $e');
+      // Fallback client to prevent null exceptions
+      antigravityClient = AntigravityClient.custom(
+        config: const AntigravityConfig(
+          binaryPath: '',
+          lsAddress: '127.0.0.1:8080',
+          csrfToken: '',
+          projectId: '',
+          targetModel: 'gemini-2.0-flash',
+          apiKey: '',
+        ),
+      );
+      AntigravityClient.instance = antigravityClient;
     }
-
-    final targetModel = prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
-
-    debugPrint('[AiBridgeService] Configured Antigravity SDK with address: $lsAddress, token: $csrfToken, projectId: $projectId, model: $targetModel');
-
-    final apiKey = prefs.getString('antigravity_api_key') ?? '';
-
-    antigravityClient = AntigravityClient.custom(
-      config: AntigravityConfig(
-        binaryPath: binaryPath,
-        lsAddress: lsAddress,
-        csrfToken: csrfToken,
-        projectId: projectId,
-        targetModel: targetModel,
-        apiKey: apiKey,
-      ),
-      onLog: (logMessage) {
-        SystemLogsService.instance.addLog(logMessage, category: LogCategory.AI);
-      },
-    );
-    AntigravityClient.instance = antigravityClient;
-
-    // Fetch and log available models at start for testing
-    Future.microtask(() async {
-      try {
-        final models = await AntigravityClient().models.list();
-        final sb = StringBuffer('Available Antigravity Models:\n');
-        for (final m in models) {
-          sb.writeln('  - ${m.id} (${m.displayName}) [reasoning: ${m.supportsReasoning}]');
-        }
-        final logMsg = sb.toString();
-        debugPrint('[AiBridgeService] $logMsg');
-        SystemLogsService.instance.addLog('[AiBridgeService] $logMsg', category: LogCategory.AI);
-      } catch (e) {
-        final errMsg = 'Error listing models at startup: $e';
-        debugPrint('[AiBridgeService] $errMsg');
-        SystemLogsService.instance.addLog('[AiBridgeService] $errMsg', category: LogCategory.AI);
-      }
-    });
-
     // Subscribe to artifact updates
     antigravityClient.onArtifactUpdate.listen((update) {
       final taskIdx = _tasks.indexWhere((t) => t.id == update.taskId);
@@ -861,12 +1129,21 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   @visibleForTesting
+  String get testDirPath => _dirPath;
+
+  @visibleForTesting
   set testFilePath(String path) {
     _filePath = path;
   }
 
   @visibleForTesting
   String get filePath => _filePath;
+
+  @visibleForTesting
+  void initializeForTesting() {
+    _startWatching();
+    _startWatchingAntigravity();
+  }
 
   bool forceDiskSaveInTests = false;
 
@@ -886,6 +1163,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   StreamSubscription<FileSystemEvent>? _rootWatchSubscription;
   bool _isSavingLocally = false;
   int _lastProcessedLogIndex = 0;
+  int _lastLoggedStepIndex = -1;
   Timer? _errorDebounceTimer;
   final List<DetectedError> _errorBuffer = [];
   bool _isLogListenerRegistered = false;
@@ -924,6 +1202,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   UpdateCoverType get updateCoverType => _updateCoverType;
 
   UpdateCoverType? _pendingUpdateType;
+  UpdateCoverType? get pendingUpdateType => _pendingUpdateType;
   bool _isTriggeringUpdate = false;
 
   bool _isQueuePaused = false;
@@ -965,9 +1244,32 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   void setBridgeMode(AntigravityBridgeMode mode) async {
     _bridgeMode = mode;
+    _writeActiveModeFile(mode.name);
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('antigravity_bridge_mode', mode.name);
+  }
+
+  void _writeActiveModeFile(String modeName) {
+    try {
+      final file = File('$_dirPath/active_mode.txt');
+      if (!file.parent.existsSync()) {
+        file.parent.createSync(recursive: true);
+      }
+      file.writeAsStringSync(modeName);
+    } catch (e) {
+      debugPrint('Failed to write active_mode.txt: $e');
+    }
+  }
+
+  bool _sendViaClipboard = true;
+  bool get sendViaClipboard => _sendViaClipboard;
+
+  void setSendViaClipboard(bool value) async {
+    _sendViaClipboard = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('antigravity_send_via_clipboard', value);
   }
 
   final List<QueuedPrompt> _pendingPrompts = [];
@@ -1058,9 +1360,21 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> sendToQueue(String text, bool blockScreen,
-      {List<String>? taskIds, bool insertFirst = false}) async {
+      {List<String>? taskIds, bool insertFirst = false, String? targetCriteriaDescription}) async {
+    _lastLoggedStepIndex = -1;
+    if (_isDryRunMode) {
+      logSimulatedAction('QUEUE', 'Add Prompt to Queue', text);
+      if (taskIds != null && taskIds.isNotEmpty) {
+        logSimulatedAction('METADATA', 'Associated Task IDs', taskIds.join(', '));
+      }
+    }
+
     if (_bridgeMode == AntigravityBridgeMode.sdk) {
       if (taskIds != null && taskIds.isNotEmpty) {
+        if (_isDryRunMode) {
+          logSimulatedAction('API_CALL', 'Invoke Subagent (SDK Mode)', 'Task ID: ${taskIds.first}');
+          return;
+        }
         await SandboxService.instance.addToSandbox(taskIds);
         final taskId = taskIds.first;
         final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
@@ -1068,20 +1382,28 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
           await executeTask(_tasks[taskIdx]);
         }
       } else {
+        if (_isDryRunMode) {
+          logSimulatedAction('API_CALL', 'Send Prompt (SDK Mode)', text);
+          return;
+        }
         await _ensureBackendRunning();
         await antigravityClient.sendPrompt(text);
       }
     } else {
       if (insertFirst) {
-        _pendingPrompts.insert(0, QueuedPrompt(text, blockScreen, taskIds));
+        _pendingPrompts.insert(0, QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription));
       } else {
-        _pendingPrompts.add(QueuedPrompt(text, blockScreen, taskIds));
+        _pendingPrompts.add(QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription));
       }
 
       if (taskIds != null && taskIds.isNotEmpty) {
-        await SandboxService.instance.addToSandbox(taskIds);
-        if (!insertFirst) {
-          _writeCurrentTaskFile(taskIds.first);
+        if (!_isDryRunMode) {
+          await SandboxService.instance.addToSandbox(taskIds);
+          if (!insertFirst) {
+            _writeCurrentTaskFile(taskIds.first);
+          }
+        } else {
+          logSimulatedAction('FILE_WRITE', 'Write current_task.json (Simulated)', 'Writing task ID: ${taskIds.first}');
         }
       }
 
@@ -1096,10 +1418,11 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> executeTask(AiTask task) async {
+    _lastLoggedStepIndex = -1;
     await _ensureBackendRunning();
     await syncDatabaseDump();
     await compilePrimaryDirectivesFile();
-    _antigravityLastChangeObservedAt = DateTime.now();
+    await _updateDispatchState();
     final json = task.toJson();
     json['name'] = _buildTaskPathName(task);
     final connection = await antigravityClient.invokeSubagent(json);
@@ -1118,30 +1441,154 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> _sendToAiAgent(String text) async {
-    _antigravityLastChangeObservedAt = DateTime.now();
+    await _updateDispatchState();
     _isPromptDispatched = true;
-    await Clipboard.setData(ClipboardData(text: text));
-    try {
-      await MacroService.instance.executeTrigger('BridgeConnect');
-    } catch (e) {
-      debugPrint('[AiBridgeService] Error executing BridgeConnect macro: $e');
+    _isAntigravityBusy = true;
+    
+    if (_isDryRunMode) {
+      logSimulatedAction('STATE', 'Dispatch Prompt (Dry Run)', 'Dispatching prompt to simulated agent.');
+      logSimulatedAction('PROMPT', 'Prompt Text', text);
+      
+      if (_activeProcessingTaskId != null) {
+        logSimulatedAction('FILE_WRITE', 'Write current_task.json', 'Writing task ID: $_activeProcessingTaskId');
+      } else {
+        final json = {
+          "id": "free_prompt",
+          "name": "Free-form Request",
+          "description": text,
+          "verificationCriteria": []
+        };
+        logSimulatedAction('FILE_WRITE', 'Write current_task.json (Free-form)', jsonEncode(json));
+      }
+      
+      if (_bridgeMode == AntigravityBridgeMode.cli || _bridgeMode == AntigravityBridgeMode.desktop) {
+        logSimulatedAction('MACRO', 'Execute Macro Trigger', 'BridgeConnect');
+        final String targetTitle = _bridgeMode == AntigravityBridgeMode.cli
+            ? 'Antigravity CLI'
+            : 'Antigravity - Agentic Desktop';
+        final vbsScript = '''
+Set wshShell = CreateObject("WScript.Shell")
+wshShell.AppActivate "$targetTitle"
+WScript.Sleep 500
+wshShell.SendKeys "^v"
+WScript.Sleep 200
+wshShell.SendKeys "~"
+WScript.Sleep 300
+wshShell.AppActivate $pid
+''';
+        logSimulatedAction('VBS_SCRIPT', 'Write & Run VBS Paste Script ($targetTitle)', vbsScript);
+      } else if (_bridgeMode == AntigravityBridgeMode.handsfree) {
+        logSimulatedAction('STATE', 'Handsfree mode simulation', 'Simulating context writing to current_task.json.');
+      }
+      
+      logSimulatedAction('STATUS_WRITE', 'Set Status File (agent_status.txt)', 'BUSY');
+      
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (_activePrompt != null) {
+          logSimulatedAction('STATE', 'Simulation Completed', 'Active prompt finished simulated run.');
+          logSimulatedAction('STATUS_WRITE', 'Set Status File (agent_status.txt)', 'IDLE');
+          
+          _activePrompt!.completedAt = DateTime.now();
+          _completedPrompts.add(_activePrompt!);
+          _activePrompt = null;
+          _activeProcessingTaskId = null;
+          _activeProcessingTaskAssignedAt = null;
+          _saveQueueState();
+          setScreenBlockerEnabled(false);
+          notifyListeners();
+          _processQueue();
+        }
+      });
+      return;
     }
 
-    final int myPid = pid;
-    final vbsFile = File('$_dirPath/paste.vbs');
-    if (!vbsFile.parent.existsSync()) {
-      vbsFile.parent.createSync(recursive: true);
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      await antigravityClient.sendPrompt(text);
+      return;
     }
-    await vbsFile.writeAsString('''
+
+    // Write current_task.json as a robust fallback so the CLI agent receives
+    // the context even if Windows UAC/UIPI prevents clipboard pasting.
+    if (_activeProcessingTaskId != null) {
+      _writeCurrentTaskFile(_activeProcessingTaskId!);
+    } else {
+      final json = {
+        "id": "free_prompt",
+        "name": "Free-form Request",
+        "description": text,
+        "verificationCriteria": []
+      };
+      try {
+        File('$_dirPath/current_task.json')
+            .writeAsStringSync(jsonEncode(json), flush: true);
+      } catch (e) {
+        debugPrint('Failed to write current_task.json: $e');
+      }
+    }
+
+    await Clipboard.setData(ClipboardData(text: text));
+    if (_bridgeMode == AntigravityBridgeMode.cli || _bridgeMode == AntigravityBridgeMode.desktop) {
+      if (_bridgeMode == AntigravityBridgeMode.cli) {
+        if (_sendViaClipboard) {
+          final isRunning = await AntigravityStatusService.instance.isProcessRunning();
+          if (!isRunning) {
+            debugPrint('[AiBridgeService] CLI terminal process is offline. Launching terminal window...');
+            await AntigravityStatusService.instance.ensureTerminalDaemonRunning();
+            await Future.delayed(const Duration(milliseconds: 2000));
+          }
+        }
+      }
+
+      if (_bridgeMode == AntigravityBridgeMode.desktop || _sendViaClipboard) {
+        try {
+          await MacroService.instance.executeTrigger('BridgeConnect');
+        } catch (e) {
+          debugPrint('[AiBridgeService] Error executing BridgeConnect macro: $e');
+        }
+
+        final String targetTitle = _bridgeMode == AntigravityBridgeMode.cli
+            ? 'Antigravity CLI'
+            : 'Antigravity - Agentic Desktop';
+
+        final int myPid = pid;
+        final vbsFile = File('$_dirPath/paste.vbs');
+        if (!vbsFile.parent.existsSync()) {
+          vbsFile.parent.createSync(recursive: true);
+        }
+        if (_bridgeMode == AntigravityBridgeMode.cli) {
+          await vbsFile.writeAsString('''
 Set wshShell = CreateObject("WScript.Shell")
-WScript.Sleep 600
+wshShell.AppActivate "$targetTitle"
+WScript.Sleep 500
 wshShell.SendKeys "^v"
 WScript.Sleep 200
 wshShell.SendKeys "~"
 WScript.Sleep 300
 wshShell.AppActivate $myPid
 ''');
-    await Process.run('wscript', [vbsFile.path]);
+        } else {
+          await vbsFile.writeAsString('''
+Set wshShell = CreateObject("WScript.Shell")
+success = wshShell.AppActivate("AI Bridge")
+If Not success Then
+  success = wshShell.AppActivate("Antigravity - Agentic Desktop")
+End If
+If Not success Then
+  wshShell.AppActivate("Antigravity")
+End If
+WScript.Sleep 500
+wshShell.SendKeys "^v"
+WScript.Sleep 200
+wshShell.SendKeys "~"
+WScript.Sleep 300
+wshShell.AppActivate $myPid
+''');
+        }
+        await Process.run('wscript', [vbsFile.path]);
+      }
+    } else if (_bridgeMode == AntigravityBridgeMode.handsfree) {
+      debugPrint('[AiBridgeService] Handsfree mode: context written to current_task.json.');
+    }
 
     final statusFile = File('$_dirPath/agent_status.txt');
     await statusFile.writeAsString('BUSY');
@@ -1155,10 +1602,11 @@ wshShell.AppActivate $myPid
     notifyListeners();
   }
 
-  void forceNextQueueItem() {
+  Future<void> forceNextQueueItem() async {
     _activeProcessingTaskId = null;
     _activeProcessingTaskAssignedAt = null;
     _activePrompt = null;
+    await _saveQueueState();
     notifyListeners();
     _processQueue();
   }
@@ -1171,6 +1619,26 @@ wshShell.AppActivate $myPid
     final List<String> encodedCompleted =
         _completedPrompts.map((p) => jsonEncode(p.toJson())).toList();
     await prefs.setStringList('ai_bridge_completed_queue', encodedCompleted);
+
+    if (_activePrompt != null) {
+      await prefs.setString('ai_bridge_active_prompt', jsonEncode(_activePrompt!.toJson()));
+    } else {
+      await prefs.remove('ai_bridge_active_prompt');
+    }
+
+    if (_activeProcessingTaskId != null) {
+      await prefs.setString('ai_bridge_active_processing_task_id', _activeProcessingTaskId!);
+    } else {
+      await prefs.remove('ai_bridge_active_processing_task_id');
+    }
+
+    if (_activeProcessingTaskAssignedAt != null) {
+      await prefs.setString('ai_bridge_active_processing_task_assigned_at', _activeProcessingTaskAssignedAt!.toIso8601String());
+    } else {
+      await prefs.remove('ai_bridge_active_processing_task_assigned_at');
+    }
+
+    await prefs.setBool('ai_bridge_is_prompt_dispatched', _isPromptDispatched);
   }
 
   Future<void> _processQueue() async {
@@ -1227,7 +1695,48 @@ wshShell.AppActivate $myPid
         await Future.delayed(Duration(milliseconds: (delaySeconds * 1000).round()));
 
         await syncDatabaseDump();
-        await _sendToAiAgent(nextPrompt.text);
+
+        String promptText = nextPrompt.text;
+        if (nextPrompt.taskIds != null && nextPrompt.taskIds!.isNotEmpty) {
+          final isStandardTaskPrompt = nextPrompt.text.contains('# PRIMARY DIRECTIVES') ||
+              nextPrompt.text.contains('# TASKS TO ADDRESS');
+          if (isStandardTaskPrompt) {
+            final taskId = nextPrompt.taskIds!.first;
+            final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
+            if (taskIdx != -1) {
+              final task = _tasks[taskIdx];
+              AiVerificationCriteria? targetItem;
+              if (nextPrompt.targetCriteriaDescription != null) {
+                final itemIdx = task.verificationCriteria.indexWhere((vc) =>
+                    vc.description.trim().toLowerCase() ==
+                    nextPrompt.targetCriteriaDescription!.trim().toLowerCase());
+                if (itemIdx != -1) {
+                  targetItem = task.verificationCriteria[itemIdx];
+                }
+              }
+
+              final dynamicPrompt = await buildTaskPrompt(task, targetCriteria: targetItem);
+
+              final directivesIndex = nextPrompt.text.indexOf('# PRIMARY DIRECTIVES');
+              if (directivesIndex > 0) {
+                final prefix = nextPrompt.text.substring(0, directivesIndex);
+                promptText = '$prefix$dynamicPrompt';
+              } else {
+                promptText = dynamicPrompt;
+              }
+            }
+          }
+        }
+
+        _activePrompt = QueuedPrompt(
+          promptText,
+          nextPrompt.block,
+          nextPrompt.taskIds,
+          targetCriteriaDescription: nextPrompt.targetCriteriaDescription,
+          completedAt: nextPrompt.completedAt,
+        );
+        await _sendToAiAgent(promptText);
+        await _saveQueueState();
         setScreenBlockerEnabled(nextPrompt.block);
       }
     } finally {
@@ -1252,12 +1761,31 @@ wshShell.AppActivate $myPid
     _activeAgents.clear();
     _activeProcessingTaskId = null;
     _activePrompt = null;
+    _isPromptDispatched = false;
     _pendingPrompts.clear();
     _completedPrompts.clear();
     _isAntigravityBusy = false;
     _antigravityLastChangeObservedAt = null;
     _isTriggeringUpdate = false;
     setScreenBlockerEnabled(false);
+
+    bool changed = false;
+    for (int i = 0; i < _tasks.length; i++) {
+      bool taskChanged = false;
+      final criteriaList = _tasks[i].verificationCriteria;
+      for (int j = 0; j < criteriaList.length; j++) {
+        if (criteriaList[j].status == AiVerificationStatus.submitted) {
+          criteriaList[j].status = AiVerificationStatus.none;
+          taskChanged = true;
+        }
+      }
+      if (taskChanged) {
+        changed = true;
+      }
+    }
+    if (changed) {
+      await _save();
+    }
 
     try {
       final statusFile = File('$_dirPath/agent_status.txt');
@@ -1390,12 +1918,21 @@ wshShell.AppActivate $myPid
 
   Future<void> forceDispatchSyncError() async {
     _isSyncErrorDetected = false;
+    SystemLogsService.instance.addLog(
+      '[AI Bridge Sync] Dispatched sync recovery prompt to force agent synchronization.',
+      category: LogCategory.SYNC,
+    );
     notifyListeners();
-    if (_bridgeMode == AntigravityBridgeMode.cli) {
+    if (_bridgeMode != AntigravityBridgeMode.sdk) {
       await _sendToAiAgent(_syncErrorInstructions);
     } else {
       await antigravityClient.sendPrompt(_syncErrorInstructions);
     }
+  }
+
+  @visibleForTesting
+  void handleSystemLogsChangedForTesting() {
+    _handleSystemLogsChanged();
   }
 
   void _handleSystemLogsChanged() {
@@ -1412,6 +1949,10 @@ wshShell.AppActivate $myPid
     _lastProcessedLogIndex = logs.length;
 
     for (final entry in newEntries) {
+      if (entry.category == LogCategory.CLI ||
+          entry.category == LogCategory.SYNC) {
+        continue;
+      }
       final detected = ErrorScanner.scan(entry.message);
       if (detected != null) {
         _handleDetectedError(detected);
@@ -1654,18 +2195,36 @@ wshShell.AppActivate $myPid
   }
 
   bool _isAntigravityBusy = false;
+  bool _isDaemonRunning = false;
   Map<String, DateTime> _antigravityLastModifiedTimes = {};
   DateTime? _antigravityLastChangeObservedAt;
   Timer? _antigravityPollTimer;
   Timer? _queueCleanupTimer;
 
+  int? _stepIndexAtDispatch;
+  DateTime? _promptDispatchedAt;
+
+  int? get stepIndexAtDispatch => _stepIndexAtDispatch;
+  set stepIndexAtDispatch(int? value) => _stepIndexAtDispatch = value;
+
+  DateTime? get promptDispatchedAt => _promptDispatchedAt;
+  set promptDispatchedAt(DateTime? value) => _promptDispatchedAt = value;
+
   bool get isAntigravityBusy => _isAntigravityBusy;
+  bool get isDaemonRunning => _isDaemonRunning;
   DateTime? get antigravityLastChangeObservedAt => _antigravityLastChangeObservedAt;
+
+  @visibleForTesting
+  set antigravityLastChangeObservedAtForTesting(DateTime? value) {
+    _antigravityLastChangeObservedAt = value;
+  }
 
   bool get isThinking =>
       _activeAgents.isNotEmpty ||
       _isAntigravityBusy ||
-      _activePrompt != null;
+      _activePrompt != null ||
+      (_antigravityLastChangeObservedAt != null &&
+          DateTime.now().difference(_antigravityLastChangeObservedAt!).inSeconds < 20);
 
   bool _isTesting = false;
   bool get isTesting => _isTesting || _tasks.any((t) => t.status == AiTaskStatus.inTesting);
@@ -1691,7 +2250,7 @@ wshShell.AppActivate $myPid
 
     final String userProfile = Platform.environment['USERPROFILE'] ?? '';
     if (userProfile.isEmpty) return;
-    final brainDir =
+    final brainDir = testBrainDir ??
         Directory('$userProfile\\.gemini\\antigravity\\brain');
 
     _antigravityPollTimer =
@@ -1709,10 +2268,12 @@ wshShell.AppActivate $myPid
             if (stat == null) continue;
             final prev = _antigravityLastModifiedTimes[file.path];
             if (prev != stat.modified) {
-              _antigravityLastChangeObservedAt = DateTime.now();
-              await syncConversationHistory();
+              if (prev != null) {
+                _antigravityLastChangeObservedAt = DateTime.now();
+              }
 
               if (file.path.endsWith('transcript.jsonl')) {
+                await syncConversationHistory(file);
                 try {
                   final lines = await file.readAsLines().timeout(
                     const Duration(milliseconds: 1000),
@@ -1727,7 +2288,9 @@ wshShell.AppActivate $myPid
                         break;
                       }
                     }
-                    if (lastStep != null && lastStep['type'] == 'PLANNER_RESPONSE') {
+                    if (lastStep != null &&
+                        lastStep['type'] == 'PLANNER_RESPONSE' &&
+                        lastStep['status'] == 'DONE') {
                       final String modelContent = lastStep['content'] ?? '';
                       final String statusName = modelContent.contains('<preview>') ? 'PREVIEW' : 'IDLE';
 
@@ -1749,6 +2312,12 @@ wshShell.AppActivate $myPid
 
         // Use direct HTTP/process checks for busy status
         final foundBusy = await AntigravityStatusService.instance.isCliBusy();
+        final procRunning = await AntigravityStatusService.instance.isProcessRunning();
+
+        if (_isDaemonRunning != procRunning) {
+          _isDaemonRunning = procRunning;
+          notifyListeners();
+        }
 
         if (foundBusy) {
           _antigravityLastChangeObservedAt = DateTime.now();
@@ -1764,7 +2333,7 @@ wshShell.AppActivate $myPid
 
         // Unified status check: if daemon is not busy, but active prompt is still active.
         if (!foundBusy) {
-          final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
+          final isAgentBusy = (_activePrompt != null && _isPromptDispatched) || _activeAgents.isNotEmpty;
           if (isAgentBusy) {
             try {
               final statusFile = File('$_dirPath/agent_status.txt');
@@ -1876,10 +2445,7 @@ wshShell.AppActivate $myPid
       '---\nNATIVE SYSTEM HOOKS (DO NOT IGNORE)\n'
       '1. SAFETY ABORT / CLARIFICATION: If the task is unclear, unsafe, massive, or contains questions, DO NOT execute code. You MUST require clarification by outputting a `<preview>` tag containing a JSON array of questions, and writing `PREVIEW` to `.ai_bridge/agent_status.txt`.\n'
       '2. DATA MUTATION: Your active task context is in `.ai_bridge/current_task.json`. Never edit `.ai_bridge/tasks.json` directly.\n'
-      '3. PROGRESS NOTES: At the end of your response, you MUST output your progress notes and verification proofs using XML tags directly in your response chat. Do not write JSON files to disk. Format as:\n'
-      '   <bridge_notes>{"notes": "Detailed progress notes...", "summary": "Concise commit-style summary"}</bridge_notes>\n'
-      '   If the task has Verification Criteria, also output your proof/evidence notes in the format:\n'
-      '   <verification>[{"description": "checklist item description...", "proof": "proof of verification..."}]</verification>\n'
+      '3. PROGRESS NOTES: Output a clear summary of your work in the console/chat response, and write progress notes to `.ai_bridge/latest_notes.json` and verification proofs to `.ai_bridge/latest_verification.json` on disk (do NOT output XML tags).\n'
       '4. QUEUE RELEASE: As your FINAL step, overwrite `.ai_bridge/agent_status.txt` with `IDLE` (or `PREVIEW` if requesting clarification or preview review).\n'
       '5. BLOCK SCREEN: At the very end of your response, explicitly request to send the block screen message by outputting: "please send the block screen message once."';
   String get systemHooksInstructions => _systemHooksInstructions;
@@ -1890,12 +2456,84 @@ wshShell.AppActivate $myPid
   String _syncErrorInstructions = 'AI Bridge Sync Error: The system detected you outputted conversational/status information directly in your response chat outside of the required XML tags. You must output your notes and verification proofs strictly inside the `<bridge_notes>`, `<verification>`, or `<preview>` XML tags, and eliminate all conversational text outside of these tags. Please output the XML tags immediately without any other chat.';
   String get syncErrorInstructions => _syncErrorInstructions;
 
+  String _endingInstructions = '';
+  String get endingInstructions => _endingInstructions;
+
   bool _isSyncErrorDetected = false;
   bool get isSyncErrorDetected => _isSyncErrorDetected;
 
   void dismissSyncError() {
     _isSyncErrorDetected = false;
+    SystemLogsService.instance.addLog(
+      '[AI Bridge Sync] User manually dismissed/cleared the sync error status.',
+      category: LogCategory.SYNC,
+    );
     notifyListeners();
+  }
+
+  Future<File?> _findLatestTranscript(Directory brainDir) async {
+    if (!await brainDir.exists()) return null;
+    try {
+      final brainFiles = await _getBrainFiles(brainDir);
+      final files = brainFiles.where((f) => f.path.endsWith('transcript.jsonl')).toList();
+      if (files.isEmpty) return null;
+      final fileTimes = <File, DateTime>{};
+      await Future.wait(files.map((file) async {
+        try {
+          fileTimes[file] = await file.lastModified();
+        } catch (_) {
+          fileTimes[file] = DateTime.fromMillisecondsSinceEpoch(0);
+        }
+      }));
+      files.sort((a, b) => (fileTimes[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
+          .compareTo(fileTimes[a] ?? DateTime.fromMillisecondsSinceEpoch(0)));
+      return files.first;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<int> _findMaxStepIndex(File transcriptFile) async {
+    try {
+      final lines = await transcriptFile.readAsLines().timeout(
+        const Duration(milliseconds: 1000),
+        onTimeout: () => const [],
+      );
+      int maxIndex = -1;
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || !trimmed.startsWith('{')) continue;
+        try {
+          final map = jsonDecode(trimmed) as Map<String, dynamic>;
+          final stepIndex = map['step_index'] as int?;
+          if (stepIndex != null && stepIndex > maxIndex) {
+            maxIndex = stepIndex;
+          }
+        } catch (_) {}
+      }
+      return maxIndex;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  Future<void> _updateDispatchState() async {
+    _isSyncErrorDetected = false;
+    _promptDispatchedAt = DateTime.now();
+    _antigravityLastChangeObservedAt = DateTime.now();
+    notifyListeners();
+    try {
+      final String userProfile = Platform.environment['USERPROFILE'] ?? '';
+      final brainDir = testBrainDir ?? Directory('$userProfile\\.gemini\\antigravity\\brain');
+      final transcriptFile = await _findLatestTranscript(brainDir);
+      if (transcriptFile != null) {
+        _stepIndexAtDispatch = await _findMaxStepIndex(transcriptFile);
+      } else {
+        _stepIndexAtDispatch = -1;
+      }
+    } catch (_) {
+      _stepIndexAtDispatch = -1;
+    }
   }
 
   @visibleForTesting
@@ -1922,38 +2560,21 @@ wshShell.AppActivate $myPid
       }
     } catch (_) {}
 
+    final dispatchTime = _promptDispatchedAt ?? _antigravityLastChangeObservedAt ?? now;
+    final dispatchStepIndex = _stepIndexAtDispatch ?? -1;
+
     if (!_isSyncErrorDetected &&
         ((_activePrompt != null && _isPromptDispatched) || _activeAgents.isNotEmpty) &&
         _antigravityLastChangeObservedAt != null &&
         now.difference(_antigravityLastChangeObservedAt!).inSeconds > 15) {
-      File? latestTranscript;
-      final targetExists = await targetBrainDir.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
-      if (targetExists) {
-        try {
-          final brainFiles = await _getBrainFiles(targetBrainDir);
-          final files = brainFiles
-              .where((f) => f.path.endsWith('transcript.jsonl'))
-              .toList();
-          if (files.isNotEmpty) {
-            final fileTimes = <File, DateTime>{};
-            await Future.wait(files.map((file) async {
-              try {
-                fileTimes[file] = await file.lastModified().timeout(
-                  const Duration(milliseconds: 500),
-                  onTimeout: () => DateTime.fromMillisecondsSinceEpoch(0),
-                );
-              } catch (_) {
-                fileTimes[file] = DateTime.fromMillisecondsSinceEpoch(0);
-              }
-            }));
-            files.sort((a, b) => (fileTimes[b] ?? DateTime.fromMillisecondsSinceEpoch(0))
-                .compareTo(fileTimes[a] ?? DateTime.fromMillisecondsSinceEpoch(0)));
-            latestTranscript = files.first;
-          }
-        } catch (_) {}
-      }
+      final latestTranscript = await _findLatestTranscript(targetBrainDir);
       if (latestTranscript != null) {
         try {
+          final lastModified = await latestTranscript.lastModified();
+          if (_antigravityLastChangeObservedAt != null &&
+              lastModified.isBefore(_antigravityLastChangeObservedAt!.subtract(const Duration(seconds: 2)))) {
+            return;
+          }
           final lines = await latestTranscript.readAsLines().timeout(
             const Duration(milliseconds: 1500),
             onTimeout: () => const [],
@@ -1967,8 +2588,47 @@ wshShell.AppActivate $myPid
             }
           }
           if (lastStep != null && lastStep['type'] == 'PLANNER_RESPONSE') {
-            _isSyncErrorDetected = true;
-            notifyListeners();
+            final stepIndex = lastStep['step_index'] as int? ?? -1;
+            
+            // Check if we are at the end of the task (the step index is greater than when the task was dispatched)
+            final isEndOfTask = stepIndex > dispatchStepIndex;
+            
+            if (isEndOfTask) {
+              // Now check if files were not written to.
+              bool notesWritten = false;
+              final notesFile = File('$_dirPath/latest_notes.json');
+              if (await notesFile.exists()) {
+                final notesStat = await notesFile.stat();
+                if (notesStat.modified.isAfter(dispatchTime.subtract(const Duration(seconds: 2)))) {
+                  notesWritten = true;
+                }
+              }
+
+              bool verificationWritten = true;
+              final hasVerificationCriteria = _activePrompt != null &&
+                  _activeProcessingTaskId != null &&
+                  _tasks.any((t) => t.id == _activeProcessingTaskId && t.verificationCriteria.isNotEmpty);
+              if (hasVerificationCriteria) {
+                verificationWritten = false;
+                final verificationFile = File('$_dirPath/latest_verification.json');
+                if (await verificationFile.exists()) {
+                  final verStat = await verificationFile.stat();
+                  if (verStat.modified.isAfter(dispatchTime.subtract(const Duration(seconds: 2)))) {
+                    verificationWritten = true;
+                  }
+                }
+              }
+
+              final filesWereNotWritten = !notesWritten || !verificationWritten;
+              if (filesWereNotWritten) {
+                _isSyncErrorDetected = true;
+                SystemLogsService.instance.addLog(
+                  '[AI Bridge Sync Error] Planner/conversational response detected as last step, but agent is no longer busy and files were not written. Last step details: ${lastStep['content'] ?? ""}',
+                  category: LogCategory.SYNC,
+                );
+                notifyListeners();
+              }
+            }
           }
         } catch (_) {}
       }
@@ -1999,6 +2659,25 @@ wshShell.AppActivate $myPid
   set antigravityLastChangeObservedAt(DateTime? value) {
     _antigravityLastChangeObservedAt = value;
   }
+
+  @visibleForTesting
+  set activeProcessingTaskIdForTesting(String? value) {
+    _activeProcessingTaskId = value;
+  }
+
+  @visibleForTesting
+  set isAntigravityBusyForTesting(bool value) {
+    _isAntigravityBusy = value;
+  }
+
+  @visibleForTesting
+  Future<void> processQueueForTesting() => _processQueue();
+
+  @visibleForTesting
+  Future<void> saveQueueStateForTesting() => _saveQueueState();
+
+  @visibleForTesting
+  bool get isPromptDispatchedForTesting => _isPromptDispatched;
 
   Future<void> compilePrimaryDirectivesFile([AiTask? task]) async {
     if (Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests) {
@@ -2071,7 +2750,7 @@ wshShell.AppActivate $myPid
     } catch (_) {}
   }
 
-  Future<String> buildTaskPrompt(AiTask task) async {
+  Future<String> buildTaskPrompt(AiTask task, {AiVerificationCriteria? targetCriteria}) async {
     final sb = StringBuffer();
     sb.writeln('# PRIMARY DIRECTIVES');
     sb.writeln('> [!IMPORTANT]');
@@ -2105,19 +2784,23 @@ wshShell.AppActivate $myPid
     final uncheckedTasks = task.verificationCriteria
         .where((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview)
         .toList();
-    if (uncheckedTasks.isNotEmpty) {
+    final targetItem = targetCriteria ?? (uncheckedTasks.isNotEmpty ? uncheckedTasks.first : null);
+    if (targetItem != null) {
       sb.writeln('Verification Criteria:');
-      final item = uncheckedTasks.first;
       String extraInfo = '';
-      if (item.goal.isNotEmpty) extraInfo += ' [Goal: ${item.goal}]';
-      if (item.tryCount > 0) extraInfo += ' [TRY #${item.tryCount}]';
-      if (item.requestClarification) {
-        sb.writeln('1. [CLARIFY] ${item.description}$extraInfo');
+      if (targetItem.goal.isNotEmpty) extraInfo += ' [Goal: ${targetItem.goal}]';
+      if (targetItem.tryCount > 0) extraInfo += ' [TRY #${targetItem.tryCount}]';
+      if (targetItem.requestClarification) {
+        sb.writeln('1. [CLARIFY] ${targetItem.description}$extraInfo');
       } else {
-        sb.writeln('1. ${item.description}$extraInfo');
+        sb.writeln('1. ${targetItem.description}$extraInfo');
       }
       sb.writeln('\nCRITICAL FOCUS CONSTRAINT:');
       sb.writeln('Your ONLY objective for this run is to satisfy Checklist Item #1 above. Do not attempt to work on, address, or implement any other features, checklist items, or criteria. Focus entirely on completing this single item, verify it is working, and then output your notes and verification proofs as requested.');
+      if (_endingInstructions.isNotEmpty) {
+        sb.writeln('');
+        sb.writeln(_endingInstructions);
+      }
     }
     
     if (task.fileAttachments.isNotEmpty) {
@@ -2133,9 +2816,86 @@ wshShell.AppActivate $myPid
         sb.writeln('- $link');
       }
     }
+
+    if (targetItem == null && _endingInstructions.isNotEmpty) {
+      sb.writeln('');
+      sb.writeln(_endingInstructions);
+    }
     
     sb.writeln('---');
     return sb.toString();
+  }
+
+  Future<void> submitTaskChecklist(
+    AiTask task, {
+    bool blockScreen = true,
+    String replyTypeDirective = '',
+    String crashInfo = '',
+  }) async {
+    await compilePrimaryDirectivesFile(task);
+
+    final unchecked = task.verificationCriteria
+        .where((e) => (e.status != AiVerificationStatus.verified &&
+            e.status != AiVerificationStatus.ignored &&
+            !e.isPreview))
+        .toList();
+
+    if (unchecked.isNotEmpty) {
+      for (final item in unchecked) {
+        item.status = AiVerificationStatus.submitted;
+      }
+      final updatedCriteria = task.verificationCriteria
+          .map((e) => AiVerificationCriteria(
+                description: e.description,
+                goal: e.goal,
+                isVerified: e.isVerified,
+                status: e.status,
+                proof: e.proof,
+                requestClarification: e.requestClarification,
+                tryCount: e.tryCount,
+                attachments: List.from(e.attachments),
+                isCommitted: e.isCommitted,
+                isPreview: e.isPreview,
+              ))
+          .toList();
+      await updateTaskDetails(
+        task.id,
+        task.name,
+        task.description,
+        verificationCriteria: updatedCriteria,
+        status: AiTaskStatus.inTesting,
+      );
+    } else {
+      await updateTaskStatus(task.id, AiTaskStatus.inTesting);
+    }
+
+    final updatedTask = _tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
+    final finalUnchecked = updatedTask.verificationCriteria
+        .where((e) => (e.status != AiVerificationStatus.verified &&
+            e.status != AiVerificationStatus.ignored &&
+            !e.isPreview))
+        .toList();
+
+    if (finalUnchecked.isEmpty) {
+      final basePrompt = await buildTaskPrompt(updatedTask);
+      final fullPrompt = crashInfo.isEmpty ? basePrompt : '$crashInfo$basePrompt';
+      await sendToQueue(fullPrompt, blockScreen, taskIds: [task.id]);
+    } else {
+      for (final item in finalUnchecked) {
+        final basePrompt = await buildTaskPrompt(updatedTask, targetCriteria: item);
+        String prompt = basePrompt;
+        if (replyTypeDirective.isNotEmpty) {
+          final index = prompt.indexOf('\n\n');
+          if (index != -1) {
+            prompt = prompt.substring(0, index + 2) + replyTypeDirective + '\n' + prompt.substring(index + 2);
+          } else {
+            prompt = '$replyTypeDirective\n$prompt';
+          }
+        }
+        final fullPrompt = crashInfo.isEmpty ? prompt : '$crashInfo$prompt';
+        await sendToQueue(fullPrompt, blockScreen, taskIds: [task.id], targetCriteriaDescription: item.description);
+      }
+    }
   }
 
   Future<void> approvePreview(String taskId) async {
@@ -2189,7 +2949,9 @@ wshShell.AppActivate $myPid
       String previewRejected,
       String systemHooks,
       String missingFiles,
-      String syncError) async {
+      String syncError, [
+      String ending = '',
+  ]) async {
     _primaryDirectives = primary;
     _instructions = text;
     _quickInstructions = quickText;
@@ -2199,6 +2961,7 @@ wshShell.AppActivate $myPid
     _systemHooksInstructions = systemHooks;
     _missingFilesInstructions = missingFiles;
     _syncErrorInstructions = syncError;
+    _endingInstructions = ending;
     notifyListeners();
     await _save();
     await compilePrimaryDirectivesFile();
@@ -2214,11 +2977,13 @@ wshShell.AppActivate $myPid
       _isQueuePaused = prefs.getBool('ai_queue_paused') ?? false;
       _isPreviewMode = prefs.getBool('ai_queue_preview_mode') ?? false;
       _isIqMode = prefs.getBool('ai_queue_iq_mode') ?? false;
+      _sendViaClipboard = prefs.getBool('antigravity_send_via_clipboard') ?? true;
 
       final savedBridgeMode = prefs.getString('antigravity_bridge_mode') ?? 'sdk';
       _bridgeMode = AntigravityBridgeMode.values.firstWhere(
           (e) => e.name == savedBridgeMode,
           orElse: () => AntigravityBridgeMode.sdk);
+      _writeActiveModeFile(_bridgeMode.name);
 
 
       final savedQueue = prefs.getStringList('ai_bridge_queue');
@@ -2242,6 +3007,27 @@ wshShell.AppActivate $myPid
         }
       }
 
+      final savedActivePrompt = prefs.getString('ai_bridge_active_prompt');
+      if (savedActivePrompt != null) {
+        try {
+          _activePrompt = QueuedPrompt.fromJson(jsonDecode(savedActivePrompt));
+        } catch (e) {
+          debugPrint('Error decoding active prompt: $e');
+        }
+      } else {
+        _activePrompt = null;
+      }
+
+      _activeProcessingTaskId = prefs.getString('ai_bridge_active_processing_task_id');
+      final assignedAtStr = prefs.getString('ai_bridge_active_processing_task_assigned_at');
+      if (assignedAtStr != null) {
+        _activeProcessingTaskAssignedAt = DateTime.tryParse(assignedAtStr);
+      } else {
+        _activeProcessingTaskAssignedAt = null;
+      }
+
+      _isPromptDispatched = prefs.getBool('ai_bridge_is_prompt_dispatched') ?? false;
+
       final dir = Directory(_dirPath);
       if (!await dir.exists()) {
         if (!(Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests)) {
@@ -2249,6 +3035,20 @@ wshShell.AppActivate $myPid
         }
       } else {
         if (!(Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests)) {
+          _isSyncErrorDetected = false;
+          _isAntigravityBusy = false;
+          _antigravityLastChangeObservedAt = null;
+          _promptDispatchedAt = DateTime.now();
+          _stepIndexAtDispatch = -1;
+          try {
+            final String userProfile = Platform.environment['USERPROFILE'] ?? '';
+            final brainDir = testBrainDir ?? Directory('$userProfile\\.gemini\\antigravity\\brain');
+            final transcriptFile = await _findLatestTranscript(brainDir);
+            if (transcriptFile != null) {
+              _stepIndexAtDispatch = await _findMaxStepIndex(transcriptFile);
+            }
+          } catch (_) {}
+
           // Clean up any stale files from a previous run/crash only if agent was busy
           final statusFile = File('$_dirPath/agent_status.txt');
           String currentStatus = 'IDLE';
@@ -2257,7 +3057,12 @@ wshShell.AppActivate $myPid
               currentStatus = statusFile.readAsStringSync().trim().toUpperCase();
             } catch (_) {}
           }
-          if (currentStatus == 'BUSY') {
+          if (currentStatus == 'BUSY' && _activePrompt == null) {
+            debugPrint('[AiBridge] Startup check: agent_status.txt was BUSY but activePrompt is null. Resetting status to IDLE immediately on startup.');
+            try {
+              statusFile.writeAsStringSync('IDLE');
+              currentStatus = 'IDLE';
+            } catch (_) {}
             final notesFile = File('$_dirPath/latest_notes.json');
             if (notesFile.existsSync()) {
               try {
@@ -2323,26 +3128,7 @@ wshShell.AppActivate $myPid
     }
   }
 
-  bool _hasConversationalText(String content) {
-    // Remove valid tags and their contents
-    String remaining = content
-        .replaceAll(RegExp(r'<bridge_notes>.*?</bridge_notes>', dotAll: true), '')
-        .replaceAll(RegExp(r'<preview>.*?</preview>', dotAll: true), '')
-        .replaceAll(RegExp(r'<verification>.*?</verification>', dotAll: true), '');
-    
-    // Remove block screen requests
-    remaining = remaining.replaceAll(
-        RegExp(r'please\s+send\s+the\s+block\s+screen\s+message(?:\s+once)?\.?', caseSensitive: false),
-        '');
-    
-    // Trim whitespace, newlines, and common markdown/punctuation characters
-    remaining = remaining.trim();
-    // Also remove common markdown headers/lists symbols that might be empty or formatting
-    remaining = remaining.replaceAll(RegExp(r'[#\*\-\`\>_\s\n\r\t]+'), '').trim();
 
-    // If there's any substantial alphanumeric text left, it is conversational text
-    return remaining.isNotEmpty;
-  }
 
   Future<void> _processStatusChange(String rawContent) async {
     final content = rawContent.trim().toUpperCase().startsWith('PR') ? 'PREVIEW' : 'IDLE';
@@ -2424,15 +3210,7 @@ wshShell.AppActivate $myPid
         }
       } catch (_) {}
 
-      if (rawModelContent.isNotEmpty && _hasConversationalText(rawModelContent)) {
-        print('[AiBridge] Conversational text detected in model response. Flagging sync error.');
-        _isSyncErrorDetected = true;
-        try {
-          File('$_dirPath/agent_status.txt').writeAsStringSync('BUSY');
-        } catch (_) {}
-        notifyListeners();
-        return;
-      }
+
 
       if (content == 'IDLE') {
         bool hasCompileError = false;
@@ -2732,6 +3510,9 @@ wshShell.AppActivate $myPid
                     });
                     if (matchIdx != -1) {
                       existing[matchIdx].proof = newItem.proof;
+                      if (existing[matchIdx].status == AiVerificationStatus.submitted) {
+                        existing[matchIdx].status = AiVerificationStatus.pendingReview;
+                      }
                     } else {
                       newItem.isVerified = false;
                       newItem.status = AiVerificationStatus.pendingReview;
@@ -2748,43 +3529,29 @@ wshShell.AppActivate $myPid
             }
 
              // 4. Missing-File Enforcement
-             if (content == 'IDLE') {
-               print('[AiBridge] Performing Missing-File Enforcement check...');
+             final bool notesWereMissing = content == 'IDLE' && notesContent.trim().isEmpty;
+             final bool verificationWasMissing = content == 'IDLE' && hasVerificationCriteria && verificationContent.trim().isEmpty;
+             final bool previewWasMissing = content == 'PREVIEW' && previewContent.trim().isEmpty;
+
+             if (notesWereMissing || verificationWasMissing || previewWasMissing) {
                final List<String> missingFiles = [];
-               final bool hasVerificationCriteria = _tasks[taskIdx].verificationCriteria.isNotEmpty;
-               final bool notesWereMissing = notesContent.trim().isEmpty;
-               final bool verificationWasMissing = hasVerificationCriteria && verificationContent.trim().isEmpty;
+               if (notesWereMissing) missingFiles.add('latest_notes.json');
+               if (verificationWasMissing) missingFiles.add('latest_verification.json');
+               if (previewWasMissing) missingFiles.add('latest_preview.json');
 
-               if (notesWereMissing) missingFiles.add('`<bridge_notes>` tag containing JSON: {"notes": "...", "summary": "..."}');
-               if (verificationWasMissing) missingFiles.add('`<verification>` tag containing JSON array: [{"description": "...", "isVerified": true, "proof": "..."}]');
-
-               if (missingFiles.isNotEmpty) {
-                 print('[AiBridge] Missing required XML tags after IDLE: $missingFiles');
-                 final missingList = missingFiles.map((f) => '- $f').join('\n');
-                 final correctionPrompt = _missingFilesInstructions.replaceAll('{missingList}', missingList);
-                 
-                 print('[AiBridge] Re-queuing correction prompt for missing XML tags.');
-                 await sendToQueue(correctionPrompt, false, taskIds: [_tasks[taskIdx].id], insertFirst: true);
-
-                 print('[AiBridge] Clearing active prompt/task state to unblock UI.');
-                 if (_activePrompt != null) {
-                   _activePrompt!.completedAt = DateTime.now();
-                   _completedPrompts.add(_activePrompt!);
-                 }
-                 _activeProcessingTaskId = null;
-                 _activeProcessingTaskAssignedAt = null;
-                 _activePrompt = null;
-
+               print('[AiBridge] Missing required files after $content: $missingFiles. Flagging sync error.');
+               _isSyncErrorDetected = true;
+               SystemLogsService.instance.addLog(
+                 '[AI Bridge Sync Error] Required files were not written/found after $content: $missingFiles.',
+                 category: LogCategory.SYNC,
+               );
+               try {
                  File('$_dirPath/agent_status.txt').writeAsStringSync('BUSY');
-                 _saveQueueState();
-                 notifyListeners();
-                 
-                 print('[AiBridge] Executing _processQueue() for correction prompt.');
-                 _processQueue();
-                 return;
-               } else {
-                 print('[AiBridge] Missing-File Enforcement check passed.');
-               }
+               } catch (_) {}
+               notifyListeners();
+               return;
+             } else {
+               print('[AiBridge] Missing-File Enforcement check passed.');
              }
 
             if (content == 'IDLE' && !generatedPreviewItems) {
@@ -2817,6 +3584,16 @@ wshShell.AppActivate $myPid
                 changed = true;
               }
             }
+
+            final String? targetDesc = _activePrompt?.targetCriteriaDescription;
+            for (final item in _tasks[taskIdx].verificationCriteria) {
+              if (item.status == AiVerificationStatus.submitted) {
+                if (targetDesc == null || item.description.trim().toLowerCase() == targetDesc.trim().toLowerCase()) {
+                  item.status = AiVerificationStatus.pendingReview;
+                  changed = true;
+                }
+              }
+            }
             if (changed) {
               await _save();
             }
@@ -2827,6 +3604,7 @@ wshShell.AppActivate $myPid
       }
 
       if (content == 'IDLE' || content == 'PREVIEW') {
+        setScreenBlockerEnabled(false);
         print('[AiBridge] $content detected. Completing and archiving active prompt.');
         try {
           File('$_dirPath/agent_status.txt').writeAsStringSync(content);
@@ -2882,6 +3660,19 @@ wshShell.AppActivate $myPid
           dir.watch(events: FileSystemEvent.all).listen((event) async {
         final normPath = event.path.replaceAll('\\', '/');
 
+        if (normPath.toLowerCase().endsWith('agent_status.txt')) {
+          try {
+            final file = File(event.path);
+            if (file.existsSync()) {
+              final content = file.readAsStringSync().trim().toUpperCase();
+              final foundBusy = content.startsWith('BU');
+              if (_isAntigravityBusy != foundBusy) {
+                _isAntigravityBusy = foundBusy;
+                notifyListeners();
+              }
+            }
+          } catch (_) {}
+        }
 
         if (normPath.toLowerCase().endsWith('suggestiontask.txt')) {
           if (_isProcessingSuggestion) return;
@@ -3896,7 +4687,8 @@ wshShell.AppActivate $myPid
       String? commitDate,
       int? iconCodePoint,
       List<String>? fileAttachments,
-      List<String>? hyperlinks}) async {
+      List<String>? hyperlinks,
+      List<AiVerificationCriteria>? verificationCriteria}) async {
     pushUndoState();
 
     AiTaskStatus resolvedStatus = status ?? _defaultNewStatus;
@@ -3937,6 +4729,7 @@ wshShell.AppActivate $myPid
       iconCodePoint: iconCodePoint,
       fileAttachments: fileAttachments ?? [],
       hyperlinks: hyperlinks ?? [],
+      verificationCriteria: verificationCriteria,
     );
     _tasks.add(task);
     await _save();

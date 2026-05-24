@@ -42,6 +42,7 @@ import 'services/profiler_service.dart';
 import 'services/control_type_registry.dart';
 import 'services/sandbox_service.dart';
 import 'services/ai_bridge_service.dart';
+import 'services/antigravity_status_service.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -124,6 +125,13 @@ Future<void> main(List<String> args) async {
   await Env.init();
   await SupabaseService.initialize();
   await TenantService.init();
+
+  // Spawn terminal daemon if not already running and we are in CLI bridge mode
+  final prefs = await SharedPreferences.getInstance();
+  final bridgeMode = prefs.getString('antigravity_bridge_mode') ?? 'sdk';
+  if (bridgeMode == 'cli') {
+    AntigravityStatusService.instance.ensureTerminalDaemonRunning();
+  }
 
   // Initialize Auth Services after Supabase has successfully loaded.
   final authService = AuthService();
@@ -333,4 +341,4 @@ class AppInitializationPlaceholder extends StatelessWidget {
     );
   }
 }
-
+// Triggering hot restart watcher cover again

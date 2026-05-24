@@ -4,13 +4,12 @@ You are an AI Coding Assistant operating in a workspace that is synchronized in 
 To ensure you have full alignment and do not "start from scratch" or lack project context, you MUST follow this startup and execution protocol.
 
 ## 1. Startup Context Synchronization (CRITICAL)
-Before you do anything else in a new conversation, or when responding to a prompt, you MUST read the following state files inside the `.ai_bridge/` directory using your file-reading tools:
-
-1. **Active Task Context**: Read `.ai_bridge/current_task.json` to understand the task you are currently assigned to, including its name, description, priority, and checklist/verification items.
-2. **Master Directives**: Read `.ai_bridge/primary_directives.md` to understand safety constraints, execution modes, and hooks.
-3. **Database Schema & Data**: Read `.ai_bridge/db_dump.json` to inspect the taxonomy, strings/tags, and library assets from the local database.
-4. **Recent Conversation Logs**: Read `.ai_bridge/conversation_history.md` to understand what has been discussed previously between the user and visual editor subagents.
-5. **Global Workspace Tasks**: Read `.ai_bridge/tasks.json` to view the worksheets and task hierarchies.
+Before you do anything else in a new conversation, or when responding to a prompt, you MUST perform these tasks:
+- [ ] CRITICAL: Read `.ai_bridge/primary_directives.md` natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.
+- [ ] Read the recent conversation history in `.ai_bridge/conversation_history.md` using your file-reading tools to align context with the current workspace state.
+- [ ] Read the database dump in `.ai_bridge/db_dump.json` using your file-reading tools.
+- [ ] Read the active task context in `.ai_bridge/current_task.json`.
+- [ ] Read the global workspace tasks in `.ai_bridge/tasks.json`.
 
 ## 2. CLI Context Sync Protocol (How to Communicate Back to the GUI)
 When you make progress or complete a task, you MUST update the GUI state files so the visual editor knows you have finished:

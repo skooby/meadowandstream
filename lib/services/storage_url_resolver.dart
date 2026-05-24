@@ -37,6 +37,20 @@ class StorageUrlResolver {
         sourceUrl.startsWith('C:') ||
         sourceUrl.startsWith('file:') ||
         sourceUrl.startsWith('assets/')) {
+        String cleanPath = sourceUrl;
+        if (cleanPath.startsWith('file://')) {
+          cleanPath = cleanPath.replaceFirst('file://', '');
+        }
+        if (!cleanPath.startsWith('assets/') && !File(cleanPath).existsSync()) {
+          final fileName = Uri.decodeComponent(cleanPath.split(RegExp(r'[/\\]')).last);
+          if (fileName.isNotEmpty && _assetsDao != null) {
+            final asset = await _assetsDao!.getAssetByName(fileName);
+            if (asset != null && asset.storagePath != null) {
+              final resolved = await resolvePlayableUrl(asset.storagePath!);
+              if (resolved != null) return resolved;
+            }
+          }
+        }
         return sourceUrl;
     }
 
@@ -63,13 +77,44 @@ class StorageUrlResolver {
               path = '${parent.name}\\$path';
               current = parent;
             }
-            final fullLocalPath = '$baseDir\\$path';
-            if (await File(fullLocalPath).exists()) {
-              debugPrint('StorageUrlResolver: SUCCESS - Local repository path resolved overriding cloud: \$fullLocalPath');
-              _cache[cacheKey] = ResolvedAudioUrl(url: fullLocalPath);
-              return fullLocalPath;
+            
+            // Try flat category folder mapping first (e.g. baseDir/audio/filename)
+            String? category;
+            final lowerName = asset.name.toLowerCase();
+            if (lowerName.endsWith('.mp3') || lowerName.endsWith('.wav') || lowerName.endsWith('.m4a')) {
+              category = 'audio';
+            } else if (lowerName.endsWith('.json') || lowerName.endsWith('.lrc')) {
+              category = 'lyrics';
+            } else if (lowerName.endsWith('.frag') || lowerName.endsWith('.vert') || lowerName.endsWith('.glsl')) {
+              category = 'shaders';
+            } else if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
+              category = 'images';
+            } else if (lowerName.endsWith('.ttf') || lowerName.endsWith('.otf')) {
+              category = 'fonts';
+            }
+
+            String? resolvedPath;
+            if (category != null) {
+              final catPath = '$baseDir\\$category\\${asset.name}';
+              if (await File(catPath).exists()) {
+                resolvedPath = catPath;
+              }
+            }
+
+            if (resolvedPath == null) {
+              final logicalPath = '$baseDir\\$path';
+              if (await File(logicalPath).exists()) {
+                resolvedPath = logicalPath;
+              }
+            }
+
+            if (resolvedPath != null) {
+              debugPrint('StorageUrlResolver: SUCCESS - Local repository path resolved overriding cloud: $resolvedPath');
+              _cache[cacheKey] = ResolvedAudioUrl(url: resolvedPath);
+              return resolvedPath;
             } else {
-              debugPrint('StorageUrlResolver: Local mapping attempted but file missing natively -> $fullLocalPath');
+              final attemptedPaths = category != null ? '$baseDir\\$category\\${asset.name} or $baseDir\\$path' : '$baseDir\\$path';
+              debugPrint('StorageUrlResolver: Local mapping attempted but file missing natively -> $attemptedPaths');
             }
           } else {
              debugPrint('StorageUrlResolver: No DB Asset found for Storage Path: $sourceUrl');
@@ -142,22 +187,51 @@ class StorageUrlResolver {
              if (baseDir != null && baseDir.isNotEmpty) {
                baseDir = baseDir.trim();
                if (baseDir.endsWith('/') || baseDir.endsWith('\\')) baseDir = baseDir.substring(0, baseDir.length - 1);
-               final asset = await _assetsDao!.getAssetByStoragePath(source);
-               if (asset != null) {
-                 String path = asset.name;
-                 var current = asset;
-                 while (current.parentId != null) {
-                   final parent = await _assetsDao!.getAssetById(current.parentId!);
-                   if (parent == null) break;
-                   path = '${parent.name}\\$path';
-                   current = parent;
-                 }
-                 final fullLocalPath = '$baseDir\\$path';
-                 if (await File(fullLocalPath).exists()) {
-                   _cache[source] = ResolvedAudioUrl(url: fullLocalPath);
-                   foundLocal = true;
-                 }
-               }
+                final asset = await _assetsDao!.getAssetByStoragePath(source);
+                if (asset != null) {
+                  String path = asset.name;
+                  var current = asset;
+                  while (current.parentId != null) {
+                    final parent = await _assetsDao!.getAssetById(current.parentId!);
+                    if (parent == null) break;
+                    path = '${parent.name}\\$path';
+                    current = parent;
+                  }
+                  
+                  String? category;
+                  final lowerName = asset.name.toLowerCase();
+                  if (lowerName.endsWith('.mp3') || lowerName.endsWith('.wav') || lowerName.endsWith('.m4a')) {
+                    category = 'audio';
+                  } else if (lowerName.endsWith('.json') || lowerName.endsWith('.lrc')) {
+                    category = 'lyrics';
+                  } else if (lowerName.endsWith('.frag') || lowerName.endsWith('.vert') || lowerName.endsWith('.glsl')) {
+                    category = 'shaders';
+                  } else if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
+                    category = 'images';
+                  } else if (lowerName.endsWith('.ttf') || lowerName.endsWith('.otf')) {
+                    category = 'fonts';
+                  }
+
+                  String? resolvedPath;
+                  if (category != null) {
+                    final catPath = '$baseDir\\$category\\${asset.name}';
+                    if (await File(catPath).exists()) {
+                      resolvedPath = catPath;
+                    }
+                  }
+
+                  if (resolvedPath == null) {
+                    final logicalPath = '$baseDir\\$path';
+                    if (await File(logicalPath).exists()) {
+                      resolvedPath = logicalPath;
+                    }
+                  }
+
+                  if (resolvedPath != null) {
+                    _cache[source] = ResolvedAudioUrl(url: resolvedPath);
+                    foundLocal = true;
+                  }
+                }
              }
           } catch(e) {}
         }

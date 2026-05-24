@@ -3,7 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:path_provider/path_provider.dart';
 
-enum LogCategory { GENERAL, ERROR, NETWORK, DB, SYSTEM, AI, MACRO, VC }
+enum LogCategory { GENERAL, ERROR, NETWORK, DB, SYSTEM, AI, MACRO, VC, CLI, SYNC }
 
 enum ErrorCategory { layout, runtime, test, dependency }
 

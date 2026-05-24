@@ -1330,14 +1330,21 @@ Expanded(
                                   const SizedBox(width: 16),
                                 ],
                                 Container(
-                                  constraints: const BoxConstraints(minWidth: 200, maxWidth: 300),
+                                  constraints: const BoxConstraints(minWidth: 200, maxWidth: 350),
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text('Visual Editor', style: TextStyle(color: Colors.white, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold)),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text('Visual Editor', style: TextStyle(color: Colors.white, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold)),
+                                          const SizedBox(width: 8),
+                                          _buildLlmStatusIndicator(),
+                                        ],
+                                      ),
                                       Text(
-                                        editorState.config == null ? 'No Item Connected' : 'Connected Item: \${editorState.loadedTargetName}',
+                                        editorState.config == null ? 'No Item Connected' : 'Connected Item: ${editorState.loadedTargetName}',
                                         style: TextStyle(color: editorState.config == null ? Colors.orangeAccent : Colors.blueAccent, fontSize: AppUIConfig.smallFontSize, fontWeight: FontWeight.w500),
                                       ),
                                     ],
@@ -1921,6 +1928,121 @@ Expanded(
         ), // Focus
       ), // MouseRegion
     )); // GestureDetector and MediaQuery
+  }
+
+  Widget _buildLlmStatusIndicator() {
+    return ListenableBuilder(
+      listenable: AiBridgeService.instance,
+      builder: (context, _) {
+        final isRunning = AiBridgeService.instance.isDaemonRunning;
+        final isBusy = AiBridgeService.instance.isThinking || AiBridgeService.instance.isAntigravityBusy;
+
+        Color dotColor;
+        String text;
+        Color textColor;
+        Color bgColor;
+        Color borderColor;
+
+        if (isBusy) {
+          dotColor = Colors.orangeAccent;
+          text = 'AI BUSY';
+          textColor = Colors.orangeAccent;
+          bgColor = Colors.orangeAccent.withOpacity(0.1);
+          borderColor = Colors.orangeAccent.withOpacity(0.3);
+        } else if (!isRunning) {
+          dotColor = Colors.redAccent;
+          text = 'AI OFFLINE';
+          textColor = Colors.white38;
+          bgColor = Colors.redAccent.withOpacity(0.05);
+          borderColor = Colors.white12;
+        } else {
+          dotColor = Colors.greenAccent;
+          text = 'AI ONLINE';
+          textColor = Colors.greenAccent;
+          bgColor = Colors.greenAccent.withOpacity(0.1);
+          borderColor = Colors.greenAccent.withOpacity(0.3);
+        }
+
+        return Tooltip(
+          message: 'Antigravity Daemon status: $text',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: borderColor, width: 1),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                StatusPulsingDot(color: dotColor),
+                const SizedBox(width: 6),
+                Text(
+                  text,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class StatusPulsingDot extends StatefulWidget {
+  final Color color;
+  const StatusPulsingDot({super.key, required this.color});
+
+  @override
+  State<StatusPulsingDot> createState() => _StatusPulsingDotState();
+}
+
+class _StatusPulsingDotState extends State<StatusPulsingDot> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: widget.color.withOpacity(0.4 + (_controller.value * 0.6)),
+            boxShadow: [
+              BoxShadow(
+                color: widget.color.withOpacity(0.3 * _controller.value),
+                blurRadius: 4 + (_controller.value * 6),
+                spreadRadius: 1 + (_controller.value * 2),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 

@@ -291,12 +291,18 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   String? _antigravityBaseUrl;
   String? _antigravityBridgeMode;
   bool _antigravityStatusDebug = false;
+  bool _antigravitySendViaClipboard = true;
   String? _antigravityInvokeEndpoint;
   String? _antigravityPromptEndpoint;
   String? _antigravityStartupCommand;
   String? _antigravityModel;
   String? _antigravityApiKey;
   Future<List<AntigravityModel>>? _modelsFuture;
+  int _aiBridgeSubTabIndex = 0;
+  String? _antigravityTargetWindowTitle;
+  String? _antigravityFocusMacroName;
+  bool _antigravityHandsfreeAutoExecute = false;
+  double _aiTasksDelaySeconds = 5.0;
   String? _versionControlRepoUrl;
   String? _ollamaBaseUrl;
   String? _ollamaModel;
@@ -418,6 +424,20 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _antigravityStartupCommand = prefs.getString('antigravity_startup_command');
       _antigravityApiKey = prefs.getString('antigravity_api_key');
       _antigravityStatusDebug = prefs.getBool('antigravity_status_debug') ?? false;
+      _antigravitySendViaClipboard = prefs.getBool('antigravity_send_via_clipboard') ?? true;
+      _antigravityTargetWindowTitle = prefs.getString('antigravity_target_window_title') ?? 'Antigravity CLI';
+      _antigravityFocusMacroName = prefs.getString('antigravity_focus_macro_name') ?? 'SetWindowAntigravity';
+      _antigravityHandsfreeAutoExecute = prefs.getBool('antigravity_handsfree_auto_execute') ?? false;
+      _aiTasksDelaySeconds = (prefs.get('ai_tasks_delay_seconds') as num?)?.toDouble() ?? 5.0;
+      if (_antigravityBridgeMode == 'sdk') {
+        _aiBridgeSubTabIndex = 0;
+      } else if (_antigravityBridgeMode == 'desktop') {
+        _aiBridgeSubTabIndex = 1;
+      } else if (_antigravityBridgeMode == 'cli' || _antigravityBridgeMode == 'handsfree') {
+        _aiBridgeSubTabIndex = 2;
+      } else {
+        _aiBridgeSubTabIndex = 0;
+      }
       final savedModel = prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
       if (savedModel == 'flash_lite') {
         _antigravityModel = 'gemini-2.0-flash-lite';
@@ -839,7 +859,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           await prefs.remove('project_agent_rules');
       }
 
-      final newAntigravityBridgeMode = values.containsKey('antigravityBridgeMode') ? values['antigravityBridgeMode'] as String? : _antigravityBridgeMode;
+      final newAntigravityBridgeMode = _antigravityBridgeMode;
       if (newAntigravityBridgeMode != null && newAntigravityBridgeMode.trim().isNotEmpty) {
           await prefs.setString('antigravity_bridge_mode', newAntigravityBridgeMode.trim());
           final mode = AntigravityBridgeMode.values.firstWhere(
@@ -892,8 +912,33 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           await prefs.remove('antigravity_model');
       }
 
+      final newAntigravityTargetWindowTitle = values.containsKey('antigravityTargetWindowTitle') ? values['antigravityTargetWindowTitle'] as String? : _antigravityTargetWindowTitle;
+      if (newAntigravityTargetWindowTitle != null && newAntigravityTargetWindowTitle.trim().isNotEmpty) {
+          await prefs.setString('antigravity_target_window_title', newAntigravityTargetWindowTitle.trim());
+      } else {
+          await prefs.remove('antigravity_target_window_title');
+      }
+
+      final newAntigravityFocusMacroName = values.containsKey('antigravityFocusMacroName') ? values['antigravityFocusMacroName'] as String? : _antigravityFocusMacroName;
+      if (newAntigravityFocusMacroName != null && newAntigravityFocusMacroName.trim().isNotEmpty) {
+          await prefs.setString('antigravity_focus_macro_name', newAntigravityFocusMacroName.trim());
+      } else {
+          await prefs.remove('antigravity_focus_macro_name');
+      }
+
+      final newAntigravityHandsfreeAutoExecute = values.containsKey('antigravityHandsfreeAutoExecute') ? values['antigravityHandsfreeAutoExecute'] == true : _antigravityHandsfreeAutoExecute;
+      await prefs.setBool('antigravity_handsfree_auto_execute', newAntigravityHandsfreeAutoExecute);
+
+      final newAiTasksDelaySeconds = values.containsKey('aiTasksDelaySeconds')
+          ? double.tryParse(values['aiTasksDelaySeconds'].toString()) ?? _aiTasksDelaySeconds
+          : _aiTasksDelaySeconds;
+      await prefs.setDouble('ai_tasks_delay_seconds', newAiTasksDelaySeconds);
+
       final newAntigravityStatusDebug = values.containsKey('antigravityStatusDebug') ? values['antigravityStatusDebug'] == true : _antigravityStatusDebug;
       await prefs.setBool('antigravity_status_debug', newAntigravityStatusDebug);
+
+      final newAntigravitySendViaClipboard = values.containsKey('antigravitySendViaClipboard') ? values['antigravitySendViaClipboard'] == true : _antigravitySendViaClipboard;
+      AiBridgeService.instance.setSendViaClipboard(newAntigravitySendViaClipboard);
 
       if (mounted) {
          setState(() {
@@ -940,6 +985,11 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             _antigravityModel = newAntigravityModel;
             _antigravityApiKey = newAntigravityApiKey;
             _antigravityStatusDebug = newAntigravityStatusDebug;
+            _antigravitySendViaClipboard = newAntigravitySendViaClipboard;
+            _antigravityTargetWindowTitle = newAntigravityTargetWindowTitle;
+            _antigravityFocusMacroName = newAntigravityFocusMacroName;
+            _antigravityHandsfreeAutoExecute = newAntigravityHandsfreeAutoExecute;
+            _aiTasksDelaySeconds = newAiTasksDelaySeconds;
             _versionControlRepoUrl = newVersionControlRepoUrl;
             _ollamaBaseUrl = newOllamaBaseUrl;
             _ollamaModel = newOllamaModel;
@@ -1359,6 +1409,152 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
     }
   }
 
+  Widget _buildSubTabBtn(int subIndex, String label) {
+    bool isSelected = _aiBridgeSubTabIndex == subIndex;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _aiBridgeSubTabIndex = subIndex;
+            final String targetModeStr;
+            if (subIndex == 0) {
+              targetModeStr = 'sdk';
+            } else if (subIndex == 1) {
+              targetModeStr = 'desktop';
+            } else {
+              targetModeStr = _antigravityHandsfreeAutoExecute ? 'handsfree' : 'cli';
+            }
+            _antigravityBridgeMode = targetModeStr;
+            _formKey.currentState?.fields['antigravityBridgeMode']?.didChange(targetModeStr);
+          });
+        },
+        child: Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: isSelected ? AppColors.accent : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            color: isSelected
+                ? AppColors.accent.withValues(alpha: 0.08)
+                : Colors.transparent,
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? AppColors.accent : AppColors.panelTextSecondary,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              fontSize: AppUIConfig.rootFontSize * 0.95,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveStatusCard() {
+    final Map<int, String> modeDisplayNames = {
+      0: 'Antigravity SDK',
+      1: 'Antigravity Desktop',
+      2: 'Antigravity CLI',
+    };
+
+    final displayName = modeDisplayNames[_aiBridgeSubTabIndex]!;
+    bool isActive = false;
+    String targetModeStr = 'sdk';
+    if (_aiBridgeSubTabIndex == 0) {
+      isActive = _antigravityBridgeMode == 'sdk';
+      targetModeStr = 'sdk';
+    } else if (_aiBridgeSubTabIndex == 1) {
+      isActive = _antigravityBridgeMode == 'desktop';
+      targetModeStr = 'desktop';
+    } else if (_aiBridgeSubTabIndex == 2) {
+      isActive = _antigravityBridgeMode == 'cli' || _antigravityBridgeMode == 'handsfree';
+      targetModeStr = _antigravityHandsfreeAutoExecute ? 'handsfree' : 'cli';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isActive ? AppColors.accent : AppColors.controlBorder,
+          width: isActive ? 1.5 : 1.0,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isActive ? 'Active Integration Mode' : 'Inactive Integration Mode',
+                  style: TextStyle(
+                    color: isActive ? AppColors.accent : Colors.grey,
+                    fontSize: AppUIConfig.rootFontSize * 0.85,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  isActive && _aiBridgeSubTabIndex == 2
+                      ? '$displayName (${_antigravityBridgeMode == 'handsfree' ? 'Handsfree' : 'Standard'})'
+                      : displayName,
+                  style: TextStyle(
+                    color: AppColors.panelTextPrimary,
+                    fontSize: AppUIConfig.rootFontSize * 1.1,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!isActive)
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _antigravityBridgeMode = targetModeStr;
+                  _formKey.currentState?.fields['antigravityBridgeMode']?.didChange(targetModeStr);
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent.withValues(alpha: 0.15),
+                foregroundColor: AppColors.accent,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                side: BorderSide(color: AppColors.accent, width: 1),
+              ),
+              child: Text(
+                'Activate Mode',
+                style: TextStyle(fontSize: AppUIConfig.rootFontSize * 0.9),
+              ),
+            )
+          else
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: AppColors.accent, size: 20),
+                const SizedBox(width: 6),
+                Text(
+                  'ACTIVE',
+                  style: TextStyle(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: AppUIConfig.rootFontSize * 0.9,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLabeled(String label, IconData icon, Widget child) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1486,6 +1682,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                 'antigravityStartupCommand': _antigravityStartupCommand ?? 'antigravity-server',
                 'antigravityApiKey': _antigravityApiKey ?? '',
                 'antigravityStatusDebug': _antigravityStatusDebug,
+                'antigravitySendViaClipboard': _antigravitySendViaClipboard,
                 'versionControlRepoUrl': _versionControlRepoUrl ?? '',
               },
               child: Column(
@@ -1506,7 +1703,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                           _buildTabBtn(8, 'Agentic\nMastery'),
                           _buildTabBtn(9, 'Version\nControl'),
                           _buildTabBtn(10, 'AI\nAssistant'),
-                          _buildTabBtn(11, 'Antigravity\nSDK'),
+                          _buildTabBtn(11, 'AI\nBridge'),
                         ],
                       )
                     ),
@@ -2637,128 +2834,121 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                           padding: const EdgeInsets.only(right: 16),
                           children: [
                             const SizedBox(height: 16),
-                            Text('ANTIGRAVITY SDK', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            Text('AI BRIDGE', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
                             const SizedBox(height: 16),
-                            _buildLabeled('Antigravity Bridge Mode', Icons.settings_ethernet, FormBuilderDropdown<String>(
-                              name: 'antigravityBridgeMode',
-                              decoration: _inputDecoration(),
-                              dropdownColor: AppColors.panelBackground,
-                              initialValue: _antigravityBridgeMode ?? 'sdk',
-                              onChanged: (val) {
-                                _antigravityBridgeMode = val;
-                              },
-                              onSaved: (val) {
-                                _antigravityBridgeMode = val;
-                              },
-                              items: [
-                                DropdownMenuItem(
-                                  value: 'sdk',
-                                  child: Text('Daemon SDK Mode (Local Server + gRPC Subagent)', style: TextStyle(color: AppColors.panelTextPrimary)),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'cli',
-                                  child: Text('CLI / Pasting Mode (IDE Integration + Clipboard + Macro)', style: TextStyle(color: AppColors.panelTextPrimary)),
-                                ),
-                              ],
-                            )),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Antigravity API Base URL', Icons.cloud, FormBuilderTextField(
-                              name: 'antigravityBaseUrl',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
-                            )),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Antigravity Invoke Endpoint', Icons.api, FormBuilderTextField(
-                              name: 'antigravityInvokeEndpoint',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
-                            )),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Antigravity Prompt Endpoint', Icons.send, FormBuilderTextField(
-                              name: 'antigravityPromptEndpoint',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
-                            )),
-                            const SizedBox(height: 16),
-                             _buildLabeled('Antigravity Startup Command', Icons.terminal, FormBuilderTextField(
-                               name: 'antigravityStartupCommand',
-                               style: TextStyle(color: AppColors.panelTextPrimary),
-                               decoration: _inputDecoration(),
-                             )),
-                             const SizedBox(height: 16),
-                             _buildLabeled('Antigravity API Key', Icons.key, FormBuilderTextField(
-                               name: 'antigravityApiKey',
-                               style: TextStyle(color: AppColors.panelTextPrimary),
-                               decoration: _inputDecoration(),
-                               obscureText: true,
-                             )),
-                             const SizedBox(height: 16),
-                            _buildLabeled('Antigravity Target Model', Icons.psychology_alt, FutureBuilder<List<AntigravityModel>>(
-                              future: _modelsFuture,
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return const SizedBox(
-                                    height: 48,
-                                    child: Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      ),
-                                    ),
-                                  );
-                                } else if (snapshot.hasError) {
-                                  return Text('Error loading models: ${snapshot.error}', style: const TextStyle(color: Colors.redAccent));
-                                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                                  return const Text('No models found in current SDK instance.', style: TextStyle(color: Colors.grey));
-                                }
-
-                                final models = snapshot.data!;
-                                final hasSelection = models.any((m) => m.id == _antigravityModel);
-                                final initialValue = hasSelection
-                                    ? _antigravityModel
-                                    : (models.isNotEmpty ? models.first.id : 'gemini-2.0-flash');
-
-                                return FormBuilderDropdown<String>(
-                                  name: 'antigravityModel',
-                                  decoration: _inputDecoration(),
-                                  dropdownColor: AppColors.panelBackground,
-                                  initialValue: initialValue,
-                                  onChanged: (val) {
-                                    _antigravityModel = val;
-                                  },
-                                  onSaved: (val) {
-                                    _antigravityModel = val;
-                                  },
-                                  items: models.map((m) {
-                                    return DropdownMenuItem(
-                                      value: m.id,
-                                      child: Text(m.displayName, style: TextStyle(color: AppColors.panelTextPrimary)),
-                                    );
-                                  }).toList(),
-                                );
-                              },
-                            )),
-                            const SizedBox(height: 16),
-                            FormBuilderSwitch(
-                              name: 'antigravityStatusDebug',
-                              title: Text('Enable Antigravity status log check', style: TextStyle(color: AppColors.panelTextPrimary)),
-                              decoration: InputDecoration(border: InputBorder.none),
-                              activeColor: AppColors.accent,
-                              onChanged: (val) {
-                                _antigravityStatusDebug = val == true;
-                              },
-                              onSaved: (val) {
-                                _antigravityStatusDebug = val == true;
-                              },
+                            
+                            // Hidden form field so FormBuilder includes it
+                            Visibility(
+                              visible: false,
+                              child: FormBuilderTextField(
+                                name: 'antigravityBridgeMode',
+                                initialValue: _antigravityBridgeMode ?? 'sdk',
+                              ),
                             ),
-                            const SizedBox(height: 32),
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
+                            
+                            // Horizontal Sub-Tabs Row
+                            Row(
                               children: [
-                                ElevatedButton.icon(
+                                _buildSubTabBtn(0, 'SDK'),
+                                _buildSubTabBtn(1, 'Desktop'),
+                                _buildSubTabBtn(2, 'CLI'),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            
+                            // Active status card
+                            _buildActiveStatusCard(),
+                            const SizedBox(height: 24),
+                            
+                            // Render settings dynamically based on _aiBridgeSubTabIndex:
+                            if (_aiBridgeSubTabIndex == 0) ...[
+                              _buildLabeled('Antigravity API Base URL', Icons.cloud, FormBuilderTextField(
+                                name: 'antigravityBaseUrl',
+                                initialValue: _antigravityBaseUrl,
+                                style: TextStyle(color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                              const SizedBox(height: 16),
+                              _buildLabeled('Antigravity Invoke Endpoint', Icons.api, FormBuilderTextField(
+                                name: 'antigravityInvokeEndpoint',
+                                initialValue: _antigravityInvokeEndpoint,
+                                style: TextStyle(color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                              const SizedBox(height: 16),
+                              _buildLabeled('Antigravity Prompt Endpoint', Icons.send, FormBuilderTextField(
+                                name: 'antigravityPromptEndpoint',
+                                initialValue: _antigravityPromptEndpoint,
+                                style: TextStyle(color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                              const SizedBox(height: 16),
+                              _buildLabeled('Antigravity Startup Command', Icons.terminal, FormBuilderTextField(
+                                name: 'antigravityStartupCommand',
+                                initialValue: _antigravityStartupCommand,
+                                style: TextStyle(color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                              const SizedBox(height: 16),
+                              _buildLabeled('Antigravity API Key (SDK Only)', Icons.key, FormBuilderTextField(
+                                name: 'antigravityApiKey',
+                                initialValue: _antigravityApiKey,
+                                style: TextStyle(color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                                obscureText: true,
+                              )),
+                              const SizedBox(height: 16),
+                              _buildLabeled('Antigravity Target Model', Icons.psychology_alt, FutureBuilder<List<AntigravityModel>>(
+                                future: _modelsFuture,
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return const SizedBox(
+                                      height: 48,
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        ),
+                                      ),
+                                    );
+                                  } else if (snapshot.hasError) {
+                                    return Text('Error loading models: ${snapshot.error}', style: const TextStyle(color: Colors.redAccent));
+                                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                                    return const Text('No models found in current SDK instance.', style: TextStyle(color: Colors.grey));
+                                  }
+
+                                  final models = snapshot.data!;
+                                  final hasSelection = models.any((m) => m.id == _antigravityModel);
+                                  final initialValue = hasSelection
+                                      ? _antigravityModel
+                                      : (models.isNotEmpty ? models.first.id : 'gemini-2.0-flash');
+
+                                  return FormBuilderDropdown<String>(
+                                    name: 'antigravityModel',
+                                    decoration: _inputDecoration(),
+                                    dropdownColor: AppColors.panelBackground,
+                                    initialValue: initialValue,
+                                    onChanged: (val) {
+                                      _antigravityModel = val;
+                                    },
+                                    onSaved: (val) {
+                                      _antigravityModel = val;
+                                    },
+                                    items: models.map((m) {
+                                      return DropdownMenuItem(
+                                        value: m.id,
+                                        child: Text(m.displayName, style: TextStyle(color: AppColors.panelTextPrimary)),
+                                      );
+                                    }).toList(),
+                                  );
+                                },
+                              )),
+                              const SizedBox(height: 32),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: ElevatedButton.icon(
                                   onPressed: _isTestingAntigravity ? null : _testAntigravityConnection,
                                   icon: _isTestingAntigravity ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
                                   label: Text('Test Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
@@ -2769,7 +2959,83 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                     side: const BorderSide(color: Colors.deepPurpleAccent, width: 1)
                                   ),
                                 ),
-                                ElevatedButton.icon(
+                              ),
+                            ] else if (_aiBridgeSubTabIndex == 1) ...[
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0, left: 12.0),
+                                child: Text(
+                                  'Desktop mode interacts with target windows using standard macros. No custom window title or focus macro configuration is required here.',
+                                  style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+                                ),
+                              ),
+                            ] else if (_aiBridgeSubTabIndex == 2) ...[
+                              Text('CLI SETTINGS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.9, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                              const SizedBox(height: 12),
+                              FormBuilderSwitch(
+                                name: 'antigravitySendViaClipboard',
+                                title: Text('Send via clipboard paste to the CLI', style: TextStyle(color: AppColors.panelTextPrimary)),
+                                initialValue: _antigravitySendViaClipboard,
+                                decoration: InputDecoration(border: InputBorder.none),
+                                activeColor: AppColors.accent,
+                                onChanged: (val) {
+                                  _antigravitySendViaClipboard = val == true;
+                                  _onFormChanged();
+                                },
+                                onSaved: (val) {
+                                  _antigravitySendViaClipboard = val == true;
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              FormBuilderSwitch(
+                                name: 'antigravityStatusDebug',
+                                title: Text('Enable Antigravity status log check', style: TextStyle(color: AppColors.panelTextPrimary)),
+                                initialValue: _antigravityStatusDebug,
+                                decoration: InputDecoration(border: InputBorder.none),
+                                activeColor: AppColors.accent,
+                                onChanged: (val) {
+                                  _antigravityStatusDebug = val == true;
+                                },
+                                onSaved: (val) {
+                                  _antigravityStatusDebug = val == true;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              const Divider(color: Color(0xFF2A2A2A)),
+                              const SizedBox(height: 16),
+                              Text('HANDSFREE SETTINGS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.9, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                              const SizedBox(height: 12),
+                              FormBuilderSwitch(
+                                name: 'antigravityHandsfreeAutoExecute',
+                                title: Text('Auto-execute prompt (Handsfree Mode)', style: TextStyle(color: AppColors.panelTextPrimary)),
+                                initialValue: _antigravityHandsfreeAutoExecute,
+                                decoration: InputDecoration(border: InputBorder.none),
+                                activeColor: AppColors.accent,
+                                onChanged: (val) {
+                                  setState(() {
+                                    _antigravityHandsfreeAutoExecute = val == true;
+                                    if (_antigravityBridgeMode == 'cli' || _antigravityBridgeMode == 'handsfree') {
+                                      final targetMode = val == true ? 'handsfree' : 'cli';
+                                      _antigravityBridgeMode = targetMode;
+                                      _formKey.currentState?.fields['antigravityBridgeMode']?.didChange(targetMode);
+                                    }
+                                  });
+                                },
+                                onSaved: (val) {
+                                  _antigravityHandsfreeAutoExecute = val == true;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              _buildLabeled('Delay between queue items (seconds)', Icons.timer_outlined, FormBuilderTextField(
+                                name: 'aiTasksDelaySeconds',
+                                initialValue: _aiTasksDelaySeconds.toString(),
+                                style: TextStyle(color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              )),
+                              const SizedBox(height: 32),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: ElevatedButton.icon(
                                   onPressed: _isTestingCli ? null : _testCliConnection,
                                   icon: _isTestingCli ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.terminal),
                                   label: Text('Test CLI Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
@@ -2780,8 +3046,8 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                     side: const BorderSide(color: Colors.tealAccent, width: 1)
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ],
                         ),
                       ],
