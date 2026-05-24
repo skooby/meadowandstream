@@ -41,6 +41,10 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
   final Map<String, GlobalKey> _timelineKeys = {};
   final Map<String, Future<List<Map<String, String>>>> _commitFutures = {};
   late TabController _tabController;
+  late final TextEditingController _commitNoteController;
+  late final FocusNode _commitNoteFocusNode;
+  String? _lastActiveTaskId;
+  SharedPreferences? _prefs;
 
   bool _isLoaded = false;
   double _width = 500;
@@ -58,6 +62,22 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _commitNoteController = TextEditingController();
+    _commitNoteFocusNode = FocusNode();
+    
+    _commitNoteFocusNode.addListener(() {
+      if (!_commitNoteFocusNode.hasFocus) {
+        final tasks = AiBridgeService.instance.tasks;
+        final sandboxTaskIds = SandboxService.instance.sandboxTaskIds;
+        final activeTasks = tasks.where((t) => !t.isFolder && sandboxTaskIds.contains(t.id) && t.status != AiTaskStatus.completed).toList();
+        if (activeTasks.isNotEmpty) {
+          final customNote = _commitNoteController.text.trim();
+          final taskId = activeTasks.first.id;
+          _prefs?.setString('task_custom_commit_note_$taskId', customNote);
+        }
+      }
+    });
+
     SandboxService.instance.init();
     AiBridgeService.instance.reloadTimelineHistory();
     VersionControlWindow.highlightedTaskId.addListener(_scrollToHighlightedTask);
@@ -73,6 +93,8 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
   @override
   void dispose() {
     _tabController.dispose();
+    _commitNoteController.dispose();
+    _commitNoteFocusNode.dispose();
     VersionControlWindow.highlightedTaskId.removeListener(_scrollToHighlightedTask);
     VisualEditorScreen.currentWorkspace.removeListener(_loadPreferences);
     VisualEditorScreen.currentWorkspace.removeListener(_loadExplorerFiles);
@@ -171,6 +193,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
+        _prefs = prefs;
         _isLoaded = true;
         _bgOpacity = prefs.getDouble('ve_toolWindowOpacity') ?? 0.8;
         if (!widget.isDocked) {
@@ -356,6 +379,8 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
   }
 
   Future<void> _copyTaskPromptToClipboard(BuildContext context, AiTask task) async {
+    final customNote = _commitNoteController.text.trim();
+    await _prefs?.setString('task_custom_commit_note_${task.id}', customNote);
     await AiBridgeService.instance.compilePrimaryDirectivesFile(task);
     final prompt = await AiBridgeService.instance.buildTaskPrompt(task);
     
@@ -369,6 +394,8 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
   }
 
   Future<void> _sendTaskToAiBridge(BuildContext context, AiTask task) async {
+    final customNote = _commitNoteController.text.trim();
+    await _prefs?.setString('task_custom_commit_note_${task.id}', customNote);
     final updatedTask = AiBridgeService.instance.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
 
     await AiBridgeService.instance.submitTaskChecklist(updatedTask, blockScreen: true);
@@ -395,6 +422,31 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
 
         final activeTasks = tasks.where((t) => !t.isFolder && sandboxTaskIds.contains(t.id) && !isTaskCommitted(t)).toList();
         
+        // Sync controller text with custom commit note if the active task changes
+        final firstActiveTask = activeTasks.isNotEmpty ? activeTasks.first : null;
+        if (firstActiveTask == null) {
+          if (_lastActiveTaskId != null) {
+            _lastActiveTaskId = null;
+            _commitNoteController.text = '';
+          }
+        } else {
+          final customNote = _prefs?.getString('task_custom_commit_note_${firstActiveTask.id}') ?? '';
+          String expectedNote = '';
+          if (customNote.isNotEmpty) {
+            expectedNote = customNote;
+          } else {
+            final rawNotes = firstActiveTask.notes;
+            if (!rawNotes.contains('### Update -') && !rawNotes.contains('=== RUNTIME/LAYOUT')) {
+              expectedNote = rawNotes;
+            }
+          }
+          // If we changed task or if the task notes changed outside our editor focus
+          if (_lastActiveTaskId != firstActiveTask.id || (!_commitNoteFocusNode.hasFocus && _commitNoteController.text != expectedNote)) {
+            _lastActiveTaskId = firstActiveTask.id;
+            _commitNoteController.text = expectedNote;
+          }
+        }
+
         final timelineCommits = AiBridgeService.instance.timelineHistory;
         
         return Column(
@@ -463,6 +515,10 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No active tasks to commit.')));
                                   return;
                                 }
+
+                                // Ensure any unsaved note in the text box is saved first
+                                final customNote = _commitNoteController.text.trim();
+                                await _prefs?.setString('task_custom_commit_note_${activeTasks.first.id}', customNote);
                                 
                                 bool hasOpen = false;
                                 for (var t in activeTasks) {
@@ -482,9 +538,59 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                 final taskIds = activeTasks.map((t) => t.id).toList();
                                 final success = await AiBridgeService.instance.performManualCommitAll(taskIds, defaultCommitName);
                                 if (success && mounted) {
+                                  _commitNoteController.clear();
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tasks committed successfully.')));
                                 }
                               },
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(height: 1, color: AppColors.border),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _commitNoteController,
+                                focusNode: _commitNoteFocusNode,
+                                enabled: activeTasks.isNotEmpty,
+                                style: TextStyle(
+                                  color: activeTasks.isNotEmpty ? Colors.white : AppColors.textMuted,
+                                  fontSize: 12,
+                                ),
+                                onChanged: (val) {
+                                  if (activeTasks.isNotEmpty) {
+                                    _prefs?.setString('task_custom_commit_note_${activeTasks.first.id}', val.trim());
+                                  }
+                                },
+                                onSubmitted: (val) {
+                                  if (activeTasks.isNotEmpty) {
+                                    _prefs?.setString('task_custom_commit_note_${activeTasks.first.id}', val.trim());
+                                  }
+                                },
+                                decoration: InputDecoration(
+                                  hintText: activeTasks.isNotEmpty
+                                      ? 'Add a note to "${activeTasks.first.name}" to append to the commit name...'
+                                      : 'No active tasks to add notes to...',
+                                  hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 11),
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  disabledBorder: OutlineInputBorder(
+                                    borderSide: BorderSide(color: AppColors.border.withOpacity(0.3)),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderSide: BorderSide(color: AppColors.border),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderSide: const BorderSide(color: Colors.blueAccent),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -646,7 +752,14 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                       initiallyExpanded: true,
                                       tilePadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
                                       title: Text(t.name, style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize, fontWeight: FontWeight.bold)),
-                                      subtitle: t.summary.isNotEmpty ? Text(t.summary, style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize * 0.85, fontStyle: FontStyle.italic)) : null,
+                                      subtitle: (t.summary.isNotEmpty || t.notes.isNotEmpty)
+                                           ? Text(
+                                               '${t.summary}${t.summary.isNotEmpty && t.notes.isNotEmpty ? " · " : ""}${t.notes.replaceAll(RegExp(r'\s+'), " ").trim()}',
+                                               style: TextStyle(color: AppColors.textMuted, fontSize: AppUIConfig.smallFontSize * 0.85, fontStyle: FontStyle.italic),
+                                               maxLines: 1,
+                                               overflow: TextOverflow.ellipsis,
+                                             )
+                                           : null,
                                       children: taskChildren,
                                     ),
                                   ),

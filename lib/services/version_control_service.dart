@@ -279,6 +279,7 @@ class VersionControlService {
       }
 
       final statusResult = await Process.run('git', ['status', '--porcelain'], workingDirectory: path, runInShell: true);
+      String commitHash = '';
       if (statusResult.stdout.toString().trim().isNotEmpty) {
         // Append verified checklist to the commit message
         final commitTitle = summary.isNotEmpty ? summary : name;
@@ -291,19 +292,31 @@ class VersionControlService {
         if (await tempFile.exists()) await tempFile.delete();
         
         final hashResult = await Process.run('git', ['rev-parse', 'HEAD'], workingDirectory: path, runInShell: true);
-        final commitHash = hashResult.exitCode == 0 ? hashResult.stdout.toString().trim() : '';
+        commitHash = hashResult.exitCode == 0 ? hashResult.stdout.toString().trim() : '';
         
         final defaultBranch = await getDefaultBranch();
         SystemLogsService.instance.addLog('Committed Tasks ${taskIds.join(", ")} to $defaultBranch successfully. Hash: $commitHash', category: LogCategory.VC);
-        
-        // Push in the background, ignoring errors
-        Process.run('git', ['push', 'origin', defaultBranch], workingDirectory: path, runInShell: true).then((_) {
-           SystemLogsService.instance.addLog('Pushed $defaultBranch to origin.', category: LogCategory.VC);
-        });
-        
-        return commitHash.isNotEmpty ? commitHash : 'Committed successfully.';
-      } else {
+      }
+
+      // Check if remote 'origin' exists before pushing
+      final remoteResult = await Process.run('git', ['remote'], workingDirectory: path, runInShell: true);
+      final hasOrigin = remoteResult.stdout.toString().split(RegExp(r'\s+')).map((e) => e.trim()).contains('origin');
+      
+      if (hasOrigin) {
+        final defaultBranch = await getDefaultBranch();
+        final pushResult = await Process.run('git', ['push', 'origin', defaultBranch], workingDirectory: path, runInShell: true);
+        if (pushResult.exitCode != 0) {
+          throw Exception('Git push failed:\n${pushResult.stderr}\n${pushResult.stdout}');
+        }
+        SystemLogsService.instance.addLog('Pushed $defaultBranch to origin.', category: LogCategory.VC);
+      }
+
+      if (commitHash.isNotEmpty) {
+        return commitHash;
+      } else if (statusResult.stdout.toString().trim().isEmpty) {
         return 'No changes to commit.';
+      } else {
+        return 'Committed successfully.';
       }
     } finally {
       for (final id in taskIds) {

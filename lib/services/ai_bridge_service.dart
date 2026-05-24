@@ -477,6 +477,13 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   late AntigravityClient antigravityClient;
   AppDatabase? _db;
+  SharedPreferences? _prefs;
+
+  Future<SharedPreferences> _getPrefs() async {
+    if (_prefs != null && !Platform.environment.containsKey('FLUTTER_TEST')) return _prefs!;
+    _prefs = await SharedPreferences.getInstance();
+    return _prefs!;
+  }
 
   AiBridgeService._internal() {
     _initClient();
@@ -565,10 +572,10 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     final db = _db;
     if (db == null) return;
     try {
-      final assetsList = await db.select(db.assets).get();
-      final stringsList = await db.select(db.strings).get();
-      final translationsList = await db.select(db.translations).get();
-      final assetTagsList = await db.select(db.assetTags).get();
+      final assetsList = await db.select(db.assets).get().timeout(const Duration(milliseconds: 800));
+      final stringsList = await db.select(db.strings).get().timeout(const Duration(milliseconds: 800));
+      final translationsList = await db.select(db.translations).get().timeout(const Duration(milliseconds: 800));
+      final assetTagsList = await db.select(db.assetTags).get().timeout(const Duration(milliseconds: 800));
 
       final dump = {
         'assets': assetsList.map((e) => e.toJson()).toList(),
@@ -1341,6 +1348,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
             .where((e) =>
                 e.status != AiVerificationStatus.verified &&
                 e.status != AiVerificationStatus.ignored &&
+                e.status != AiVerificationStatus.pendingReview &&
                 !e.isPreview)
             .toList();
         if (uncheckedTasks.isNotEmpty) {
@@ -2038,8 +2046,80 @@ wshShell.AppActivate $myPid
     }
   }
 
+  Future<void> forceDispatchGitPushError(String errorLog) async {
+    try {
+      if (_activeProcessingTaskId != null) {
+        await _absorbOrphanedFiles(_activeProcessingTaskId!);
+      }
 
+      _tasks.removeWhere((t) => t.name.toLowerCase() == 'fix git push errors');
 
+      // Gather additional Git diagnostics to include all details needed to resolve the issue
+      String diagnostics = '';
+      try {
+        final path = await VersionControlService.instance.getLocalRepositoryPath();
+        if (path != null && path.isNotEmpty) {
+          final statusRes = await Process.run('git', ['status'], workingDirectory: path, runInShell: true);
+          final branchRes = await Process.run('git', ['branch', '-vv'], workingDirectory: path, runInShell: true);
+          final diffRes = await Process.run('git', ['diff', '--name-only', '--diff-filter=U'], workingDirectory: path, runInShell: true);
+          final logRes = await Process.run('git', ['log', '-n', '5', '--oneline'], workingDirectory: path, runInShell: true);
+          
+          diagnostics = '\n\n=== NATIVE GIT DIAGNOSTICS ===\n'
+              'Working Directory: $path\n\n'
+              'Branch Info:\n${branchRes.stdout}\n'
+              'Git Status:\n${statusRes.stdout}\n'
+              'Conflicting Files:\n${diffRes.stdout}\n'
+              'Recent Commits:\n${logRes.stdout}\n';
+        }
+      } catch (diagError) {
+        diagnostics = '\n\n[Diagnostics Error] Failed to gather Git diagnostics: $diagError\n';
+      }
+
+      final fullErrorLog = '$errorLog$diagnostics';
+
+      final task = await addTask(
+        'Fix git push errors',
+        'The recent attempt to push committed changes to the remote repository failed. Resolve any git conflicts, push protection violations, or repository rule violations immediately.',
+        notes: fullErrorLog,
+        status: AiTaskStatus.inProgress,
+      );
+
+      if (_tasks.isNotEmpty && _tasks.first.id != task.id) {
+        await reorderBefore(task.id, _tasks.first.id);
+      }
+
+      _isQueuePaused = false;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('ai_queue_paused', false);
+
+      try {
+        File('$_dirPath/bridge_error.txt').writeAsStringSync(fullErrorLog);
+      } catch (_) {}
+
+      final promptText =
+          '# PRIMARY DIRECTIVES\nVoice: Direct / Robotic\nComplexity: Concise\n\n'
+          'CRITICAL GIT PUSH REJECTION! Your committed changes failed to push to the remote repository.\n'
+          'Read the push failure log inside .ai_bridge/bridge_error.txt immediately. '
+          'Resolve any conflicts, secrets scan blocks, or repository rule violations, commit and push your fixes, '
+          'and do not mark this complete until the remote repository successfully accepts the changes.';
+
+      final p = QueuedPrompt(promptText, true, [task.id]);
+      _pendingPrompts.insert(0, p);
+      await _saveQueueState();
+
+      _activeProcessingTaskId = null;
+      _activeProcessingTaskAssignedAt = null;
+      _activePrompt = null;
+      notifyListeners();
+
+      await _processQueue();
+    } catch (e, st) {
+      try {
+        File('$_dirPath/bridge_error_debug.txt')
+            .writeAsStringSync('forceDispatchGitPushError crashed:\n\n$e\n$st');
+      } catch (_) {}
+    }
+  }
 
   Future<void> _absorbOrphanedFiles(String taskId) async {
     try {
@@ -2782,7 +2862,7 @@ wshShell.AppActivate $myPid
     sb.writeln('Status: ${task.status.name}');
     
     final uncheckedTasks = task.verificationCriteria
-        .where((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && !e.isPreview)
+        .where((e) => e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored && e.status != AiVerificationStatus.pendingReview && !e.isPreview)
         .toList();
     final targetItem = targetCriteria ?? (uncheckedTasks.isNotEmpty ? uncheckedTasks.first : null);
     if (targetItem != null) {
@@ -2837,6 +2917,7 @@ wshShell.AppActivate $myPid
     final unchecked = task.verificationCriteria
         .where((e) => (e.status != AiVerificationStatus.verified &&
             e.status != AiVerificationStatus.ignored &&
+            e.status != AiVerificationStatus.pendingReview &&
             !e.isPreview))
         .toList();
 
@@ -2873,6 +2954,7 @@ wshShell.AppActivate $myPid
     final finalUnchecked = updatedTask.verificationCriteria
         .where((e) => (e.status != AiVerificationStatus.verified &&
             e.status != AiVerificationStatus.ignored &&
+            e.status != AiVerificationStatus.pendingReview &&
             !e.isPreview))
         .toList();
 
@@ -2973,7 +3055,7 @@ wshShell.AppActivate $myPid
       _pendingPrompts.clear();
       _completedPrompts.clear();
 
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       _isQueuePaused = prefs.getBool('ai_queue_paused') ?? false;
       _isPreviewMode = prefs.getBool('ai_queue_preview_mode') ?? false;
       _isIqMode = prefs.getBool('ai_queue_iq_mode') ?? false;
@@ -3555,7 +3637,7 @@ wshShell.AppActivate $myPid
              }
 
             if (content == 'IDLE' && !generatedPreviewItems) {
-              final prefs = await SharedPreferences.getInstance();
+              final prefs = await _getPrefs();
               final afterCompleteStr = prefs
                       .getString('ai_tasks_bridge_complete_status') ??
                   'dontChange';
@@ -3784,7 +3866,7 @@ wshShell.AppActivate $myPid
     }
   }
 
-  Future<void> _loadFromFile() async {
+   Future<void> _loadFromFile() async {
     if (_isSavingLocally) return;
     try {
       final file = File(_filePath);
@@ -4232,7 +4314,12 @@ wshShell.AppActivate $myPid
       final timelineFile = File('$_dirPath/timeline_history.json');
       await timelineFile.writeAsString(encoder.convert(_timelineHistory.map((e) => e.toJson()).toList()), mode: FileMode.write, flush: true);
 
-      await syncDatabaseDump();
+      // Database dump sync is independent of task list save. Run with a safety timeout in background to prevent deadlock/hangs.
+      syncDatabaseDump().timeout(const Duration(seconds: 1), onTimeout: () {
+        debugPrint('[AiBridgeService] syncDatabaseDump timed out during task save.');
+      }).catchError((e) {
+        debugPrint('[AiBridgeService] syncDatabaseDump failed during task save: $e');
+      });
 
       notifyListeners();
     } catch (e, st) {
@@ -4543,6 +4630,7 @@ wshShell.AppActivate $myPid
                  ).catchError((e) {
                     if (kDebugMode) print('Auto-commit failed: $e');
                     try { File('.ai_bridge/bridge_error.txt').writeAsStringSync('Auto-commit failed: $e\n'); } catch (_) {}
+                    forceDispatchGitPushError(e.toString());
                     return '';
                  });
                  try { File('.ai_bridge/bridge_commit_debug.txt').writeAsStringSync('commitTimelineTasks returned hash: $hash\n', mode: FileMode.append); } catch (_) {}
@@ -4551,12 +4639,13 @@ wshShell.AppActivate $myPid
                     final commitDateStr = DateTime.now().toIso8601String();
                     for (final id in tasksToCommit) {
                        try {
-                          final t = _tasks.firstWhere((t) => t.id == id);
-                          t.commitHash = actualHash;
-                          t.commitDate = commitDateStr;
-                          t.status = AiTaskStatus.completed;
-                          t.isLocked = false;
-                          for (var vc in t.verificationCriteria) {
+                          final task = _tasks.firstWhere((t) => t.id == id);
+                          task.commitHash = actualHash;
+                          task.commitDate = commitDateStr;
+                          task.status = AiTaskStatus.completed;
+                          task.isLocked = false;
+                          _prefs?.remove('task_custom_commit_note_$id');
+                          for (var vc in task.verificationCriteria) {
                             if (vc.status == AiVerificationStatus.verified) {
                               vc.isCommitted = true;
                             }
@@ -4574,7 +4663,23 @@ wshShell.AppActivate $myPid
   String generateCommitName(List<AiTask> tasks) {
     return tasks.map((task) {
       final summaryStr = task.summary.isNotEmpty ? ' [${task.summary}]' : '';
-      return '${task.name}$summaryStr';
+      
+      final customNote = _prefs?.getString('task_custom_commit_note_${task.id}') ?? '';
+      String notesClean = '';
+      if (customNote.isNotEmpty) {
+        notesClean = customNote.replaceAll(RegExp(r'\s+'), ' ').trim();
+      } else {
+        final rawNotes = task.notes;
+        if (!rawNotes.contains('### Update -') && !rawNotes.contains('=== RUNTIME/LAYOUT')) {
+          notesClean = rawNotes.replaceAll(RegExp(r'\s+'), ' ').trim();
+        }
+      }
+      
+      if (notesClean.length > 50) {
+        notesClean = '${notesClean.substring(0, 47)}...';
+      }
+      final notesStr = notesClean.isNotEmpty ? ' (Note: $notesClean)' : '';
+      return '${task.name}$summaryStr$notesStr';
     }).where((n) => n.isNotEmpty).join(' | ');
   }
 
@@ -4602,6 +4707,8 @@ wshShell.AppActivate $myPid
          notesToCommit,
       ).catchError((e) {
          if (kDebugMode) print('Manual commit failed: $e');
+         try { File('.ai_bridge/bridge_error.txt').writeAsStringSync('Manual commit failed: $e\n'); } catch (_) {}
+         forceDispatchGitPushError(e.toString());
          return '';
       });
 
@@ -4613,6 +4720,7 @@ wshShell.AppActivate $myPid
            task.commitDate = commitDateStr;
            task.status = AiTaskStatus.completed;
            task.isLocked = false;
+           _prefs?.remove('task_custom_commit_note_${task.id}');
            for (var vc in task.verificationCriteria) {
              if (vc.status == AiVerificationStatus.verified) {
                vc.isCommitted = true;

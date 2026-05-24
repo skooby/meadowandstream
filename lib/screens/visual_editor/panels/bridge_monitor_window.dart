@@ -618,6 +618,14 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
         final lastObserved = AiBridgeService.instance.antigravityLastChangeObservedAt;
         final formattedLastObserved = lastObserved != null ? lastObserved.toLocal().toString().split('.').first : 'Never';
         final isSyncError = AiBridgeService.instance.isSyncErrorDetected;
+        final errorText = _loadedLogs['bridge_error.txt'] ?? '';
+        final hasGitPushErrorTask = AiBridgeService.instance.tasks.any((t) => t.name.toLowerCase() == 'fix git push errors');
+        final errorTextLower = errorText.toLowerCase();
+        final hasGitPushError = hasGitPushErrorTask ||
+            errorTextLower.contains('git push') ||
+            errorTextLower.contains('rejected') ||
+            errorTextLower.contains('conflict') ||
+            errorTextLower.contains('auto-commit failed');
         final subagents = AiBridgeService.instance.activeAgents;
         final isTesting = AiBridgeService.instance.isTesting;
 
@@ -1228,6 +1236,80 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                               ),
                             ),
                           ),
+                          if (hasGitPushError) ...[
+                            const SizedBox(height: 12),
+                            Card(
+                              color: AppColors.panelBackground,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: BorderSide(color: Colors.orangeAccent.withValues(alpha: 0.5)),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.sync_problem,
+                                          color: Colors.orangeAccent,
+                                          size: 16,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Git Push or Conflict Failure Detected',
+                                          style: TextStyle(
+                                            color: AppColors.textPrimary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      width: double.infinity,
+                                      decoration: BoxDecoration(
+                                        color: Colors.orangeAccent.withValues(alpha: 0.05),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        errorText.isNotEmpty
+                                            ? errorText
+                                            : 'The remote git push failed. A conflict or repository rule violation might have occurred.',
+                                        style: TextStyle(color: AppColors.textSecondary, fontSize: 11, fontFamily: 'monospace'),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.orangeAccent.withValues(alpha: 0.1),
+                                          foregroundColor: Colors.orangeAccent,
+                                          side: BorderSide(color: Colors.orangeAccent.withValues(alpha: 0.5)),
+                                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                        ),
+                                        icon: const Icon(Icons.build_circle_outlined, size: 16),
+                                        label: const Text('Resolve Conflict & Notify LLM', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                        onPressed: () async {
+                                          final details = 'Git push/sync failure details:\n$errorText';
+                                          await AiBridgeService.instance.forceDispatchGitPushError(details);
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Dispatched git error task and notified LLM to resolve the problem!')),
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           // Active Subagents Card
                           Card(
