@@ -7,6 +7,9 @@ import '../models/item_source.dart';
 import 'profiler_service.dart';
 
 class AudioPlayerService {
+  static AudioPlayerService? _instance;
+  static AudioPlayerService? get instance => _instance;
+
   AudioPlayer _player = AudioPlayer();
   bool _isDisposed = false;
 
@@ -28,6 +31,7 @@ class AudioPlayerService {
   List<StreamSubscription> _playerSubscriptions = [];
 
   AudioPlayerService() {
+    _instance = this;
     _positionController = StreamController<Duration>.broadcast(
       onListen: () {
         if (!_isDisposed) {
@@ -114,6 +118,10 @@ class AudioPlayerService {
   }
 
   Future<void> prepareForTeardown() async {
+    if (_isDisposed) {
+      debugPrint('AudioPlayerService: prepareForTeardown called but already disposed/torn down.');
+      return;
+    }
     debugPrint('AudioPlayerService: Custom teardown sequence initiated to free C++ media_kit locks.');
     try {
       for (var sub in _playerSubscriptions) {

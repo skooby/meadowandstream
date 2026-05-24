@@ -190,11 +190,13 @@ class MediaKitPlayer extends AudioPlayerPlatform {
       _player.stream.rate.listen((rate) {
         _dataController.add(PlayerDataMessage(speed: rate));
       }),
-      _player.stream.log.listen((event) {
+    ];
+    if (JustAudioMediaKit.enableLog) {
+      _streamSubscriptions.add(_player.stream.log.listen((event) {
         // ignore: avoid_print
         print("MPV: [${event.level}] ${event.prefix}: ${event.text}");
-      }),
-    ];
+      }));
+    }
   }
 
   void _updateDuration(Duration duration) {
@@ -412,12 +414,15 @@ class MediaKitPlayer extends AudioPlayerPlatform {
   Future<void> release() async {
     _logger.info('releasing player resources');
     _mediaOpened = false;
-    await _player.dispose();
-    // cancel all stream subscriptions
+    
+    // CRITICAL PREVENTION: Cancel all stream subscriptions first to prevent native callbacks
+    // from being executed on a deleting/deleted isolate during or after player disposal.
     for (final StreamSubscription subscription in _streamSubscriptions) {
       unawaited(subscription.cancel());
     }
     _streamSubscriptions.clear();
+    
+    await _player.dispose();
   }
 
   /// Converts an [AudioSourceMessage] into a [Media] for playback

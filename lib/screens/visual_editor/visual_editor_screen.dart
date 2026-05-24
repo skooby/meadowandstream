@@ -154,7 +154,14 @@ class _VisualEditorScreenState extends State<VisualEditorScreen> {
                       content: Text('Releasing native FFI C++ Windows Drivers...'),
                       duration: Duration(milliseconds: 600)));
               }
-              await context.read<AudioPlayerService>().prepareForTeardown().timeout(const Duration(seconds: 1), onTimeout: () {});
+              // CRITICAL PREVENTION of "Callback invoked after it has been deleted" Dart VM crash on Windows:
+              // Do NOT use context.read<AudioPlayerService>() here because if the screen/route is currently unmounted 
+              // or inactive, the BuildContext lookup will throw an exception, bypassing the teardown sequence.
+              // Fetching via the static instance ensures cleanup proceeds reliably.
+              final playerService = AudioPlayerService.instance;
+              if (playerService != null) {
+                  await playerService.prepareForTeardown().timeout(const Duration(seconds: 1), onTimeout: () {});
+              }
           } catch (e) {}
       }
       final int myPid = pid;
@@ -265,7 +272,14 @@ if (-not \$activated) {
                       content: Text('Releasing native FFI C++ Windows Drivers...'),
                       duration: Duration(milliseconds: 600)));
               }
-              await context.read<AudioPlayerService>().prepareForTeardown().timeout(const Duration(seconds: 1), onTimeout: () {});
+              // CRITICAL PREVENTION of "Callback invoked after it has been deleted" Dart VM crash on Windows:
+              // Do NOT use context.read<AudioPlayerService>() here because if the screen/route is currently unmounted 
+              // or inactive, the BuildContext lookup will throw an exception, bypassing the teardown sequence.
+              // Fetching via the static instance ensures cleanup proceeds reliably.
+              final playerService = AudioPlayerService.instance;
+              if (playerService != null) {
+                  await playerService.prepareForTeardown().timeout(const Duration(seconds: 1), onTimeout: () {});
+              }
           } catch (e) {}
       }
       final int myPid = pid;

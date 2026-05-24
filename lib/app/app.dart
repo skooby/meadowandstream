@@ -17,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import '../state/player_controller.dart';
 import '../services/ai_bridge_service.dart';
+import '../services/audio_player_service.dart';
 import '../engine/ui_inspector/element_registry.dart';
 import '../screens/visual_editor/panels/ai_task_manager_panel.dart';
 import '../screens/visual_editor/visual_editor_screen.dart';
@@ -296,15 +297,29 @@ class _GlobalOverlayInjectorState extends State<_GlobalOverlayInjector> {
                await Future.delayed(const Duration(milliseconds: 500));
            }
 
-           if (type == UpdateCoverType.hotRestart || type == UpdateCoverType.rebuild) {
-               for (int i = 3; i > 0; i--) {
-                   if (mounted) setState(() { _reloadCountdown = i; });
-                   await Future.delayed(const Duration(seconds: 1));
-               }
-               if (mounted) setState(() { _reloadCountdown = null; });
-           }
+            if (type == UpdateCoverType.hotRestart || type == UpdateCoverType.rebuild) {
+                for (int i = 3; i > 0; i--) {
+                    if (mounted) setState(() { _reloadCountdown = i; });
+                    await Future.delayed(const Duration(seconds: 1));
+                }
+                if (mounted) setState(() { _reloadCountdown = null; });
+            }
 
-           final contextToUse = globalAppNavigatorKey.currentContext;
+            // CRITICAL PREVENTION of "Callback invoked after it has been deleted" Dart VM crash on Windows:
+            // Before triggering the hot reload or restart process (which terminates/recreates the Dart isolate group),
+            // we must release all native FFI C++ windows player drivers and subscriptions.
+            if (!kIsWeb && Platform.isWindows) {
+                try {
+                    final playerService = AudioPlayerService.instance;
+                    if (playerService != null) {
+                        await playerService.prepareForTeardown().timeout(const Duration(seconds: 1), onTimeout: () {});
+                    }
+                } catch (e) {
+                    debugPrint('Error tearing down AudioPlayerService during auto-reload: $e');
+                }
+            }
+
+            final contextToUse = globalAppNavigatorKey.currentContext;
            if (contextToUse != null) {
                AiBridgeService.instance.dismissUpdateCover();
                if (type == UpdateCoverType.hotRestart || type == UpdateCoverType.rebuild) {

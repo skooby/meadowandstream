@@ -32,6 +32,7 @@ import 'services/offline_sync_service.dart';
 
 import 'app/app.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' show Platform;
@@ -87,6 +88,9 @@ Future<void> main(List<String> args) async {
     return false;
   };
 
+  // CRITICAL PREVENTION of "Callback invoked after it has been deleted" Dart VM crash:
+  // Disable native mpv logging so that no native logging callbacks are registered/invoked via FFI.
+  JustAudioMediaKit.enableLog = false;
   JustAudioMediaKit.ensureInitialized();
   AppProfilerService.instance.init();
 

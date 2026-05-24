@@ -16,6 +16,9 @@ class JustAudioMediaKit extends JustAudioPlatform {
   /// The internal MPV player's logLevel
   static MPVLogLevel mpvLogLevel = MPVLogLevel.error;
 
+  /// Enable or disable native MPV logging.
+  static bool enableLog = true;
+
   /// Sets the demuxer's cache size (in bytes)
   static int bufferSize = 32 * 1024 * 1024;
 
