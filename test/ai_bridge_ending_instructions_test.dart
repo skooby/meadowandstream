@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:music_app/services/ai_bridge_service.dart';
+import 'package:antigravity_sdk/antigravity_sdk.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -102,5 +103,159 @@ void main() {
     expect(lines.length, greaterThan(2));
     expect(lines[lines.length - 1], equals('---'));
     expect(lines[lines.length - 2], equals('END_HELPER_STRING_12345'));
+  });
+
+  test('invokeSubagent SDK prompt appends ending instructions helper', () async {
+    final logs = <String>[];
+    final client = AntigravityClient.custom(
+      onLog: (msg) => logs.add(msg),
+    );
+
+    final context = {
+      'id': 'test_subagent_prompt',
+      'name': 'Test Subagent Prompt',
+      'endingInstructions': 'SDK_END_HELPER_99999',
+    };
+    
+    try {
+      await client.invokeSubagent(context);
+    } catch (_) {}
+    
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    final execLog = logs.firstWhere((l) => l.contains('Executing: agentapi new-conversation'), orElse: () => '');
+    expect(execLog, contains('SDK_END_HELPER_99999'));
+  });
+
+  test('invokeSubagent SDK prompt fallback to tasks.json ending instructions', () async {
+    final tempDir = Directory.systemTemp.createTempSync('sdk_fallback_test');
+    final originalCwd = Directory.current;
+    
+    Directory.current = tempDir;
+    
+    Directory('.ai_bridge').createSync();
+    File('.ai_bridge/tasks.json').writeAsStringSync(jsonEncode({
+      'endingInstructions': 'FALLBACK_SDK_INSTRUCTIONS_8888',
+      'tasks': []
+    }));
+
+    final logs = <String>[];
+    final client = AntigravityClient.custom(
+      onLog: (msg) => logs.add(msg),
+    );
+
+    final context = {
+      'id': 'test_subagent_prompt',
+      'name': 'Test Subagent Prompt',
+    };
+    try {
+      await client.invokeSubagent(context);
+    } catch (_) {}
+    
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    Directory.current = originalCwd;
+    try {
+      tempDir.deleteSync(recursive: true);
+    } catch (_) {}
+
+    final execLog = logs.firstWhere((l) => l.contains('Executing: agentapi new-conversation'), orElse: () => '');
+    expect(execLog, contains('FALLBACK_SDK_INSTRUCTIONS_8888'));
+  });
+
+  test('buildTaskPrompt with replyTypeDirective and extraSuffix formats correctly', () async {
+    final service = AiBridgeService.instance;
+    await service.init();
+
+    await service.updateInstructions(
+      'Primary', 'Master', 'Quick', 'Preview', 'Approved', 'Rejected', 'Hooks', 'Missing', 'Sync',
+      'ENDING_HELPER_999',
+    );
+
+    final task = AiTask(
+      id: 'test_task_complex',
+      name: 'Complex Task',
+      description: 'Desc',
+    );
+
+    final prompt = await service.buildTaskPrompt(
+      task,
+      replyTypeDirective: 'VOICE_DIRECTIVE_123',
+      extraSuffix: 'SUFFIX_FEEDBACK_456',
+    );
+
+    expect(prompt, contains('VOICE_DIRECTIVE_123'));
+    expect(prompt, contains('SUFFIX_FEEDBACK_456'));
+    expect(prompt, contains('ENDING_HELPER_999'));
+
+    final lines = prompt.trim().split('\n');
+    expect(lines.length, greaterThan(4));
+    expect(lines[lines.length - 1], equals('---'));
+    expect(lines[lines.length - 2], equals('ENDING_HELPER_999'));
+    expect(lines[lines.length - 4], equals('SUFFIX_FEEDBACK_456'));
+  });
+
+  test('_processQueue parses replyTypeDirective and extraSuffix and places endingInstructions at the end', () async {
+    final service = AiBridgeService.instance;
+    await service.init();
+
+    await service.updateInstructions(
+      'Primary', 'Master', 'Quick', 'Preview', 'Approved', 'Rejected', 'Hooks', 'Missing', 'Sync',
+      'ENDING_HELPER_999',
+    );
+
+    final task = AiTask(
+      id: 'test_queue_parsing',
+      name: 'Queue parsing test',
+      description: 'Desc',
+    );
+    service.tasks.add(task);
+
+    // Queue a prompt with directives and suffix
+    final queuedText = '''
+# PRIMARY DIRECTIVES
+...
+Voice: Custom voice here
+Complexity: Concise override
+
+# TASKS TO ADDRESS
+Task: Queue parsing test
+
+---
+User Rejection Feedback:
+Some user feedback details
+''';
+
+    final originalMode = service.bridgeMode;
+    service.setBridgeMode(AntigravityBridgeMode.cli);
+    service.setDryRunMode(true);
+    service.forceDiskSaveInTests = true;
+
+    try {
+      await service.sendToQueue(queuedText, true, taskIds: [task.id]);
+
+    // Retrieve the active/dispatched prompt from simulated run
+    expect(service.activePrompt, isNotNull);
+    final finalPrompt = service.activePrompt!.text;
+
+    // Verify it contains the voice and complexity directives early
+    expect(finalPrompt, contains('Voice: Custom voice here'));
+    expect(finalPrompt, contains('Complexity: Concise override'));
+
+    // Verify it contains the user feedback suffix
+    expect(finalPrompt, contains('User Rejection Feedback:'));
+    expect(finalPrompt, contains('Some user feedback details'));
+
+    // Verify endingInstructions are at the absolute end (before ---)
+    final lines = finalPrompt.trim().split('\n');
+    expect(lines.length, greaterThan(3));
+    expect(lines[lines.length - 1], equals('---'));
+    expect(lines[lines.length - 2], equals('ENDING_HELPER_999'));
+
+    } finally {
+      service.setBridgeMode(originalMode);
+      service.setDryRunMode(false);
+      service.tasks.removeWhere((t) => t.id == 'test_queue_parsing');
+    }
   });
 }

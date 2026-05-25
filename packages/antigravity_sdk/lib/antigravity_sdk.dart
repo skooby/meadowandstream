@@ -408,6 +408,21 @@ class AntigravityClient {
       return connection;
     }
 
+    // Resolve ending instructions from context or tasks.json
+    String endingInstructions = context['endingInstructions'] as String? ?? '';
+    if (endingInstructions.isEmpty) {
+      try {
+        final tasksFile = File('.ai_bridge/tasks.json');
+        if (tasksFile.existsSync()) {
+          final content = tasksFile.readAsStringSync();
+          final parsed = jsonDecode(content);
+          if (parsed is Map<String, dynamic>) {
+            endingInstructions = parsed['endingInstructions'] as String? ?? '';
+          }
+        }
+      } catch (_) {}
+    }
+
     // Kick off background execution
     Future.microtask(() async {
       try {
@@ -415,9 +430,11 @@ class AntigravityClient {
         if (config.targetModel != null && config.targetModel!.isNotEmpty) {
           args.add('--model=${_resolveModelTier(config.targetModel!)}');
         }
-        args.add(
-          'CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n\nProcess bridge current_task.json',
-        );
+        var prompt = 'CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.\n\nProcess bridge current_task.json';
+        if (endingInstructions.isNotEmpty) {
+          prompt += '\n\n$endingInstructions';
+        }
+        args.add(prompt);
         final result = await _runAgentapi(args);
 
         if (result == null) {

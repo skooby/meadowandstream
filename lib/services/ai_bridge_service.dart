@@ -1433,6 +1433,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     await _updateDispatchState();
     final json = task.toJson();
     json['name'] = _buildTaskPathName(task);
+    json['endingInstructions'] = _endingInstructions;
     final connection = await antigravityClient.invokeSubagent(json);
     _activeAgents[task.id] = connection;
     notifyListeners();
@@ -1723,7 +1724,44 @@ wshShell.AppActivate $myPid
                 }
               }
 
-              final dynamicPrompt = await buildTaskPrompt(task, targetCriteria: targetItem);
+              // Extract replyTypeDirective lines
+              String? replyTypeDirective;
+              final List<String> voiceLines = [];
+              final List<String> lines = nextPrompt.text.split('\n');
+              for (final line in lines) {
+                if (line.startsWith('Voice:') || line.startsWith('Complexity:') || line.startsWith('CRITICAL OVERRIDE DIRECTIVE:')) {
+                  voiceLines.add(line);
+                }
+              }
+              if (voiceLines.isNotEmpty) {
+                replyTypeDirective = voiceLines.join('\n');
+              }
+
+              // Extract extraSuffix
+              String? extraSuffix;
+              final endMarkerIndex = nextPrompt.text.indexOf('\n---');
+              if (endMarkerIndex != -1) {
+                final remaining = nextPrompt.text.substring(endMarkerIndex + 4).trim();
+                if (remaining.isNotEmpty) {
+                  var cleanSuffix = remaining;
+                  if (_endingInstructions.isNotEmpty && cleanSuffix.contains(_endingInstructions)) {
+                    cleanSuffix = cleanSuffix.replaceAll(_endingInstructions, '').trim();
+                  }
+                  if (cleanSuffix.endsWith('---')) {
+                    cleanSuffix = cleanSuffix.substring(0, cleanSuffix.length - 3).trim();
+                  }
+                  if (cleanSuffix.trim().isNotEmpty) {
+                    extraSuffix = cleanSuffix.trim();
+                  }
+                }
+              }
+
+              final dynamicPrompt = await buildTaskPrompt(
+                task,
+                targetCriteria: targetItem,
+                replyTypeDirective: replyTypeDirective,
+                extraSuffix: extraSuffix,
+              );
 
               final directivesIndex = nextPrompt.text.indexOf('# PRIMARY DIRECTIVES');
               if (directivesIndex > 0) {
@@ -2830,13 +2868,23 @@ wshShell.AppActivate $myPid
     } catch (_) {}
   }
 
-  Future<String> buildTaskPrompt(AiTask task, {AiVerificationCriteria? targetCriteria}) async {
+  Future<String> buildTaskPrompt(
+    AiTask task, {
+    AiVerificationCriteria? targetCriteria,
+    String? replyTypeDirective,
+    String? extraSuffix,
+  }) async {
     final sb = StringBuffer();
     sb.writeln('# PRIMARY DIRECTIVES');
     sb.writeln('> [!IMPORTANT]');
     sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.');
     sb.writeln('To align context with the current workspace state, you must also read the recent conversation history in `.ai_bridge/conversation_history.md` and the database dump in `.ai_bridge/db_dump.json` using your file-reading tools.\n');
     
+    if (replyTypeDirective != null && replyTypeDirective.isNotEmpty) {
+      sb.writeln(replyTypeDirective.trim());
+      sb.writeln('');
+    }
+
     String modeInstructions = _quickInstructions;
     if (_isPreviewMode) {
       final state = task.previewState;
@@ -2891,6 +2939,11 @@ wshShell.AppActivate $myPid
       for (final link in task.hyperlinks) {
         sb.writeln('- $link');
       }
+    }
+
+    if (extraSuffix != null && extraSuffix.isNotEmpty) {
+      sb.writeln('');
+      sb.writeln(extraSuffix.trim());
     }
  
     if (_endingInstructions.isNotEmpty) {
@@ -2955,22 +3008,13 @@ wshShell.AppActivate $myPid
         .toList();
 
     if (finalUnchecked.isEmpty) {
-      final basePrompt = await buildTaskPrompt(updatedTask);
+      final basePrompt = await buildTaskPrompt(updatedTask, replyTypeDirective: replyTypeDirective);
       final fullPrompt = crashInfo.isEmpty ? basePrompt : '$crashInfo$basePrompt';
       await sendToQueue(fullPrompt, blockScreen, taskIds: [task.id]);
     } else {
       for (final item in finalUnchecked) {
-        final basePrompt = await buildTaskPrompt(updatedTask, targetCriteria: item);
-        String prompt = basePrompt;
-        if (replyTypeDirective.isNotEmpty) {
-          final index = prompt.indexOf('\n\n');
-          if (index != -1) {
-            prompt = prompt.substring(0, index + 2) + replyTypeDirective + '\n' + prompt.substring(index + 2);
-          } else {
-            prompt = '$replyTypeDirective\n$prompt';
-          }
-        }
-        final fullPrompt = crashInfo.isEmpty ? prompt : '$crashInfo$prompt';
+        final basePrompt = await buildTaskPrompt(updatedTask, targetCriteria: item, replyTypeDirective: replyTypeDirective);
+        final fullPrompt = crashInfo.isEmpty ? basePrompt : '$crashInfo$basePrompt';
         await sendToQueue(fullPrompt, blockScreen, taskIds: [task.id], targetCriteriaDescription: item.description);
       }
     }
@@ -3012,9 +3056,10 @@ wshShell.AppActivate $myPid
     
     await compilePrimaryDirectivesFile(task);
     
-    final basePrompt = await buildTaskPrompt(task);
-    final fullPrompt = '$basePrompt\n\nUser Rejection Feedback:\n$feedback';
-    
+    final fullPrompt = await buildTaskPrompt(
+      task,
+      extraSuffix: 'User Rejection Feedback:\n$feedback',
+    );
     await sendToQueue(fullPrompt, true, taskIds: [task.id]);
   }
 
