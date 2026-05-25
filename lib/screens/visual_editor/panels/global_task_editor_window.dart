@@ -54,8 +54,9 @@ void hideTaskEditorWindow() {
 class ChecklistItemContainer extends StatefulWidget {
   final AiVerificationStatus status;
   final bool isPreview;
+  final bool isLocked;
   final Widget child;
-  const ChecklistItemContainer({Key? key, required this.status, required this.isPreview, required this.child}) : super(key: key);
+  const ChecklistItemContainer({Key? key, required this.status, required this.isPreview, this.isLocked = false, required this.child}) : super(key: key);
   @override
   State<ChecklistItemContainer> createState() => _ChecklistItemContainerState();
 }
@@ -87,15 +88,18 @@ class _ChecklistItemContainerState extends State<ChecklistItemContainer> with Si
           color: Colors.black26,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(
-              color: widget.status == AiVerificationStatus.verified
-                  ? Colors.green
-                  : widget.status == AiVerificationStatus.pendingReview
-                      ? Colors.orange
-                      : widget.status == AiVerificationStatus.submitted
-                          ? Colors.blueAccent
-                          : widget.status == AiVerificationStatus.ignored
-                              ? Colors.grey.withOpacity(0.5)
-                              : AppColors.controlBorder),
+              color: widget.isLocked
+                  ? Colors.orangeAccent
+                  : widget.status == AiVerificationStatus.verified
+                      ? Colors.green
+                      : widget.status == AiVerificationStatus.pendingReview
+                          ? Colors.orange
+                          : widget.status == AiVerificationStatus.submitted
+                              ? Colors.blueAccent
+                              : widget.status == AiVerificationStatus.ignored
+                                  ? Colors.grey.withOpacity(0.5)
+                                  : AppColors.controlBorder,
+              width: widget.isLocked ? 1.5 : 1.0),
         ),
         child: widget.child,
       );
@@ -197,6 +201,14 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
   List<TextEditingController> _verificationControllers = [];
   List<TextEditingController> _verificationGoalControllers = [];
   bool isVerificationCriteriaSectionExpanded = true;
+
+  bool _isItemLocked(AiVerificationCriteria item) {
+    final activePrompt = AiBridgeService.instance.activePrompt;
+    if (activePrompt == null) return false;
+    if (activePrompt.targetCriteriaDescription == null) return false;
+    return activePrompt.targetCriteriaDescription!.trim().toLowerCase() ==
+        item.description.trim().toLowerCase();
+  }
 
   List<String> fileAttachments = [];
   List<String> hyperlinks = [];
@@ -1464,628 +1476,677 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                     key: ValueKey(_verificationControllers[i]),
                     status: verificationCriteriaList[i].status,
                     isPreview: verificationCriteriaList[i].isPreview,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    isLocked: _isItemLocked(verificationCriteriaList[i]),
+                    child: Builder(
+                      builder: (context) {
+                        final isItemLocked = _isItemLocked(verificationCriteriaList[i]);
+                        return Stack(
+                          clipBehavior: Clip.none,
                           children: [
-                            Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: InkWell(
-                                onTap: () {
-                                  setStateBuilder(() {
-                                    if (verificationCriteriaList[i].status ==
-                                        AiVerificationStatus.none) {
-                                      if (verificationCriteriaList[i]
-                                          .description
-                                          .trim()
-                                          .endsWith('?')) {
-                                        verificationCriteriaList[i].status =
-                                            AiVerificationStatus.pendingReview;
-                                        verificationCriteriaList[i].isVerified =
-                                            false;
-                                      } else {
-                                        verificationCriteriaList[i].status =
-                                            AiVerificationStatus.verified;
-                                        verificationCriteriaList[i].isVerified =
-                                            true;
-                                      }
-                                    } else if (verificationCriteriaList[i]
-                                            .status ==
-                                        AiVerificationStatus.pendingReview) {
-                                      verificationCriteriaList[i].status =
-                                          AiVerificationStatus.verified;
-                                      verificationCriteriaList[i].isVerified =
-                                          true;
-                                    } else {
-                                      verificationCriteriaList[i].status =
-                                          AiVerificationStatus.none;
-                                      verificationCriteriaList[i].isVerified =
-                                          false;
-                                      verificationCriteriaList[i].proof = null;
-verificationCriteriaList[i].isCommitted = false;
-                                    }
-                                    _executeAutoSave();
-                                    
-                                    if (verificationCriteriaList[i].status == AiVerificationStatus.verified) {
-                                      // Removed
-                                    }
-                                  });
-                                },
-                                child: Icon(
-                                  verificationCriteriaList[i].status ==
-                                          AiVerificationStatus.verified
-                                      ? Icons.check_box
-                                      : verificationCriteriaList[i].status ==
-                                              AiVerificationStatus.pendingReview
-                                          ? Icons.check_box
-                                          : verificationCriteriaList[i].status ==
-                                                  AiVerificationStatus.submitted
-                                              ? Icons.hourglass_top
-                                              : Icons.check_box_outline_blank,
-                                  size: 18,
-                                  color: verificationCriteriaList[i].status ==
-                                          AiVerificationStatus.verified
-                                      ? Colors.green
-                                      : verificationCriteriaList[i].status ==
-                                              AiVerificationStatus.pendingReview
-                                          ? Colors.orange
-                                          : verificationCriteriaList[i].status ==
-                                                  AiVerificationStatus.submitted
-                                              ? Colors.blueAccent
-                                              : verificationCriteriaList[i].status == AiVerificationStatus.ignored
-                                                  ? Colors.grey.withOpacity(0.5)
-                                                  : AppColors.controlBorder,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Focus(
-                                    onFocusChange: (hasFocus) {
-                                      if (_verificationControllers[i] is SpellCheckTextEditingController) {
-                                        (_verificationControllers[i] as SpellCheckTextEditingController).setEditing(hasFocus);
-                                      }
-                                    },
-                                    onKeyEvent: (FocusNode node, KeyEvent event) {
-                                      if (event is KeyDownEvent &&
-                                          event.logicalKey ==
-                                              LogicalKeyboardKey.enter &&
-                                          !HardwareKeyboard
-                                              .instance.isShiftPressed) {
-                                        FocusScope.of(context).nextFocus();
-                                        return KeyEventResult.handled;
-                                      }
-                                      return KeyEventResult.ignored;
-                                    },
-                                    child: TextFormField(
-                                      key: ValueKey(
-                                          '${existingTask?.id}_verification_$i'),
-                                      controller: _verificationControllers[i],
-                                      contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
-                                      style: TextStyle(
-                                        color: verificationCriteriaList[i].status == AiVerificationStatus.ignored ? Colors.white54 : Colors.white,
-                                        fontSize: AppUIConfig.rootFontSize,
-                                        decoration: verificationCriteriaList[i].status ==
-                                                    AiVerificationStatus.verified
-                                                ? TextDecoration.lineThrough
-                                                : verificationCriteriaList[i].status == AiVerificationStatus.ignored ? TextDecoration.lineThrough : null,
-                                        decorationColor: verificationCriteriaList[i].status == AiVerificationStatus.ignored ? Colors.white54 : Colors.white,
-                                      ),
-                                      maxLines: null,
-                                      keyboardType: TextInputType.multiline,
-                                      textInputAction: TextInputAction.newline,
-                                      decoration: const InputDecoration(
-                                        isDense: true,
-                                        contentPadding: EdgeInsets.zero,
-                                        border: InputBorder.none,
-                                      ),
-                                      onChanged: (val) {
-                                        verificationCriteriaList[i].description = val;
-                                        if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
-                                            verificationCriteriaList[i].status = AiVerificationStatus.none;
-                                            verificationCriteriaList[i].isVerified = false;
-                                            verificationCriteriaList[i].proof = null;
-                                            verificationCriteriaList[i].isCommitted = false;
-                                        }
-                                        _executeAutoSave();
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Tooltip(
-                                        message: 'Goal Not Met (L-Click: Retry, R-Click: -1)',
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            setStateBuilder(() {
-                                              verificationCriteriaList[i].status = AiVerificationStatus.none;
-                                              verificationCriteriaList[i].isVerified = false;
-                                              verificationCriteriaList[i].proof = null;
-verificationCriteriaList[i].isCommitted = false;
-                                              if (verificationCriteriaList[i].tryCount < 9) {
-                                                verificationCriteriaList[i].tryCount++;
-                                              }
-                                              _executeAutoSave();
-                                            });
-                                          },
-                                          onSecondaryTap: () {
-                                            setStateBuilder(() {
-                                              if (verificationCriteriaList[i].tryCount > 0) {
-                                                verificationCriteriaList[i].tryCount--;
-                                                _executeAutoSave();
-                                              }
-                                            });
-                                          },
-                                          child: Container(
-                                            margin: const EdgeInsets.only(right: 8.0, top: 2.0),
-                                            width: 16,
-                                            height: 16,
-                                            alignment: Alignment.center,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: verificationCriteriaList[i].tryCount > 5 ? Colors.redAccent : Colors.white, 
-                                                width: 1.0
-                                              ),
-                                            ),
-                                            child: Padding(
-                                              padding: const EdgeInsets.only(bottom: 1.0),
-                                              child: Text(
-                                                '${verificationCriteriaList[i].tryCount}',
-                                                style: TextStyle(
-                                                  color: verificationCriteriaList[i].tryCount > 5 ? Colors.redAccent : Colors.white,
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: Focus(
-                                          onFocusChange: (hasFocus) {
-                                            if (_verificationGoalControllers[i] is SpellCheckTextEditingController) {
-                                              (_verificationGoalControllers[i] as SpellCheckTextEditingController).setEditing(hasFocus);
-                                            }
-                                          },
-                                          onKeyEvent: (FocusNode node, KeyEvent event) {
-                                            if (event is KeyDownEvent &&
-                                                event.logicalKey ==
-                                                    LogicalKeyboardKey.enter &&
-                                                !HardwareKeyboard
-                                                    .instance.isShiftPressed) {
-                                              if (i ==
-                                                  verificationCriteriaList.length - 1) {
-                                                newSubTaskFocus.requestFocus();
-                                              } else {
-                                                FocusScope.of(context).nextFocus();
-                                              }
-                                              return KeyEventResult.handled;
-                                            }
-                                            return KeyEventResult.ignored;
-                                          },
-                                          child: TextFormField(
-                                            key: ValueKey(
-                                                '${existingTask?.id}_verification_goal_$i'),
-                                            controller: _verificationGoalControllers[i],
-                                            contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
-                                            style: TextStyle(
-                                              color: verificationCriteriaList[i].status == AiVerificationStatus.ignored ? Colors.white54 : Colors.white70,
-                                              fontSize: AppUIConfig.rootFontSize * 0.9,
-                                              decoration: verificationCriteriaList[i].status ==
-                                                          AiVerificationStatus.verified
-                                                      ? TextDecoration.lineThrough
-                                                      : verificationCriteriaList[i].status == AiVerificationStatus.ignored ? TextDecoration.lineThrough : null,
-                                              decorationColor: verificationCriteriaList[i].status == AiVerificationStatus.ignored ? Colors.white54 : Colors.white70,
-                                            ),
-                                            maxLines: null,
-                                            keyboardType: TextInputType.multiline,
-                                            textInputAction: TextInputAction.newline,
-                                            decoration: InputDecoration(
-                                              isDense: true,
-                                              hintText: 'Define the goal for this checklist item...',
-                                              hintStyle: TextStyle(
-                                                  color: Colors.white.withOpacity(0.3),
-                                                  fontSize: AppUIConfig.rootFontSize * 0.9,
-                                                  fontStyle: FontStyle.italic),
-                                              contentPadding: EdgeInsets.zero,
-                                              border: InputBorder.none,
-                                            ),
-                                            onChanged: (val) {
-                                              verificationCriteriaList[i].goal = val;
-                                              if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
-                                                  verificationCriteriaList[i].status = AiVerificationStatus.none;
-                                                  verificationCriteriaList[i].isVerified = false;
-                                                  verificationCriteriaList[i].proof = null;
-                                                  verificationCriteriaList[i].isCommitted = false;
-                                              }
-                                              _executeAutoSave();
-                                            },
-                                          ),
-                                        ),
-                                      ),
-
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            ReorderableDragStartListener(
-                              index: i,
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 6.0),
-                                child: Icon(Icons.drag_indicator,
-                                    size: 18, color: Colors.white38),
-                              ),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                  verificationCriteriaList[i]
-                                          .requestClarification
-                                      ? Icons.lightbulb
-                                      : Icons.lightbulb_outline,
-                                  size: 18,
-                                  color: verificationCriteriaList[i]
-                                          .requestClarification
-                                      ? Colors.yellow
-                                      : Colors.yellow.withOpacity(0.5)),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              tooltip: 'Request AI Clarification',
-                              onPressed: () {
-                                setStateBuilder(() {
-                                  verificationCriteriaList[i]
-                                          .requestClarification =
-                                      !verificationCriteriaList[i]
-                                          .requestClarification;
-                                  _executeAutoSave();
-                                });
-                              },
-                            ),
-                            const SizedBox(width: 6),
-                            IconButton(
-                              icon: Icon(
-                                  verificationCriteriaList[i].status == AiVerificationStatus.ignored
-                                      ? Icons.do_not_disturb_on
-                                      : Icons.do_not_disturb_alt,
-                                  size: 18,
-                                  color: verificationCriteriaList[i].status == AiVerificationStatus.ignored
-                                      ? Colors.grey
-                                      : Colors.grey.withOpacity(0.5)),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              tooltip: 'Ignore Task',
-                              onPressed: () {
-                                setStateBuilder(() {
-                                  if (verificationCriteriaList[i].status == AiVerificationStatus.ignored) {
-                                    verificationCriteriaList[i].status = AiVerificationStatus.none;
-                                  } else {
-                                    verificationCriteriaList[i].status = AiVerificationStatus.ignored;
-                                    verificationCriteriaList[i].isVerified = false;
-                                    verificationCriteriaList[i].proof = null;
-verificationCriteriaList[i].isCommitted = false;
-                                  }
-                                  _executeAutoSave();
-                                });
-                              },
-                            ),
-                            const SizedBox(width: 6),
-                            IconButton(
-                              icon: Icon(Icons.attach_file,
-                                  size: 18,
-                                  color: AppColors.titleBarTextSecondary),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              tooltip: 'Attach file or image',
-                              onPressed: () {
-                                GlobalPickerState.instance.requestAttachmentViewer(
-                                  contextLabel: verificationCriteriaList[i].description,
-                                  onLink: (linkedPath) {
-                                    if (!verificationCriteriaList[i].attachments.contains(linkedPath)) {
-                                      setStateBuilder(() {
-                                        verificationCriteriaList[i].attachments.add(linkedPath);
-                                        _executeAutoSave();
-                                      });
-                                    }
-                                  },
-                                );
-                                showAttachmentViewerWindow(context);
-                              },
-                            ),
-                            const SizedBox(width: 6),
-                            IconButton(
-                              icon: Icon(Icons.delete_outline,
-                                  size: 18,
-                                  color: Colors.redAccent.withOpacity(0.8)),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              onPressed: () {
-                                setStateBuilder(() {
-                                  verificationCriteriaList.removeAt(i);
-                                  _verificationControllers[i].dispose();
-                                  _verificationControllers.removeAt(i);
-                                  _verificationGoalControllers[i].dispose();
-                                  _verificationGoalControllers.removeAt(i);
-                                  _executeAutoSave();
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          constraints: const BoxConstraints(maxHeight: 120),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.black38,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: Colors.white10),
-                          ),
-                          child: TextFormField(
-                            key: ValueKey('${existingTask?.id}_verification_notes_$i'),
-                            initialValue: verificationCriteriaList[i].notes,
-                            style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: AppUIConfig.rootFontSize * 0.9),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              hintText: 'Add notes for this checklist item...',
-                              hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: AppUIConfig.rootFontSize * 0.9),
-                              border: InputBorder.none,
-                            ),
-                            maxLines: null,
-                            onChanged: (val) {
-                              verificationCriteriaList[i].notes = val;
-                              _executeAutoSave();
-                            },
-                          ),
-                        ),
-                        if (verificationCriteriaList[i].status == AiVerificationStatus.verified) ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            constraints: const BoxConstraints(maxHeight: 120),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black45,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.white.withOpacity(0.1)),
-                            ),
-                            child: TextFormField(
-                              initialValue: verificationCriteriaList[i].proof ?? '',
-                              style: TextStyle(
-                                  color: Colors.lightBlueAccent,
-                                  fontSize: AppUIConfig.rootFontSize * 0.9,
-                                  fontFamily: 'monospace'),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                hintText: 'Add a completion note / proof...',
-                                hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                                border: InputBorder.none,
-                              ),
-                              maxLines: null,
-                              onChanged: (val) {
-                                verificationCriteriaList[i].proof = val;
-                                _executeAutoSave();
-                              },
-                            ),
-                          ),
-                        ] else if (verificationCriteriaList[i].proof != null &&
-                            verificationCriteriaList[i].proof!.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            constraints: const BoxConstraints(maxHeight: 70),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black45,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: SingleChildScrollView(
-                              child: SelectableText(
-                                  'Proof: ${verificationCriteriaList[i].proof}',
-                                  style: TextStyle(
-                                      color: Colors.lightBlueAccent,
-                                      fontSize: AppUIConfig.rootFontSize * 0.9,
-                                      fontFamily: 'monospace')),
-                            ),
-                          ),
-                        ],
-                        // ── Attachment row ──────────────────────────────
-                        if (verificationCriteriaList[i].attachments.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                      for (int ai = 0; ai < verificationCriteriaList[i].attachments.length; ai++) ...[
-                                        Builder(builder: (ctx) {
-                                          final aPath = verificationCriteriaList[i].attachments[ai];
-                                          final aName = p.basename(aPath);
-                                          final aIsImg = _isImageFile(aPath);
-                                          return Tooltip(
-                                            message: aName,
-                                            child: GestureDetector(
-                                              onTap: () {
-                                                GlobalPickerState.instance.requestAttachmentViewer(
-                                                  contextLabel: verificationCriteriaList[i].description,
-                                                  onLink: (linkedPath) {
-                                                    if (!verificationCriteriaList[i].attachments.contains(linkedPath)) {
-                                                      setStateBuilder(() {
-                                                        verificationCriteriaList[i].attachments.add(linkedPath);
-                                                        if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
-                                                          verificationCriteriaList[i].status = AiVerificationStatus.none;
-                                                          verificationCriteriaList[i].isVerified = false;
-                                                          verificationCriteriaList[i].proof = null;
-verificationCriteriaList[i].isCommitted = false;
-                                                        }
-                                                        _executeAutoSave();
-                                                      });
-                                                    }
-                                                  },
-                                                );
-                                                showAttachmentViewerWindow(context);
-                                              },
-                                              onSecondaryTap: () {
-                                                // Right-click removes
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: InkWell(
+                                        onTap: isItemLocked
+                                            ? null
+                                            : () {
                                                 setStateBuilder(() {
-                                                  verificationCriteriaList[i].attachments.removeAt(ai);
-                                                  if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
-                                                    verificationCriteriaList[i].status = AiVerificationStatus.none;
-                                                    verificationCriteriaList[i].isVerified = false;
+                                                  if (verificationCriteriaList[i].status ==
+                                                      AiVerificationStatus.none) {
+                                                    if (verificationCriteriaList[i]
+                                                        .description
+                                                        .trim()
+                                                        .endsWith('?')) {
+                                                      verificationCriteriaList[i].status =
+                                                          AiVerificationStatus.pendingReview;
+                                                      verificationCriteriaList[i].isVerified =
+                                                          false;
+                                                    } else {
+                                                      verificationCriteriaList[i].status =
+                                                          AiVerificationStatus.verified;
+                                                      verificationCriteriaList[i].isVerified =
+                                                          true;
+                                                    }
+                                                  } else if (verificationCriteriaList[i]
+                                                          .status ==
+                                                      AiVerificationStatus.pendingReview) {
+                                                    verificationCriteriaList[i].status =
+                                                        AiVerificationStatus.verified;
+                                                    verificationCriteriaList[i].isVerified =
+                                                        true;
+                                                  } else {
+                                                    verificationCriteriaList[i].status =
+                                                        AiVerificationStatus.none;
+                                                    verificationCriteriaList[i].isVerified =
+                                                        false;
                                                     verificationCriteriaList[i].proof = null;
-verificationCriteriaList[i].isCommitted = false;
+                                                    verificationCriteriaList[i].isCommitted = false;
                                                   }
                                                   _executeAutoSave();
                                                 });
                                               },
-                                              child: Container(
-                                                margin: const EdgeInsets.only(right: 4),
-                                                width: 28,
-                                                height: 28,
-                                                decoration: BoxDecoration(
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  border: Border.all(color: AppColors.controlBorder),
-                                                  color: Colors.black26,
+                                        child: Icon(
+                                          verificationCriteriaList[i].status ==
+                                                  AiVerificationStatus.verified
+                                              ? Icons.check_box
+                                              : verificationCriteriaList[i].status ==
+                                                      AiVerificationStatus.pendingReview
+                                                  ? Icons.check_box
+                                                  : verificationCriteriaList[i].status ==
+                                                          AiVerificationStatus.submitted
+                                                      ? Icons.hourglass_top
+                                                      : Icons.check_box_outline_blank,
+                                          size: 18,
+                                          color: verificationCriteriaList[i].status ==
+                                                  AiVerificationStatus.verified
+                                              ? Colors.green
+                                              : verificationCriteriaList[i].status ==
+                                                      AiVerificationStatus.pendingReview
+                                                  ? Colors.orange
+                                                  : verificationCriteriaList[i].status ==
+                                                          AiVerificationStatus.submitted
+                                                      ? Colors.blueAccent
+                                                      : verificationCriteriaList[i].status == AiVerificationStatus.ignored
+                                                          ? Colors.grey.withOpacity(0.5)
+                                                          : AppColors.controlBorder,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Focus(
+                                            onFocusChange: (hasFocus) {
+                                              if (_verificationControllers[i] is SpellCheckTextEditingController) {
+                                                (_verificationControllers[i] as SpellCheckTextEditingController).setEditing(hasFocus);
+                                              }
+                                            },
+                                            onKeyEvent: (FocusNode node, KeyEvent event) {
+                                              if (event is KeyDownEvent &&
+                                                  event.logicalKey ==
+                                                      LogicalKeyboardKey.enter &&
+                                                  !HardwareKeyboard
+                                                      .instance.isShiftPressed) {
+                                                FocusScope.of(context).nextFocus();
+                                                return KeyEventResult.handled;
+                                              }
+                                              return KeyEventResult.ignored;
+                                            },
+                                            child: TextFormField(
+                                              key: ValueKey(
+                                                  '${existingTask?.id}_verification_$i'),
+                                              controller: _verificationControllers[i],
+                                              contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
+                                              readOnly: isItemLocked,
+                                              style: TextStyle(
+                                                color: verificationCriteriaList[i].status == AiVerificationStatus.ignored ? Colors.white54 : Colors.white,
+                                                fontSize: AppUIConfig.rootFontSize,
+                                                decoration: verificationCriteriaList[i].status ==
+                                                            AiVerificationStatus.verified
+                                                        ? TextDecoration.lineThrough
+                                                        : verificationCriteriaList[i].status == AiVerificationStatus.ignored ? TextDecoration.lineThrough : null,
+                                                decorationColor: verificationCriteriaList[i].status == AiVerificationStatus.ignored ? Colors.white54 : Colors.white,
+                                              ),
+                                              maxLines: null,
+                                              keyboardType: TextInputType.multiline,
+                                              textInputAction: TextInputAction.newline,
+                                              decoration: const InputDecoration(
+                                                isDense: true,
+                                                contentPadding: EdgeInsets.zero,
+                                                border: InputBorder.none,
+                                              ),
+                                              onChanged: (val) {
+                                                verificationCriteriaList[i].description = val;
+                                                if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
+                                                    verificationCriteriaList[i].status = AiVerificationStatus.none;
+                                                    verificationCriteriaList[i].isVerified = false;
+                                                    verificationCriteriaList[i].proof = null;
+                                                    verificationCriteriaList[i].isCommitted = false;
+                                                }
+                                                _executeAutoSave();
+                                              },
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Tooltip(
+                                                message: isItemLocked
+                                                    ? 'Goal Not Met (Locked)'
+                                                    : 'Goal Not Met (L-Click: Retry, R-Click: -1)',
+                                                child: GestureDetector(
+                                                  onTap: isItemLocked
+                                                      ? null
+                                                      : () {
+                                                          setStateBuilder(() {
+                                                            verificationCriteriaList[i].status = AiVerificationStatus.none;
+                                                            verificationCriteriaList[i].isVerified = false;
+                                                            verificationCriteriaList[i].proof = null;
+                                                            verificationCriteriaList[i].isCommitted = false;
+                                                            if (verificationCriteriaList[i].tryCount < 9) {
+                                                              verificationCriteriaList[i].tryCount++;
+                                                            }
+                                                            _executeAutoSave();
+                                                          });
+                                                        },
+                                                  onSecondaryTap: isItemLocked
+                                                      ? null
+                                                      : () {
+                                                          setStateBuilder(() {
+                                                            if (verificationCriteriaList[i].tryCount > 0) {
+                                                              verificationCriteriaList[i].tryCount--;
+                                                              _executeAutoSave();
+                                                            }
+                                                          });
+                                                        },
+                                                  child: Container(
+                                                    margin: const EdgeInsets.only(right: 8.0, top: 2.0),
+                                                    width: 16,
+                                                    height: 16,
+                                                    alignment: Alignment.center,
+                                                    decoration: BoxDecoration(
+                                                      shape: BoxShape.circle,
+                                                      border: Border.all(
+                                                        color: isItemLocked
+                                                            ? Colors.orangeAccent.withOpacity(0.5)
+                                                            : (verificationCriteriaList[i].tryCount > 5 ? Colors.redAccent : Colors.white), 
+                                                        width: 1.0
+                                                      ),
+                                                    ),
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.only(bottom: 1.0),
+                                                      child: Text(
+                                                        '${verificationCriteriaList[i].tryCount}',
+                                                        style: TextStyle(
+                                                          color: isItemLocked
+                                                              ? Colors.orangeAccent
+                                                              : (verificationCriteriaList[i].tryCount > 5 ? Colors.redAccent : Colors.white),
+                                                          fontSize: 9,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
                                                 ),
-                                                clipBehavior: Clip.antiAlias,
-                                                child: aIsImg
-                                                    ? Image.file(
-                                                        File(aPath),
-                                                        fit: BoxFit.cover,
-                                                        errorBuilder: (_, __, ___) => Icon(
-                                                            Icons.insert_drive_file,
+                                              ),
+                                              Expanded(
+                                                child: Focus(
+                                                  onFocusChange: (hasFocus) {
+                                                    if (_verificationGoalControllers[i] is SpellCheckTextEditingController) {
+                                                      (_verificationGoalControllers[i] as SpellCheckTextEditingController).setEditing(hasFocus);
+                                                    }
+                                                  },
+                                                  onKeyEvent: (FocusNode node, KeyEvent event) {
+                                                    if (event is KeyDownEvent &&
+                                                        event.logicalKey ==
+                                                            LogicalKeyboardKey.enter &&
+                                                        !HardwareKeyboard
+                                                            .instance.isShiftPressed) {
+                                                      if (i ==
+                                                          verificationCriteriaList.length - 1) {
+                                                        newSubTaskFocus.requestFocus();
+                                                      } else {
+                                                        FocusScope.of(context).nextFocus();
+                                                      }
+                                                      return KeyEventResult.handled;
+                                                    }
+                                                    return KeyEventResult.ignored;
+                                                  },
+                                                  child: TextFormField(
+                                                    key: ValueKey(
+                                                        '${existingTask?.id}_verification_goal_$i'),
+                                                    controller: _verificationGoalControllers[i],
+                                                    contextMenuBuilder: SpellCheckTextEditingController.buildContextMenu,
+                                                    readOnly: isItemLocked,
+                                                    style: TextStyle(
+                                                      color: verificationCriteriaList[i].status == AiVerificationStatus.ignored ? Colors.white54 : Colors.white70,
+                                                      fontSize: AppUIConfig.rootFontSize * 0.9,
+                                                      decoration: verificationCriteriaList[i].status ==
+                                                                  AiVerificationStatus.verified
+                                                              ? TextDecoration.lineThrough
+                                                              : verificationCriteriaList[i].status == AiVerificationStatus.ignored ? TextDecoration.lineThrough : null,
+                                                      decorationColor: verificationCriteriaList[i].status == AiVerificationStatus.ignored ? Colors.white54 : Colors.white70,
+                                                    ),
+                                                    maxLines: null,
+                                                    keyboardType: TextInputType.multiline,
+                                                    textInputAction: TextInputAction.newline,
+                                                    decoration: InputDecoration(
+                                                      isDense: true,
+                                                      hintText: 'Define the goal for this checklist item...',
+                                                      hintStyle: TextStyle(
+                                                          color: Colors.white.withOpacity(0.3),
+                                                          fontSize: AppUIConfig.rootFontSize * 0.9,
+                                                          fontStyle: FontStyle.italic),
+                                                      contentPadding: EdgeInsets.zero,
+                                                      border: InputBorder.none,
+                                                    ),
+                                                    onChanged: (val) {
+                                                      verificationCriteriaList[i].goal = val;
+                                                      if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
+                                                          verificationCriteriaList[i].status = AiVerificationStatus.none;
+                                                          verificationCriteriaList[i].isVerified = false;
+                                                          verificationCriteriaList[i].proof = null;
+                                                          verificationCriteriaList[i].isCommitted = false;
+                                                      }
+                                                      _executeAutoSave();
+                                                    },
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    isItemLocked
+                                        ? const Padding(
+                                            padding: EdgeInsets.only(right: 6.0),
+                                            child: Icon(Icons.lock,
+                                                size: 18, color: Colors.orangeAccent),
+                                          )
+                                        : ReorderableDragStartListener(
+                                            index: i,
+                                            child: const Padding(
+                                              padding: EdgeInsets.only(right: 6.0),
+                                              child: Icon(Icons.drag_indicator,
+                                                  size: 18, color: Colors.white38),
+                                            ),
+                                          ),
+                                    IconButton(
+                                      icon: Icon(
+                                          verificationCriteriaList[i]
+                                                  .requestClarification
+                                              ? Icons.lightbulb
+                                              : Icons.lightbulb_outline,
+                                          size: 18,
+                                          color: isItemLocked
+                                              ? Colors.grey.withOpacity(0.3)
+                                              : (verificationCriteriaList[i]
+                                                      .requestClarification
+                                                  ? Colors.yellow
+                                                  : Colors.yellow.withOpacity(0.5))),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      tooltip: isItemLocked ? 'Locked' : 'Request AI Clarification',
+                                      onPressed: isItemLocked
+                                          ? null
+                                          : () {
+                                              setStateBuilder(() {
+                                                verificationCriteriaList[i]
+                                                        .requestClarification =
+                                                    !verificationCriteriaList[i]
+                                                        .requestClarification;
+                                                _executeAutoSave();
+                                              });
+                                            },
+                                    ),
+                                    const SizedBox(width: 6),
+                                    IconButton(
+                                      icon: Icon(
+                                          verificationCriteriaList[i].status == AiVerificationStatus.ignored
+                                              ? Icons.do_not_disturb_on
+                                              : Icons.do_not_disturb_alt,
+                                          size: 18,
+                                          color: isItemLocked
+                                              ? Colors.grey.withOpacity(0.3)
+                                              : (verificationCriteriaList[i].status == AiVerificationStatus.ignored
+                                                  ? Colors.grey
+                                                  : Colors.grey.withOpacity(0.5))),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      tooltip: isItemLocked ? 'Locked' : 'Ignore Task',
+                                      onPressed: isItemLocked
+                                          ? null
+                                          : () {
+                                              setStateBuilder(() {
+                                                if (verificationCriteriaList[i].status == AiVerificationStatus.ignored) {
+                                                  verificationCriteriaList[i].status = AiVerificationStatus.none;
+                                                } else {
+                                                  verificationCriteriaList[i].status = AiVerificationStatus.ignored;
+                                                  verificationCriteriaList[i].isVerified = false;
+                                                  verificationCriteriaList[i].proof = null;
+                                                  verificationCriteriaList[i].isCommitted = false;
+                                                }
+                                                _executeAutoSave();
+                                              });
+                                            },
+                                    ),
+                                    const SizedBox(width: 6),
+                                    IconButton(
+                                      icon: Icon(Icons.attach_file,
+                                          size: 18,
+                                          color: isItemLocked
+                                              ? Colors.grey.withOpacity(0.3)
+                                              : AppColors.titleBarTextSecondary),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      tooltip: isItemLocked ? 'Locked' : 'Attach file or image',
+                                      onPressed: isItemLocked
+                                          ? null
+                                          : () {
+                                              GlobalPickerState.instance.requestAttachmentViewer(
+                                                contextLabel: verificationCriteriaList[i].description,
+                                                onLink: (linkedPath) {
+                                                  if (!verificationCriteriaList[i].attachments.contains(linkedPath)) {
+                                                    setStateBuilder(() {
+                                                      verificationCriteriaList[i].attachments.add(linkedPath);
+                                                      _executeAutoSave();
+                                                    });
+                                                  }
+                                                },
+                                              );
+                                              showAttachmentViewerWindow(context);
+                                            },
+                                    ),
+                                    const SizedBox(width: 6),
+                                    IconButton(
+                                      icon: Icon(Icons.delete_outline,
+                                          size: 18,
+                                          color: isItemLocked
+                                              ? Colors.grey.withOpacity(0.3)
+                                              : Colors.redAccent.withOpacity(0.8)),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: isItemLocked
+                                          ? null
+                                          : () {
+                                              setStateBuilder(() {
+                                                verificationCriteriaList.removeAt(i);
+                                                _verificationControllers[i].dispose();
+                                                _verificationControllers.removeAt(i);
+                                                _verificationGoalControllers[i].dispose();
+                                                _verificationGoalControllers.removeAt(i);
+                                                _executeAutoSave();
+                                              });
+                                            },
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  constraints: const BoxConstraints(maxHeight: 120),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black38,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: Colors.white10),
+                                  ),
+                                  child: TextFormField(
+                                    key: ValueKey('${existingTask?.id}_verification_notes_$i'),
+                                    initialValue: verificationCriteriaList[i].notes,
+                                    readOnly: isItemLocked,
+                                    style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: AppUIConfig.rootFontSize * 0.9),
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      hintText: 'Add notes for this checklist item...',
+                                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: AppUIConfig.rootFontSize * 0.9),
+                                      border: InputBorder.none,
+                                    ),
+                                    maxLines: null,
+                                    onChanged: (val) {
+                                      verificationCriteriaList[i].notes = val;
+                                      _executeAutoSave();
+                                    },
+                                  ),
+                                ),
+                                if (verificationCriteriaList[i].status == AiVerificationStatus.verified) ...[
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    constraints: const BoxConstraints(maxHeight: 120),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black45,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                                    ),
+                                    child: TextFormField(
+                                      initialValue: verificationCriteriaList[i].proof ?? '',
+                                      readOnly: isItemLocked,
+                                      style: TextStyle(
+                                          color: Colors.lightBlueAccent,
+                                          fontSize: AppUIConfig.rootFontSize * 0.9,
+                                          fontFamily: 'monospace'),
+                                      decoration: InputDecoration(
+                                        isDense: true,
+                                        hintText: 'Add a completion note / proof...',
+                                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                                        border: InputBorder.none,
+                                      ),
+                                      maxLines: null,
+                                      onChanged: (val) {
+                                        verificationCriteriaList[i].proof = val;
+                                        _executeAutoSave();
+                                      },
+                                    ),
+                                  ),
+                                ] else if (verificationCriteriaList[i].proof != null &&
+                                    verificationCriteriaList[i].proof!.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    constraints: const BoxConstraints(maxHeight: 70),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black45,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: SingleChildScrollView(
+                                      child: SelectableText(
+                                          'Proof: ${verificationCriteriaList[i].proof}',
+                                          style: TextStyle(
+                                              color: Colors.lightBlueAccent,
+                                              fontSize: AppUIConfig.rootFontSize * 0.9,
+                                              fontFamily: 'monospace')),
+                                    ),
+                                  ),
+                                ],
+                                // ── Attachment row ──────────────────────────────
+                                if (verificationCriteriaList[i].attachments.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          for (int ai = 0; ai < verificationCriteriaList[i].attachments.length; ai++) ...[
+                                            Builder(builder: (ctx) {
+                                              final aPath = verificationCriteriaList[i].attachments[ai];
+                                              final aName = p.basename(aPath);
+                                              final aIsImg = _isImageFile(aPath);
+                                              return Tooltip(
+                                                message: aName,
+                                                child: GestureDetector(
+                                                  onTap: () {
+                                                    GlobalPickerState.instance.requestAttachmentViewer(
+                                                      contextLabel: verificationCriteriaList[i].description,
+                                                      onLink: (linkedPath) {
+                                                        if (!verificationCriteriaList[i].attachments.contains(linkedPath)) {
+                                                          setStateBuilder(() {
+                                                            verificationCriteriaList[i].attachments.add(linkedPath);
+                                                            if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
+                                                              verificationCriteriaList[i].status = AiVerificationStatus.none;
+                                                              verificationCriteriaList[i].isVerified = false;
+                                                              verificationCriteriaList[i].proof = null;
+                                                              verificationCriteriaList[i].isCommitted = false;
+                                                            }
+                                                            _executeAutoSave();
+                                                          });
+                                                        }
+                                                      },
+                                                    );
+                                                    showAttachmentViewerWindow(context);
+                                                  },
+                                                  onSecondaryTap: isItemLocked
+                                                      ? null
+                                                      : () {
+                                                          // Right-click removes
+                                                          setStateBuilder(() {
+                                                            verificationCriteriaList[i].attachments.removeAt(ai);
+                                                            if (verificationCriteriaList[i].status != AiVerificationStatus.none) {
+                                                              verificationCriteriaList[i].status = AiVerificationStatus.none;
+                                                              verificationCriteriaList[i].isVerified = false;
+                                                              verificationCriteriaList[i].proof = null;
+                                                              verificationCriteriaList[i].isCommitted = false;
+                                                            }
+                                                            _executeAutoSave();
+                                                          });
+                                                        },
+                                                  child: Container(
+                                                    margin: const EdgeInsets.only(right: 4),
+                                                    width: 28,
+                                                    height: 28,
+                                                    decoration: BoxDecoration(
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      border: Border.all(color: AppColors.controlBorder),
+                                                      color: Colors.black26,
+                                                    ),
+                                                    clipBehavior: Clip.antiAlias,
+                                                    child: aIsImg
+                                                        ? Image.file(
+                                                            File(aPath),
+                                                            fit: BoxFit.cover,
+                                                            errorBuilder: (_, __, ___) => Icon(
+                                                                Icons.insert_drive_file,
+                                                                size: 14,
+                                                                color: AppColors.titleBarTextSecondary),
+                                                          )
+                                                        : Icon(Icons.insert_drive_file,
                                                             size: 14,
                                                             color: AppColors.titleBarTextSecondary),
-                                                      )
-                                                    : Icon(Icons.insert_drive_file,
-                                                        size: 14,
-                                                        color: AppColors.titleBarTextSecondary),
-                                              ),
-                                            ),
-                                          );
-                                        }),
+                                                  ),
+                                                ),
+                                              );
+                                            }),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            if (verificationCriteriaList[i].isCommitted)
+                              Positioned(
+                                bottom: -4,
+                                right: -4,
+                                child: IgnorePointer(
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween<double>(begin: 0.0, end: 1.0),
+                                    duration: const Duration(milliseconds: 500),
+                                    curve: Curves.elasticOut,
+                                    builder: (context, val, child) {
+                                      return Transform.scale(
+                                        scale: val,
+                                        child: child,
+                                      );
+                                    },
+                                    child: Icon(
+                                      Icons.check_circle_outline,
+                                      color: Colors.green.withOpacity(0.8),
+                                      size: 48,
+                                      shadows: [
+                                        Shadow(
+                                          color: Colors.black.withOpacity(0.5),
+                                          blurRadius: 4,
+                                          offset: const Offset(1, 1),
+                                        ),
                                       ],
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ],
-                      ],
-                    ),
-                    if (verificationCriteriaList[i].isCommitted)
-                      Positioned(
-                        bottom: -4,
-                        right: -4,
-                        child: IgnorePointer(
-                          child: TweenAnimationBuilder<double>(
-                            tween: Tween<double>(begin: 0.0, end: 1.0),
-                            duration: const Duration(milliseconds: 500),
-                            curve: Curves.elasticOut,
-                            builder: (context, val, child) {
-                              return Transform.scale(
-                                scale: val,
-                                child: child,
-                              );
-                            },
-                            child: Icon(
-                              Icons.check_circle_outline,
-                              color: Colors.green.withOpacity(0.8),
-                              size: 48,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black.withOpacity(0.5),
-                                  blurRadius: 4,
-                                  offset: const Offset(1, 1),
+                            if (verificationCriteriaList[i].isPreview)
+                              Positioned(
+                                bottom: -12,
+                                right: 8,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(20),
+                                    onTap: isItemLocked
+                                        ? null
+                                        : () {
+                                            setStateBuilder(() {
+                                              final item = verificationCriteriaList[i];
+                                              final newTask = AiTask(
+                                                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                                name: item.description.length > 40 ? '${item.description.substring(0, 40)}...' : item.description,
+                                                description: item.description,
+                                                notes: item.goal.isNotEmpty ? 'Goal: ${item.goal}' : '',
+                                                parentId: existingTask!.id,
+                                                status: AiTaskStatus.inProgress,
+                                                priority: AiTaskPriority.none,
+                                                reviewQuestions: [],
+                                                verificationCriteria: [],
+                                                fileAttachments: List.from(item.attachments),
+                                                hyperlinks: [],
+                                                isFolder: false,
+                                                isWorksheet: false,
+                                                isWorksheetVisible: true,
+                                                isRead: false,
+                                                isNote: false,
+                                                isKnowledgeSummary: false,
+                                                preventDeletion: false,
+                                                applyLocksToChildren: false,
+                                                isReadOnly: false,
+                                                isIgnored: false,
+                                                llmPromptStyleOverride: 'Use Default',
+                                              );
+                                              AiBridgeService.instance.tasks.add(newTask);
+                                              AiBridgeService.instance.saveTasks();
+                                              verificationCriteriaList.removeAt(i);
+                                              _verificationControllers[i].dispose();
+                                              _verificationControllers.removeAt(i);
+                                              _verificationGoalControllers[i].dispose();
+                                              _verificationGoalControllers.removeAt(i);
+                                              _executeAutoSave();
+                                            });
+                                          },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: isItemLocked ? Colors.grey : Colors.orangeAccent,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(color: Colors.black, width: 1.5),
+                                        boxShadow: const [
+                                          BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))
+                                        ],
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.turn_right,
+                                              color: isItemLocked ? Colors.white : Colors.black,
+                                              size: 16),
+                                          const SizedBox(width: 4),
+                                          Text('TO TASK',
+                                              style: TextStyle(
+                                                  color: isItemLocked ? Colors.white : Colors.black,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w900)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (verificationCriteriaList[i].isPreview)
-                      Positioned(
-                        bottom: -12,
-                        right: 8,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(20),
-                            onTap: () {
-                              setStateBuilder(() {
-                                final item = verificationCriteriaList[i];
-                                final newTask = AiTask(
-                                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                                  name: item.description.length > 40 ? '${item.description.substring(0, 40)}...' : item.description,
-                                  description: item.description,
-                                  notes: item.goal.isNotEmpty ? 'Goal: ${item.goal}' : '',
-                                  parentId: existingTask!.id,
-                                  status: AiTaskStatus.inProgress,
-                                  priority: AiTaskPriority.none,
-                                  reviewQuestions: [],
-                                  verificationCriteria: [],
-                                  fileAttachments: List.from(item.attachments),
-                                  hyperlinks: [],
-                                  isFolder: false,
-                                  isWorksheet: false,
-                                  isWorksheetVisible: true,
-                                  isRead: false,
-                                  isNote: false,
-                                  isKnowledgeSummary: false,
-                                  preventDeletion: false,
-                                  applyLocksToChildren: false,
-                                  isReadOnly: false,
-                                  isIgnored: false,
-                                  llmPromptStyleOverride: 'Use Default',
-                                );
-                                AiBridgeService.instance.tasks.add(newTask);
-                                AiBridgeService.instance.saveTasks();
-                                verificationCriteriaList.removeAt(i);
-                                _verificationControllers[i].dispose();
-                                _verificationControllers.removeAt(i);
-                                _verificationGoalControllers[i].dispose();
-                                _verificationGoalControllers.removeAt(i);
-                                _executeAutoSave();
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.orangeAccent,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.black, width: 1.5),
-                                boxShadow: const [
-                                  BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))
-                                ],
                               ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.turn_right, color: Colors.black, size: 16),
-                                  SizedBox(width: 4),
-                                  Text('TO TASK', style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.w900)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
