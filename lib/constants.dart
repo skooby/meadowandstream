@@ -899,6 +899,12 @@ class AppToolWindows {
         name: 'Bridge Monitor',
         shortLabel: 'Mon'),
     ToolWindowDefinition(
+        id: 'pipeline_visualizer',
+        icon: Icons.hub_outlined,
+        color: Colors.cyanAccent,
+        name: 'Pipeline Visualizer',
+        shortLabel: 'Pipe'),
+    ToolWindowDefinition(
         id: 'unit_testing',
         icon: Icons.bug_report,
         color: Colors.redAccent,
@@ -962,21 +968,52 @@ class AppToolWindows {
     }
 
     final strDefs = prefs.getString('ve_custom_tool_windows_defs');
+    bool needsSave = false;
     if (strDefs != null) {
       try {
         final List<dynamic> decoded = jsonDecode(strDefs);
-        available =
-            decoded.map((e) => ToolWindowDefinition.fromJson(e)).toList();
-
-        // Auto-add any new defaults not present in the cached list
-        for (var def in initialDefaults) {
-          if (!available.any((w) => w.id == def.id)) {
-            available.add(def);
+        final List<ToolWindowDefinition> loaded = [];
+        for (var e in decoded) {
+          try {
+            loaded.add(ToolWindowDefinition.fromJson(e));
+          } catch (_) {
+            // Ignore corrupted individual entry
           }
         }
-      } catch (_) {}
+        available = loaded;
+      } catch (_) {
+        available = List.from(initialDefaults);
+        needsSave = true;
+      }
     } else {
       available = List.from(initialDefaults);
+      needsSave = true;
+    }
+
+    // Auto-add any new defaults not present in the loaded list, and trigger save if so
+    for (var def in initialDefaults) {
+      if (!available.any((w) => w.id == def.id)) {
+        available.add(def);
+        needsSave = true;
+      }
+    }
+
+    // Auto-repair/migrate specific cached properties (e.g. resolve shortLabel collision)
+    for (int i = 0; i < available.length; i++) {
+      if (available[i].id == 'pipeline_visualizer' && available[i].shortLabel == 'Flow') {
+        available[i] = ToolWindowDefinition(
+          id: available[i].id,
+          icon: available[i].icon,
+          color: available[i].color,
+          name: available[i].name,
+          shortLabel: 'Pipe',
+        );
+        needsSave = true;
+      }
+    }
+
+    if (needsSave) {
+      await saveCustom();
     }
   }
 
@@ -1108,35 +1145,57 @@ class AppWorkspaces {
   static List<WorkspaceDefinition> available = [];
 
   static Future<void> loadCustom() async {
+    bool needsSave = false;
     try {
       final prefs = await SharedPreferences.getInstance();
       final str = prefs.getString('ve_custom_workspaces');
       if (str != null) {
         final List<dynamic> jsonList = jsonDecode(str);
-        available = jsonList.map((e) {
-          var def = WorkspaceDefinition.fromJson(e);
+        final List<WorkspaceDefinition> loaded = [];
+        for (var e in jsonList) {
           try {
-            var initial = initialDefaults.firstWhere((w) => w.id == def.id);
-            // Auto-repair missing properties from corrupted SharedPreferences saves
-            if (initial.mappedMode != null && def.mappedMode == null) {
-              return WorkspaceDefinition(
-                  id: def.id,
-                  name: def.name,
-                  shortLabel: def.shortLabel,
-                  icon: def.icon,
-                  description: def.description,
-                  color: def.color,
-                  requiresConfig: initial.requiresConfig,
-                  mappedMode: initial.mappedMode);
-            }
-          } catch (_) {}
-          return def;
-        }).toList();
+            var def = WorkspaceDefinition.fromJson(e);
+            try {
+              var initial = initialDefaults.firstWhere((w) => w.id == def.id);
+              // Auto-repair missing properties from corrupted SharedPreferences saves
+              if (initial.mappedMode != null && def.mappedMode == null) {
+                def = WorkspaceDefinition(
+                    id: def.id,
+                    name: def.name,
+                    shortLabel: def.shortLabel,
+                    icon: def.icon,
+                    description: def.description,
+                    color: def.color,
+                    requiresConfig: initial.requiresConfig,
+                    mappedMode: initial.mappedMode);
+                needsSave = true;
+              }
+            } catch (_) {}
+            loaded.add(def);
+          } catch (_) {
+            // Ignore corrupted individual entry
+          }
+        }
+        available = loaded;
       } else {
         available = List.from(initialDefaults);
+        needsSave = true;
       }
     } catch (e) {
       available = List.from(initialDefaults);
+      needsSave = true;
+    }
+
+    // Auto-add any new defaults not present in the loaded list, and trigger save if so
+    for (var def in initialDefaults) {
+      if (!available.any((w) => w.id == def.id)) {
+        available.add(def);
+        needsSave = true;
+      }
+    }
+
+    if (needsSave) {
+      await saveCustom();
     }
   }
 

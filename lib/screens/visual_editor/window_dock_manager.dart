@@ -200,7 +200,7 @@ class WindowDockManager {
             },
             child: Row(
               children: [
-                (panel.id == 'ai_bridge' || panel.id == 'bridge_monitor')
+                (panel.id == 'ai_bridge' || panel.id == 'bridge_monitor' || panel.id == 'pipeline_visualizer')
                     ? AiBridgeActivityIcon(
                         size: 16,
                         color: panel.color,
@@ -464,7 +464,7 @@ class _TabbedDockWidgetState extends State<_TabbedDockWidget> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    (panel.id == 'ai_bridge' || panel.id == 'bridge_monitor')
+                                    (panel.id == 'ai_bridge' || panel.id == 'bridge_monitor' || panel.id == 'pipeline_visualizer')
                                         ? AiBridgeActivityIcon(
                                             size: 14,
                                             color: isActive ? panel.color : panel.color.withOpacity(0.5),

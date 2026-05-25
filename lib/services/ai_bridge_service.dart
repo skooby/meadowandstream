@@ -15,6 +15,7 @@ import 'backend_process_manager.dart';
 import 'system_logs_service.dart';
 import 'error_scanner.dart';
 import 'antigravity_status_service.dart';
+import 'ai_bridge_state_machine.dart';
 import '../db/app_database.dart';
 
 enum UpdateCoverType { hotReload, hotRestart, rebuild }
@@ -457,6 +458,8 @@ class SimulatedAction {
 class AiBridgeService extends ChangeNotifier with WindowListener {
   static final AiBridgeService instance = AiBridgeService._internal();
 
+  final AiBridgeStateMachine stateMachine = AiBridgeStateMachine();
+
   bool _isDryRunMode = false;
   bool get isDryRunMode => _isDryRunMode;
 
@@ -492,6 +495,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   AiBridgeService._internal() {
     _initClient();
     AntigravityStatusService.instance.statusFilePath = '$_dirPath/agent_status.txt';
+    stateMachine.start();
   }
 
   void initialize(AppDatabase db) {
@@ -1479,6 +1483,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> _sendToAiAgent(String text) async {
+    stateMachine.enterDispatching();
     await _updateDispatchState();
     _isPromptDispatched = true;
     _isAntigravityBusy = true;
@@ -1486,6 +1491,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     if (_isDryRunMode) {
       logSimulatedAction('STATE', 'Dispatch Prompt (Dry Run)', 'Dispatching prompt to simulated agent.');
       logSimulatedAction('PROMPT', 'Prompt Text', text);
+      stateMachine.enterBusy();
       
       if (_activeProcessingTaskId != null) {
         logSimulatedAction('FILE_WRITE', 'Write current_task.json', 'Writing task ID: $_activeProcessingTaskId');
@@ -1526,6 +1532,10 @@ wshShell.AppActivate $pid
           logSimulatedAction('STATE', 'Simulation Completed', 'Active prompt finished simulated run.');
           logSimulatedAction('STATUS_WRITE', 'Set Status File (agent_status.txt)', 'IDLE');
           
+          stateMachine.enterCompiling();
+          stateMachine.enterSynchronizing();
+          stateMachine.enterIdle();
+
           _activePrompt!.completedAt = DateTime.now();
           _completedPrompts.add(_activePrompt!);
           _activePrompt = null;
@@ -1630,6 +1640,7 @@ wshShell.AppActivate $myPid
 
     final statusFile = File('$_dirPath/agent_status.txt');
     await statusFile.writeAsString('BUSY');
+    stateMachine.enterBusy();
   }
 
   String? _lastJsonParseError;
@@ -2615,6 +2626,7 @@ wshShell.AppActivate $myPid
 
   void dismissSyncError() {
     _isSyncErrorDetected = false;
+    stateMachine.enterIdle();
     SystemLogsService.instance.addLog(
       '[AI Bridge Sync] User manually dismissed/cleared the sync error status.',
       category: LogCategory.SYNC,
@@ -2773,6 +2785,7 @@ wshShell.AppActivate $myPid
               final filesWereNotWritten = !notesWritten || !verificationWritten;
               if (filesWereNotWritten) {
                 _isSyncErrorDetected = true;
+                stateMachine.enterError('Sync Error: Response written outside XML tags');
                 SystemLogsService.instance.addLog(
                   '[AI Bridge Sync Error] Planner/conversational response detected as last step, but agent is no longer busy and files were not written. Last step details: ${lastStep['content'] ?? ""}',
                   category: LogCategory.SYNC,
@@ -3290,6 +3303,11 @@ wshShell.AppActivate $myPid
 
   Future<void> _processStatusChange(String rawContent) async {
     final content = rawContent.trim().toUpperCase().startsWith('PR') ? 'PREVIEW' : 'IDLE';
+    if (content == 'PREVIEW') {
+      stateMachine.enterPreviewing();
+    } else {
+      stateMachine.enterCompiling();
+    }
     if (_isHandlingAgentStatus) {
       if (_statusHandlingLockAcquiredAt != null &&
           DateTime.now().difference(_statusHandlingLockAcquiredAt!).inSeconds > 25) {
@@ -3396,17 +3414,21 @@ wshShell.AppActivate $myPid
               output.contains('error \u2022')) {
             hasCompileError = true;
             print('[AiBridge] Build check failed. Dispatching compile error...');
+            stateMachine.enterError('Dart compilation errors detected. Auto-correcting...');
             await forceDispatchCompileError(output);
           } else {
             print('[AiBridge] Build check passed.');
+            stateMachine.enterSynchronizing();
           }
         } on TimeoutException catch (e) {
           print('[AiBridge] Automated dart analyze check timed out after 15s: $e. Terminating process.');
           if (process != null) {
             process.kill();
           }
+          stateMachine.enterSynchronizing();
         } catch (e) {
           print('[AiBridge] Failed to run automated dart analyze check: $e');
+          stateMachine.enterSynchronizing();
         }
         if (hasCompileError) {
           print('[AiBridge] Compile error detected. Clearing active prompt/task state to unblock UI.');
@@ -3716,6 +3738,7 @@ wshShell.AppActivate $myPid
 
                print('[AiBridge] Missing required files after $content: $missingFiles. Flagging sync error.');
                _isSyncErrorDetected = true;
+               stateMachine.enterError('Required files missing: $missingFiles');
                SystemLogsService.instance.addLog(
                  '[AI Bridge Sync Error] Required files were not written/found after $content: $missingFiles.',
                  category: LogCategory.SYNC,
@@ -3803,6 +3826,11 @@ wshShell.AppActivate $myPid
           }
         } catch (e) {
           print('[AiBridge] Failed to delete current_task.json: $e');
+        }
+        if (content == 'IDLE') {
+          stateMachine.enterIdle();
+        } else {
+          stateMachine.enterPreviewing();
         }
       }
       _saveQueueState();

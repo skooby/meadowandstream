@@ -433,11 +433,50 @@ class _CustomToolWindowsEditorState extends State<CustomToolWindowsEditor> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('CUSTOM TOOL WINDOWS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-              ElevatedButton.icon(
-                icon: Icon(Icons.add, color: AppColors.panelTextPrimary),
-                label: Text('Request Window', style: TextStyle(color: AppColors.panelTextPrimary)),
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
-                onPressed: _showAddWindowPrompt,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.restore, color: Colors.amberAccent, size: 16),
+                    label: const Text('Reset Defaults', style: TextStyle(color: Colors.amberAccent)),
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: AppColors.windowBackground,
+                          title: Text('Reset Tool Windows?', style: TextStyle(color: AppColors.panelTextPrimary)),
+                          content: Text('Are you sure you want to reset all tool windows to default settings?', style: TextStyle(color: AppColors.panelTextSecondary)),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: Text('Cancel', style: TextStyle(color: AppColors.panelTextSecondary)),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                              onPressed: () async {
+                                Navigator.pop(ctx);
+                                setState(() {
+                                  AppToolWindows.available = List.from(AppToolWindows.initialDefaults);
+                                });
+                                await AppToolWindows.saveCustom();
+                                VisualEditorScreen.configRefreshNotifier.value++;
+                                widget.onToolWindowsChanged();
+                              },
+                              child: const Text('Reset'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    icon: Icon(Icons.add, color: AppColors.panelTextPrimary),
+                    label: Text('Request Window', style: TextStyle(color: AppColors.panelTextPrimary)),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+                    onPressed: _showAddWindowPrompt,
+                  ),
+                ],
               ),
             ],
           ),

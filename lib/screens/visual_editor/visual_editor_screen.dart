@@ -54,6 +54,7 @@ import 'panels/flow_editor_window.dart';
 import 'panels/ai_bridge_window.dart';
 import 'panels/ai_task_manager_panel.dart';
 import 'panels/bridge_monitor_window.dart';
+import 'panels/pipeline_visualizer_window.dart';
 import 'panels/cli_terminal_window.dart';
 import 'panels/project_modules_panel.dart';
 import 'panels/test_bed_window.dart';
@@ -122,7 +123,7 @@ class _VisualEditorScreenState extends State<VisualEditorScreen> {
   double _uiScale = 1.0;
   int _currentEditorMode = 0; // 0=Timeline, 1=Assets, 2=Collections, 3=Text, 4=Tags, 5=Subscriptions
   bool _leftPanelCollapsed = false;
-  final List<String> _windowZOrder = ['simulator', 'logs', 'profiler', 'backup', 'macro', 'flow_editor', 'project_modules', 'unit_testing', 'ui_helper', 'assets', 'localization', 'subscriptions', 'layer_tree', 'properties', 'timeline', 'ai_bridge', 'bridge_monitor', 'cli_terminal', 'test_bed', 'version_control', 'project_config', 'color_picker', 'icon_picker', 'task_editor', 'notes_editor', 'suggestion_engine', 'agents', 'control_types_editor', 'attachment_viewer'];
+  final List<String> _windowZOrder = ['simulator', 'logs', 'profiler', 'backup', 'macro', 'flow_editor', 'project_modules', 'unit_testing', 'ui_helper', 'assets', 'localization', 'subscriptions', 'layer_tree', 'properties', 'timeline', 'ai_bridge', 'bridge_monitor', 'pipeline_visualizer', 'cli_terminal', 'test_bed', 'version_control', 'project_config', 'color_picker', 'icon_picker', 'task_editor', 'notes_editor', 'suggestion_engine', 'agents', 'control_types_editor', 'attachment_viewer'];
   bool _rightPanelCollapsed = false;
   Map<String, List<String>> _windowAvailability = {};
 
@@ -458,6 +459,9 @@ if (-not \$activated) {
     showBridgeMonitorNotifier.addListener(() {
       if (showBridgeMonitorNotifier.value) _bringToFront('bridge_monitor');
     });
+    showPipelineVisualizerNotifier.addListener(() {
+      if (showPipelineVisualizerNotifier.value) _bringToFront('pipeline_visualizer');
+    });
     showCliTerminalNotifier.addListener(() {
       if (showCliTerminalNotifier.value) _bringToFront('cli_terminal');
     });
@@ -579,6 +583,7 @@ if (-not \$activated) {
        showKaraokeGenWindowNotifier.value = _isWindowAvailable('karaoke_gen') ? (prefs.getBool(VisualEditorScreen.getPrefKey('showKaraokeGen')) ?? false) : false;
        showGlobalTaskPanelNotifier.value = _isWindowAvailable('ai_bridge') ? (prefs.getBool('ve_showGlobalTaskPanel') ?? false) : false;
        showBridgeMonitorNotifier.value = _isWindowAvailable('bridge_monitor') ? (prefs.getBool('ve_showBridgeMonitor') ?? false) : false;
+       showPipelineVisualizerNotifier.value = _isWindowAvailable('pipeline_visualizer') ? (prefs.getBool('ve_showPipelineVisualizer') ?? false) : false;
     }
   }
 
@@ -606,6 +611,7 @@ if (-not \$activated) {
        ('ui_helper', AppToolWindows.getDef('ui_helper').name, AppToolWindows.getDef('ui_helper').icon, AppToolWindows.getDef('ui_helper').color, (bool isDocked) => UiInspectorWindow(key: const ValueKey('ui_helper'), onClose: hideUiHelperWindow, isDocked: isDocked, onFocus: () => _bringToFront('ui_helper')), showUiHelperNotifier),
        ('ai_bridge', AppToolWindows.getDef('ai_bridge').name, AppToolWindows.getDef('ai_bridge').icon, AppToolWindows.getDef('ai_bridge').color, (bool isDocked) => AiBridgeWindow(key: const ValueKey('ai_bridge'), isDocked: isDocked, onClose: toggleGlobalTaskPanel, onFocus: () => _bringToFront('ai_bridge')), showGlobalTaskPanelNotifier),
        ('bridge_monitor', AppToolWindows.getDef('bridge_monitor').name, AppToolWindows.getDef('bridge_monitor').icon, AppToolWindows.getDef('bridge_monitor').color, (bool isDocked) => BridgeMonitorWindow(key: const ValueKey('bridge_monitor'), isDocked: isDocked, onClose: toggleBridgeMonitorWindow, onFocus: () => _bringToFront('bridge_monitor')), showBridgeMonitorNotifier),
+       ('pipeline_visualizer', AppToolWindows.getDef('pipeline_visualizer').name, AppToolWindows.getDef('pipeline_visualizer').icon, AppToolWindows.getDef('pipeline_visualizer').color, (bool isDocked) => PipelineVisualizerWindow(key: const ValueKey('pipeline_visualizer'), isDocked: isDocked, onClose: togglePipelineVisualizerWindow, onFocus: () => _bringToFront('pipeline_visualizer')), showPipelineVisualizerNotifier),
        ('test_bed', AppToolWindows.getDef('test_bed').name, AppToolWindows.getDef('test_bed').icon, AppToolWindows.getDef('test_bed').color, (bool isDocked) => TestBedWindow(key: const ValueKey('test_bed'), onClose: hideTestBedWindow, isDocked: isDocked, onFocus: () => _bringToFront('test_bed')), showTestBedNotifier),
        ('version_control', AppToolWindows.getDef('version_control').name, AppToolWindows.getDef('version_control').icon, AppToolWindows.getDef('version_control').color, (bool isDocked) => VersionControlWindow(key: const ValueKey('version_control'), onClose: hideVersionControlWindow, isDocked: isDocked, onFocus: () => _bringToFront('version_control')), showVersionControlNotifier),
        ('cli_terminal', AppToolWindows.getDef('cli_terminal').name, AppToolWindows.getDef('cli_terminal').icon, AppToolWindows.getDef('cli_terminal').color, (bool isDocked) => CliTerminalWindow(key: const ValueKey('cli_terminal'), isDocked: isDocked, onClose: hideCliTerminalWindow, onFocus: () => _bringToFront('cli_terminal')), showCliTerminalNotifier),
@@ -768,14 +774,21 @@ if (-not \$activated) {
           try {
               final Map<String, dynamic> parsed = jsonDecode(availStr);
               _windowAvailability = parsed.map((k, v) => MapEntry(k, List<String>.from(v)));
-          } catch (_) {}
+          } catch (_) {
+              _windowAvailability = {};
+          }
       } else {
           _windowAvailability = {};
       }
+      bool needsSaveAvail = false;
       for (final w in AppToolWindows.available) {
         if (!_windowAvailability.containsKey(w.id)) {
           _windowAvailability[w.id] = ['all'];
+          needsSaveAvail = true;
         }
+      }
+      if (needsSaveAvail) {
+          prefs.setString('ve_windowAvailability', jsonEncode(_windowAvailability));
       }
       
       // Force Aspect ratio check
@@ -1815,6 +1828,11 @@ Expanded(
                                                builder: (context, isShowing, child) { final d = AppToolWindows.getDef('bridge_monitor'); return _buildToolbarBtn(isShowing, d.icon, d.color, d.name, d.shortLabel, () { if (isShowing) { hideBridgeMonitorWindow(); } else { showBridgeMonitorWindow(context); } }, onReset: () => _resetWindowCentered('bridge_monitor', 750, 650, hideBridgeMonitorWindow, showBridgeMonitorWindow)); }
                                              ),
                                              if (_isWindowAvailable('bridge_monitor')) const SizedBox(width: 8),
+                                             if (_isWindowAvailable('pipeline_visualizer')) ValueListenableBuilder<bool>(
+                                               valueListenable: showPipelineVisualizerNotifier,
+                                               builder: (context, isShowing, child) { final d = AppToolWindows.getDef('pipeline_visualizer'); return _buildToolbarBtn(isShowing, d.icon, d.color, d.name, d.shortLabel, () { if (isShowing) { hidePipelineVisualizerWindow(); } else { showPipelineVisualizerWindow(context); } }, onReset: () => _resetWindowCentered('pipeline_visualizer', 750, 550, hidePipelineVisualizerWindow, showPipelineVisualizerWindow)); }
+                                             ),
+                                             if (_isWindowAvailable('pipeline_visualizer')) const SizedBox(width: 8),
                                           if (_isWindowAvailable('cli_terminal')) ValueListenableBuilder<bool>(
                                             valueListenable: showCliTerminalNotifier,
                                             builder: (context, isShowing, child) { final d = AppToolWindows.getDef('cli_terminal'); return _buildToolbarBtn(isShowing, d.icon, d.color, d.name, d.shortLabel, () { if (isShowing) { hideCliTerminalWindow(); } else { showCliTerminalWindow(context); } }, onReset: () => _resetWindowCentered('cli_terminal', 600, 400, hideCliTerminalWindow, showCliTerminalWindow)); }

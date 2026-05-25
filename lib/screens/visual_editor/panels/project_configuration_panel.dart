@@ -341,6 +341,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   }
 
   Future<void> _loadConfiguration() async {
+    await AppWorkspaces.loadCustom();
     await AppToolWindows.loadCustom();
     final prefs = await SharedPreferences.getInstance();
     final albumStr = prefs.getStringList('project_album_folder_ids') ?? [];
@@ -379,7 +380,26 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           extractedGithubKey = dotenv.env['GITHUB_TOKEN'];
       }
 
-    setState(() {
+      final availStr = prefs.getString('ve_windowAvailability');
+      Map<String, List<String>> loadedAvail = {};
+      if (availStr != null) {
+          try {
+              final Map<String, dynamic> parsed = jsonDecode(availStr);
+              loadedAvail = parsed.map((k, v) => MapEntry(k, List<String>.from(v)));
+          } catch (_) {}
+      }
+      bool needsSaveAvail = false;
+      for (final w in AppToolWindows.available) {
+        if (!loadedAvail.containsKey(w.id)) {
+          loadedAvail[w.id] = ['all'];
+          needsSaveAvail = true;
+        }
+      }
+      if (needsSaveAvail) {
+          await prefs.setString('ve_windowAvailability', jsonEncode(loadedAvail));
+      }
+
+      setState(() {
       _primaryStorageUrl = prefs.getString('project_primary_storage_url');
       _localRepositoryPath = prefs.getString('project_local_repository_path');
       _backupDirectoryPath = prefs.getString('project_backup_directory_path');
@@ -454,22 +474,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _ollamaModel = prefs.getString('ollamaModel');
       _ollamaTimeoutMs = prefs.getInt('ollamaTimeoutMs') ?? 120000;
 
-      final availStr = prefs.getString('ve_windowAvailability');
-      if (availStr != null) {
-          try {
-              final Map<String, dynamic> parsed = jsonDecode(availStr);
-              _windowAvailability = parsed.map((k, v) => MapEntry(k, List<String>.from(v)));
-          } catch (_) {
-              _windowAvailability = {};
-          }
-      } else {
-          _windowAvailability = {};
-      }
-      for (final w in AppToolWindows.available) {
-        if (!_windowAvailability.containsKey(w.id)) {
-          _windowAvailability[w.id] = ['all'];
-        }
-      }
+      _windowAvailability = loadedAvail;
 
       _isLoading = false;
       if (AppUIConfig.activeTheme != null) {
@@ -3389,11 +3394,50 @@ class _CustomWorkspacesEditorState extends State<CustomWorkspacesEditor> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('CUSTOM VIEWPORTS / WORKSPACES', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-              ElevatedButton.icon(
-                icon: Icon(Icons.add, color: AppColors.panelTextPrimary),
-                label: Text('Add Workspace', style: TextStyle(color: AppColors.panelTextPrimary)),
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
-                onPressed: () => _showEditWorkspace(null),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.restore, color: Colors.amberAccent, size: 16),
+                    label: const Text('Reset Defaults', style: TextStyle(color: Colors.amberAccent)),
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: AppColors.windowBackground,
+                          title: Text('Reset Workspaces?', style: TextStyle(color: AppColors.panelTextPrimary)),
+                          content: Text('Are you sure you want to reset all workspaces to default settings?', style: TextStyle(color: AppColors.panelTextSecondary)),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: Text('Cancel', style: TextStyle(color: AppColors.panelTextSecondary)),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                              onPressed: () async {
+                                Navigator.pop(ctx);
+                                setState(() {
+                                  AppWorkspaces.available = List.from(AppWorkspaces.initialDefaults);
+                                });
+                                await AppWorkspaces.saveCustom();
+                                VisualEditorScreen.configRefreshNotifier.value++;
+                                widget.onWorkspacesChanged();
+                              },
+                              child: const Text('Reset'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    icon: Icon(Icons.add, color: AppColors.panelTextPrimary),
+                    label: Text('Add Workspace', style: TextStyle(color: AppColors.panelTextPrimary)),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+                    onPressed: () => _showEditWorkspace(null),
+                  ),
+                ],
               ),
             ],
           ),
