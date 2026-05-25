@@ -1,5 +1,16 @@
 [
   {
+    "id": "ab6bcf9ff5f99769ed44176cd5b9539463614e60",
+    "taskIds": [
+      "1779596049582"
+    ],
+    "title": "Task Manager [Filtered hidden categories from SystemLogsWindow top bar chips]",
+    "summary": "Improvements for Task Manager",
+    "commitHash": "ab6bcf9ff5f99769ed44176cd5b9539463614e60",
+    "commitDate": "2026-05-25T07:21:44-06:00",
+    "verifiedNotes": "- Lock a checklist item if it is currently being worked on by the LLM, since we don't want it to be out of sync.\n- Test, return immediately test"
+  },
+  {
     "id": "4824a01f2b603c67c5c6d0edfd8ddc6c8879d42e",
     "taskIds": [
       "1779596049582"

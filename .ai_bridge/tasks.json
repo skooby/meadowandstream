@@ -6295,6 +6295,63 @@
       "commitDate": null,
       "previewState": null,
       "parentId": "1778865514716"
+    },
+    {
+      "id": "1779596049582",
+      "name": "Task Manager",
+      "description": "Improvements for Task Manager",
+      "summary": "Filtered hidden categories from SystemLogsWindow top bar chips",
+      "notes": "### Update - 2026-05-25 07:10\n[Verified that checklist items are successfully locked when worked on by the LLM (when activePrompt has targetCriteriaDescription matching the item description)., Locked fields include the checkbox status, description, goal, try/retry count, request clarification, ignore, attach file, delete, and 'TO TASK' button, as well as the reorder drag handle., Verified correctness by running all tests, including 'test/checklist_item_lock_test.dart', which passed successfully.]\n\n---\n\n### Update - 2026-05-25 06:55\nFiltered the category configs in SystemLogsWindow using `.where((cfg) => cfg.system)` to prevent selection chips from rendering in the top bar for log categories configured as hidden/disabled. Added a widget test in system_logs_window_test.dart to verify this behavior in-memory. Verified all 75 tests pass cleanly with 100% success.\n\n---\n\n### Update - 2026-05-25 06:43\nReclassified all log entries starting with or containing '[AiBridge]' to the SYNC log category in the global debugPrint override in main.dart. This ensures unified status updates, file checks, lock details, and build/polling diagnostics are properly grouped under LogCategory.SYNC, which also bypasses unnecessary error scanning. Verified that all 74 unit tests compile and run with 100% success rate.\n\n---\n\n### Update - 2026-05-25 06:13\nReclassified all log entries containing '[AntigravityStatusService]' from GENERAL to SYNC in the global debugPrint override inside main.dart. Fixed a recursion and duplicate logging issue where debugPrint calls from inside SystemLogsService.addLog were intercepted recursively, which caused extreme sluggishness. Added a prefix check (`message.startsWith('[LogCategory.')`) and a re-entrancy protection boolean (`isLogging`) inside main.dart to prevent recursive calls. Verified that all 74 unit tests in the suite pass successfully.\n\n---\n\n### Update - 2026-05-25 05:58\n### Update - 2026-05-25 05:48\n- Implemented 'General' configuration tab as the very first tab in ProjectConfigurationPanel.\n- Provided an editable and reorderable list of all log categories with checkboxes for System Log and Console Log outputs.\n- Persisted log category configurations to SharedPreferences.\n- Updated system logs window to display category chips in the configured reordered priority.\n- Linked log category configurations into SystemLogsService and main.dart log channels.\n- Added a unit test covering config serialization, filtering, and reordering. All 74/74 tests pass successfully.\n\n---\n\n### Update - 2026-05-25 05:36\n### Update - 2026-05-25 05:34\n- Implemented `_readAsLinesWithRetry` helper in `AiBridgeService` that retries reading file lines up to 3 times with a 100ms delay to handle transient file lock sharing violations on Windows.\n- Modified `syncConversationHistory` and the poller loop to use this retry helper.\n- Suppressed transient Windows `Cannot open file` or `Sharing violation` warnings in the catch block of the poller loop to prevent log spam.\n- Wrote a new unit test for `_readAsLinesWithRetry` in `test/ai_bridge_ending_instructions_test.dart` and confirmed all 73 tests passed.\n\n---\n\n### Update - 2026-05-25 05:26\n### Update - 2026-05-25 05:22\n- Added a non-nullable `notes` field to `AiVerificationCriteria` to support a dedicated editable notes area on each checklist task.\n- Exposed and rendered the new checklist item notes field unconditionally in `GlobalTaskEditorWindow` so it is always available and fully editable.\n- Transmitted the notes content in prompt generation if set.\n- Added automated test coverage in `test/ai_bridge_ending_instructions_test.dart` and confirmed all 72 tests pass successfully.\n\n---\n\n### Update - 2026-05-25 05:20\n### Update - 2026-05-25 05:19\n- Bypassed the `_screenBlockerEnabledForCurrentTaskPhase` check in `triggerPendingUpdate` to always trigger the automated auto-reload/restart callback (`onAutoReloadTriggered`) if registered.\n- This allows hot reload and restart to execute automatically without showing the 'Bridge State Updated' overlay banner containing manual reload buttons when the screen blocker is disabled.\n- All 71 unit and integration tests passed cleanly.\n\n---\n\n### Update - 2026-05-25 05:12\n- Verified prompt ending instructions syntax for task ZZZ.\n- Passed endingInstructions via SDK context map and fallbacks.\n- Confirmed correct formatting and parser logic via passing tests.\n\n---\n\n### Update - 2026-05-24 23:38\n- Verified the updated prompt syntax including voice/complexity directives and extra suffix placement in the generated prompt.\n- Confirmed that the Ending Instruction Helper is placed at the absolute end of the prompt correctly under all conditions.\n\n---\n\n### Update - 2026-05-24 23:34\n- Updated `buildTaskPrompt` to natively support `replyTypeDirective` and `extraSuffix` parameters, placing `endingInstructions` at the absolute end of the generated prompt (before the closing `---` boundary).\n- Integrated `extraSuffix` passing for user rejection feedback inside `rejectPreview` and `replyTypeDirective` inside `submitTaskChecklist`.\n- Refactored `_processQueue` to parse and extract existing directives and suffixes from queued prompts before regeneration, preventing feedback/style loss and maintaining `endingInstructions` at the very end.\n- Added comprehensive unit tests in `test/ai_bridge_ending_instructions_test.dart` to verify formatting and queue parsing logic.\n\n---\n\n### Update - 2026-05-24 23:26\n- Appended Ending Instructions Helper to SDK `invokeSubagent` prompt.\n- Passed endingInstructions context from GUI `AiBridgeService.executeTask` to SDK client.\n- Added unit tests to verify direct context resolution and `tasks.json` fallback in SDK.\n\n---\n\n### Update - 2026-05-24 23:16\n### Update - 2026-05-25 05:16\n\n- Verified the updated prompt syntax is parsed and formatted correctly when generating task prompts.\n- Confirmed that the Ending Instruction Helper is appended at the very end of the prompt (right before the final `---` divider).\n- Verified all 67/67 unit tests pass successfully in the test suite.\n\n---",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Lock a checklist item if it is currently being worked on by the LLM, since we don't want it to be out of sync.",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": null,
+          "notes": "",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        },
+        {
+          "description": "Test, return immediately test",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": null,
+          "notes": "test",
+          "requestClarification": false,
+          "tryCount": 0,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        }
+      ],
+      "status": "completed",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "isLocked": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": "ab6bcf9ff5f99769ed44176cd5b9539463614e60",
+      "commitDate": "2026-05-25T07:21:46.153488",
+      "previewState": null,
+      "parentId": "1779595917963"
     }
   ]
 }
