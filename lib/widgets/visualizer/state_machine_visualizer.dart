@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -96,7 +97,7 @@ class _StateMachineVisualizerState extends State<StateMachineVisualizer>
       _pan = Offset(panX, panY);
       _zoom = prefs.getDouble('ve_sm_zoom') ?? 1.0;
 
-      for (var node in widget.controller.config.nodes) {
+      for (var node in widget.controller.allNodes) {
         final posKey = 've_sm_pos_${node.id}';
         final sizeKey = 've_sm_size_${node.id}';
 
@@ -206,151 +207,205 @@ class _StateMachineVisualizerState extends State<StateMachineVisualizer>
           child: ListenableBuilder(
             listenable: widget.controller,
             builder: (context, child) {
-              return AnimatedBuilder(
-                animation: _transitionController,
-                builder: (context, child) {
-                  return Transform.translate(
-                    offset: _pan,
-                    child: Transform.scale(
-                      scale: _zoom,
-                      alignment: Alignment.topLeft,
-                      child: OverflowBox(
+              return Stack(
+                children: [
+                  // Layer 0: Background Tap Receptor for Deselection (covering full viewport)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: (_) {
+                        widget.controller.selectNode(null);
+                      },
+                      onTap: () {
+                        widget.controller.selectNode(null);
+                      },
+                    ),
+                  ),
+
+                  // Layer 1: Background Grid & Connectors (Custom Painter) - Panned/Scaled but Ignored
+                  AnimatedBuilder(
+                    animation: _transitionController,
+                    builder: (context, child) {
+                      return Transform.translate(
+                        offset: _pan,
+                        child: Transform.scale(
+                          scale: _zoom,
+                          alignment: Alignment.topLeft,
+                          child: IgnorePointer(
+                            child: SizedBox(
+                              width: 100000,
+                              height: 100000,
+                              child: CustomPaint(
+                                painter: _StateMachinePainter(
+                                  controller: widget.controller,
+                                  activeStateId: visualState.activeStateId,
+                                  fromNodeId: _lastAnimatedFrom,
+                                  toNodeId: _lastAnimatedTo,
+                                  transitionProgress: _transitionController.value,
+                                  nodeWidth: nodeWidth,
+                                  nodeHeight: nodeHeight,
+                                  nodePositions: _nodePositions,
+                                  nodeSizes: _nodeSizes,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                  // Layer 2: Interactive Nodes - Rendered at direct panned/zoomed screen coordinates
+                  ...widget.controller.allNodes.map((node) {
+                    final isActive = visualState.activeStateId == node.id;
+                    final isLastActive = visualState.lastActiveStateId == node.id;
+                    final hasError = visualState.hasError && isActive;
+                    final isSelected = widget.controller.selectedNodeId == node.id;
+
+                    final pos = _nodePositions[node.id] ?? node.position;
+                    final size = _nodeSizes[node.id] ?? const Size(nodeWidth, nodeHeight);
+
+                    return Positioned(
+                      key: ValueKey(node.id),
+                      left: _pan.dx + pos.dx * _zoom,
+                      top: _pan.dy + pos.dy * _zoom,
+                      child: Transform.scale(
+                        scale: _zoom,
                         alignment: Alignment.topLeft,
-                        minWidth: 0,
-                        minHeight: 0,
-                        maxWidth: 100000,
-                        maxHeight: 100000,
                         child: SizedBox(
-                          width: 100000,
-                          height: 100000,
+                          width: size.width,
+                          height: size.height,
                           child: Stack(
-                            clipBehavior: Clip.none,
                             children: [
-                              // Layer 1: Background Grid & Connectors (Custom Painter)
                               Positioned.fill(
-                                child: CustomPaint(
-                                  painter: _StateMachinePainter(
-                                    config: widget.controller.config,
-                                    activeStateId: visualState.activeStateId,
-                                    fromNodeId: _lastAnimatedFrom,
-                                    toNodeId: _lastAnimatedTo,
-                                    transitionProgress: _transitionController.value,
-                                    nodeWidth: nodeWidth,
-                                    nodeHeight: nodeHeight,
-                                    nodePositions: _nodePositions,
-                                    nodeSizes: _nodeSizes,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTapDown: (_) {
+                                    widget.controller.selectNode(node.id);
+                                  },
+                                  onTap: () {
+                                    widget.controller.selectNode(node.id);
+                                  },
+                                  onPanStart: (_) {
+                                    widget.controller.selectNode(node.id);
+                                    setState(() {
+                                      _isDraggingOrResizing = true;
+                                    });
+                                  },
+                                  onPanUpdate: (details) {
+                                    setState(() {
+                                      final oldPos = _nodePositions[node.id] ?? node.position;
+                                      final newPos = oldPos + details.delta / _zoom;
+                                      _nodePositions[node.id] = newPos; // Dragging is completely unclamped
+                                    });
+                                  },
+                                  onPanEnd: (_) {
+                                    setState(() {
+                                      _isDraggingOrResizing = false;
+                                    });
+                                    _saveNodePosition(node.id, _nodePositions[node.id] ?? node.position);
+                                  },
+                                  onPanCancel: () {
+                                    setState(() {
+                                      _isDraggingOrResizing = false;
+                                    });
+                                  },
+                                  child: Tooltip(
+                                    message: node.description.isNotEmpty ? node.description : node.label,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF1E1E24),
+                                      border: Border.all(color: Colors.white10),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    textStyle: const TextStyle(color: Colors.white70, fontSize: 11),
+                                    child: _StateNodeWidget(
+                                      node: node,
+                                      isActive: isActive,
+                                      isLastActive: isLastActive,
+                                      hasError: hasError,
+                                      statusText: isActive ? visualState.statusMessage : '',
+                                      width: size.width,
+                                      height: size.height,
+                                      isSelected: isSelected,
+                                      hasNote: widget.controller.nodeNotes[node.id]?.isNotEmpty ?? false,
+                                    ),
                                   ),
                                 ),
                               ),
-
-                              // Layer 2: Interactive Nodes
-                              ...widget.controller.config.nodes.map((node) {
-                                final isActive = visualState.activeStateId == node.id;
-                                final isLastActive = visualState.lastActiveStateId == node.id;
-                                final hasError = visualState.hasError && isActive;
-
-                                final pos = _nodePositions[node.id] ?? node.position;
-                                final size = _nodeSizes[node.id] ?? const Size(nodeWidth, nodeHeight);
-
-                                return Positioned(
-                                  left: pos.dx,
-                                  top: pos.dy,
-                                  width: size.width,
-                                  height: size.height,
-                                  child: Stack(
-                                    children: [
-                                      Positioned.fill(
-                                        child: GestureDetector(
-                                          onPanStart: (_) {
-                                            setState(() {
-                                              _isDraggingOrResizing = true;
-                                            });
-                                          },
-                                          onPanUpdate: (details) {
-                                            setState(() {
-                                              final oldPos = _nodePositions[node.id] ?? node.position;
-                                              final newPos = oldPos + details.delta / _zoom;
-                                              _nodePositions[node.id] = newPos;
-                                            });
-                                          },
-                                          onPanEnd: (_) {
-                                            setState(() {
-                                              _isDraggingOrResizing = false;
-                                            });
-                                            _saveNodePosition(node.id, _nodePositions[node.id] ?? node.position);
-                                          },
-                                          onPanCancel: () {
-                                            setState(() {
-                                              _isDraggingOrResizing = false;
-                                            });
-                                          },
-                                          child: _StateNodeWidget(
-                                            node: node,
-                                            isActive: isActive,
-                                            isLastActive: isLastActive,
-                                            hasError: hasError,
-                                            statusText: isActive ? visualState.statusMessage : '',
-                                            width: size.width,
-                                            height: size.height,
-                                          ),
-                                        ),
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                width: 24,
+                                height: 24,
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.resizeDownRight,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onPanDown: (_) {
+                                      widget.controller.selectNode(node.id);
+                                    },
+                                    onPanStart: (_) {
+                                      widget.controller.selectNode(node.id);
+                                      setState(() {
+                                        _isDraggingOrResizing = true;
+                                      });
+                                    },
+                                    onPanUpdate: (details) {
+                                      setState(() {
+                                        final oldSize = _nodeSizes[node.id] ?? const Size(nodeWidth, nodeHeight);
+                                        final newWidth = (oldSize.width + details.delta.dx / _zoom).clamp(120.0, 300.0);
+                                        final newHeight = (oldSize.height + details.delta.dy / _zoom).clamp(70.0, 200.0);
+                                        _nodeSizes[node.id] = Size(newWidth, newHeight);
+                                      });
+                                    },
+                                    onPanEnd: (_) {
+                                      setState(() {
+                                        _isDraggingOrResizing = false;
+                                      });
+                                      _saveNodeSize(node.id, _nodeSizes[node.id] ?? const Size(nodeWidth, nodeHeight));
+                                    },
+                                    onPanCancel: () {
+                                      setState(() {
+                                        _isDraggingOrResizing = false;
+                                      });
+                                    },
+                                    child: Container(
+                                      alignment: Alignment.bottomRight,
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(
+                                        Icons.south_east,
+                                        size: 10,
+                                        color: Colors.white.withOpacity(0.4),
                                       ),
-                                      Positioned(
-                                        right: 0,
-                                        bottom: 0,
-                                        width: 24,
-                                        height: 24,
-                                        child: MouseRegion(
-                                          cursor: SystemMouseCursors.resizeDownRight,
-                                          child: GestureDetector(
-                                            behavior: HitTestBehavior.opaque,
-                                            onPanStart: (_) {
-                                              setState(() {
-                                                _isDraggingOrResizing = true;
-                                              });
-                                            },
-                                            onPanUpdate: (details) {
-                                              setState(() {
-                                                final oldSize = _nodeSizes[node.id] ?? const Size(nodeWidth, nodeHeight);
-                                                final newWidth = (oldSize.width + details.delta.dx / _zoom).clamp(120.0, 300.0);
-                                                final newHeight = (oldSize.height + details.delta.dy / _zoom).clamp(70.0, 200.0);
-                                                _nodeSizes[node.id] = Size(newWidth, newHeight);
-                                              });
-                                            },
-                                            onPanEnd: (_) {
-                                              setState(() {
-                                                _isDraggingOrResizing = false;
-                                              });
-                                              _saveNodeSize(node.id, _nodeSizes[node.id] ?? const Size(nodeWidth, nodeHeight));
-                                            },
-                                            onPanCancel: () {
-                                              setState(() {
-                                                _isDraggingOrResizing = false;
-                                              });
-                                            },
-                                            child: Container(
-                                              alignment: Alignment.bottomRight,
-                                              padding: const EdgeInsets.all(4),
-                                              child: Icon(
-                                                Icons.south_east,
-                                                size: 10,
-                                                color: Colors.white.withOpacity(0.4),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                    ),
                                   ),
-                                );
-                              }),
+                                ),
+                              ),
                             ],
                           ),
                         ),
                       ),
+                    );
+                  }),
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: IgnorePointer(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.75),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: Text(
+                          'Selected: ${widget.controller.selectedNodeId ?? "None"}',
+                          style: const TextStyle(color: Colors.amberAccent, fontSize: 10, fontFamily: 'monospace'),
+                        ),
+                      ),
                     ),
-                  );
-                },
+                  ),
+                ],
               );
             },
           ),
@@ -369,6 +424,8 @@ class _StateNodeWidget extends StatelessWidget {
   final String statusText;
   final double width;
   final double height;
+  final bool isSelected;
+  final bool hasNote;
 
   const _StateNodeWidget({
     required this.node,
@@ -378,6 +435,8 @@ class _StateNodeWidget extends StatelessWidget {
     required this.statusText,
     required this.width,
     required this.height,
+    required this.isSelected,
+    required this.hasNote,
   });
 
   @override
@@ -387,111 +446,121 @@ class _StateNodeWidget extends StatelessWidget {
         ? statusText
         : (isActive ? 'Active' : 'Standby');
 
-    return Tooltip(
-      message: node.description.isNotEmpty ? node.description : node.label,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: width,
+      height: height,
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E24),
-        border: Border.all(color: Colors.white10),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      textStyle: const TextStyle(color: Colors.white70, fontSize: 11),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          color: Colors.black.withOpacity(0.55),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.4),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-            if (isActive)
-              BoxShadow(
-                color: baseColor.withOpacity(0.35),
-                blurRadius: 16,
-                spreadRadius: 2,
-              ),
-          ],
-          border: Border.all(
-            color: isActive
-                ? baseColor
-                : (isLastActive ? baseColor.withOpacity(0.5) : Colors.white12),
-            width: isActive ? 2.0 : 1.0,
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.black.withOpacity(0.55),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
           ),
+          if (isActive)
+            BoxShadow(
+              color: baseColor.withOpacity(0.35),
+              blurRadius: 16,
+              spreadRadius: 2,
+            ),
+          if (isSelected)
+            BoxShadow(
+              color: Colors.amberAccent.withOpacity(0.35),
+              blurRadius: 16,
+              spreadRadius: 2,
+            ),
+        ],
+        border: Border.all(
+          color: isSelected
+              ? Colors.amberAccent
+              : (isActive
+                  ? baseColor
+                  : (isLastActive ? baseColor.withOpacity(0.5) : Colors.white12)),
+          width: isSelected ? 2.0 : (isActive ? 2.0 : 1.0),
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Row(
-                    children: [
-                      // Node Icon with gradient or custom color
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(
+                  children: [
+                    // Node Icon with gradient or custom color
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: baseColor.withOpacity(0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        node.icon ?? Icons.circle_outlined,
+                        size: 14,
+                        color: baseColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Title
+                    Expanded(
+                      child: Text(
+                        node.label.toUpperCase(),
+                        style: TextStyle(
+                          color: isSelected
+                              ? Colors.amberAccent
+                              : (isActive ? Colors.white : Colors.white60),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.1,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    // Notes Icon Indicator
+                    if (hasNote) ...[
+                      const Icon(
+                        Icons.description,
+                        size: 12,
+                        color: Colors.amberAccent,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    // Pulsing active dot
+                    if (isActive)
+                      _PulsingDot(color: baseColor)
+                    else if (isLastActive)
                       Container(
-                        padding: const EdgeInsets.all(4),
+                        width: 6,
+                        height: 6,
                         decoration: BoxDecoration(
-                          color: baseColor.withOpacity(0.15),
+                          color: baseColor.withOpacity(0.4),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(
-                          node.icon ?? Icons.circle_outlined,
-                          size: 14,
-                          color: baseColor,
-                        ),
                       ),
-                      const SizedBox(width: 8),
-                      // Title
-                      Expanded(
-                        child: Text(
-                          node.label.toUpperCase(),
-                          style: TextStyle(
-                            color: isActive ? Colors.white : Colors.white60,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1.1,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // Pulsing active dot
-                      if (isActive)
-                        _PulsingDot(color: baseColor)
-                      else if (isLastActive)
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: baseColor.withOpacity(0.4),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                    ],
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Status Text
+                Text(
+                  displayStatus,
+                  style: TextStyle(
+                    color: isActive
+                        ? baseColor.withOpacity(0.9)
+                        : Colors.white30,
+                    fontSize: 9,
+                    fontFamily: 'monospace',
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 6),
-                  // Status Text
-                  Text(
-                    displayStatus,
-                    style: TextStyle(
-                      color: isActive
-                          ? baseColor.withOpacity(0.9)
-                          : Colors.white30,
-                      fontSize: 9,
-                      fontFamily: 'monospace',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    maxLines: 2,
-                  ),
-                ],
-              ),
+                  maxLines: 2,
+                ),
+              ],
             ),
           ),
         ),
@@ -502,7 +571,7 @@ class _StateNodeWidget extends StatelessWidget {
 
 /// Custom Painter to draw connection paths, arrows, grid, and transition particles.
 class _StateMachinePainter extends CustomPainter {
-  final StateMachineConfig config;
+  final StateMachineController controller;
   final String activeStateId;
   final String? fromNodeId;
   final String? toNodeId;
@@ -513,7 +582,7 @@ class _StateMachinePainter extends CustomPainter {
   final Map<String, Size> nodeSizes;
 
   _StateMachinePainter({
-    required this.config,
+    required this.controller,
     required this.activeStateId,
     this.fromNodeId,
     this.toNodeId,
@@ -530,9 +599,9 @@ class _StateMachinePainter extends CustomPainter {
     _paintGrid(canvas, size);
 
     // 2. Draw connections
-    for (var transition in config.transitions) {
-      final fromNode = config.getNode(transition.from);
-      final toNode = config.getNode(transition.to);
+    for (var transition in controller.allTransitions) {
+      final fromNode = controller.getNode(transition.from);
+      final toNode = controller.getNode(transition.to);
 
       if (fromNode == null || toNode == null) continue;
 
@@ -551,12 +620,31 @@ class _StateMachinePainter extends CustomPainter {
 
       final path = _getBezierPath(p1, p2);
 
+      final labelLower = transition.label.toLowerCase();
+      final isTrue = labelLower.contains('true') || labelLower.contains('pass') || labelLower.contains('success') || labelLower.contains('yes');
+      final isFalse = labelLower.contains('false') || labelLower.contains('fail') || labelLower.contains('error') || labelLower.contains('no') || labelLower.contains('loss');
+
+      Color lineColor;
+      if (isTrue) {
+        lineColor = isTransitionPath
+            ? Colors.greenAccent
+            : (isActiveStateTarget ? Colors.greenAccent.withOpacity(0.45) : Colors.greenAccent.withOpacity(0.22));
+      } else if (isFalse) {
+        lineColor = isTransitionPath
+            ? Colors.redAccent
+            : (isActiveStateTarget ? Colors.redAccent.withOpacity(0.45) : Colors.redAccent.withOpacity(0.22));
+      } else {
+        lineColor = isTransitionPath
+            ? Color.lerp(fromNode.color, toNode.color, transitionProgress)!.withOpacity(0.7)
+            : (isActiveStateTarget ? toNode.color.withOpacity(0.3) : Colors.white10);
+      }
+
       // Draw shadow or glow path
       if (isTransitionPath) {
         canvas.drawPath(
           path,
           Paint()
-            ..color = toNode.color.withOpacity(0.18)
+            ..color = lineColor.withOpacity(0.18)
             ..style = PaintingStyle.stroke
             ..strokeWidth = 5.0
             ..strokeCap = StrokeCap.round,
@@ -565,23 +653,28 @@ class _StateMachinePainter extends CustomPainter {
 
       // Draw connection line
       final paint = Paint()
-        ..color = isTransitionPath
-            ? Color.lerp(fromNode.color, toNode.color, transitionProgress)!.withOpacity(0.7)
-            : (isActiveStateTarget ? toNode.color.withOpacity(0.3) : Colors.white10)
+        ..color = lineColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = isTransitionPath ? 2.5 : 1.5
         ..strokeCap = StrokeCap.round;
 
-      canvas.drawPath(path, paint);
+      if (isFalse) {
+        _drawDashedPath(canvas, path, paint);
+      } else {
+        canvas.drawPath(path, paint);
+      }
 
       // Draw direction arrow along the curve
-      _paintArrowOnPath(canvas, path, isTransitionPath ? toNode.color : Colors.white24);
+      _paintArrowOnPath(canvas, path, isTransitionPath ? lineColor : (isTrue ? Colors.greenAccent.withOpacity(0.4) : (isFalse ? Colors.redAccent.withOpacity(0.4) : Colors.white24)));
+
+      // Draw connection label along the curve
+      _paintLabelOnPath(canvas, path, transition.label, isTransitionPath ? lineColor : (isTrue ? Colors.greenAccent : (isFalse ? Colors.redAccent : Colors.white38)));
     }
 
     // 3. Draw animated transition particle dynamically centered on custom node boundaries
     if (fromNodeId != null && toNodeId != null && transitionProgress < 1.0) {
-      final fromNode = config.getNode(fromNodeId!);
-      final toNode = config.getNode(toNodeId!);
+      final fromNode = controller.getNode(fromNodeId!);
+      final toNode = controller.getNode(toNodeId!);
       if (fromNode != null && toNode != null) {
         final fromPos = nodePositions[fromNodeId!] ?? fromNode.position;
         final fromSize = nodeSizes[fromNodeId!] ?? Size(nodeWidth, nodeHeight);
@@ -592,7 +685,15 @@ class _StateMachinePainter extends CustomPainter {
         final p2 = toPos + Offset(toSize.width / 2, toSize.height / 2);
 
         final path = _getBezierPath(p1, p2);
-        _paintParticleOnPath(canvas, path, transitionProgress, toNode.color);
+
+        final matchingTransitions = controller.allTransitions.where((t) => t.from == fromNodeId && t.to == toNodeId);
+        final label = matchingTransitions.isNotEmpty ? matchingTransitions.first.label : '';
+        final labelLower = label.toLowerCase();
+        final isTrue = labelLower.contains('true') || labelLower.contains('pass') || labelLower.contains('success') || labelLower.contains('yes');
+        final isFalse = labelLower.contains('false') || labelLower.contains('fail') || labelLower.contains('error') || labelLower.contains('no') || labelLower.contains('loss');
+        final particleColor = isTrue ? Colors.greenAccent : (isFalse ? Colors.redAccent : toNode.color);
+
+        _paintParticleOnPath(canvas, path, transitionProgress, particleColor);
       }
     }
   }
@@ -648,6 +749,93 @@ class _StateMachinePainter extends CustomPainter {
     }
   }
 
+  void _drawDashedPath(Canvas canvas, Path path, Paint paint) {
+    const dashWidth = 4.0;
+    const dashSpace = 3.0;
+
+    final metrics = path.computeMetrics().toList();
+    if (metrics.isEmpty) return;
+
+    final metric = metrics.first;
+    double distance = 0.0;
+    while (distance < metric.length) {
+      final end = (distance + dashWidth).clamp(0.0, metric.length);
+      final extract = metric.extractPath(distance, end);
+      canvas.drawPath(extract, paint);
+      distance += dashWidth + dashSpace;
+    }
+  }
+
+  void _paintLabelOnPath(Canvas canvas, Path path, String label, Color color) {
+    // Disabled: Remove Text on curved lines per verification criteria
+    return;
+
+    final metricsList = path.computeMetrics().toList();
+    if (metricsList.isEmpty) return;
+
+    final metric = metricsList.first;
+    // Position label slightly before the middle arrow or centered
+    final offset = metric.length * 0.35;
+    final tangent = metric.getTangentForOffset(offset);
+
+    if (tangent != null) {
+      final pos = tangent.position;
+      final angle = tangent.angle;
+
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: TextStyle(
+            color: color.withOpacity(0.85),
+            fontSize: 8,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'monospace',
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      canvas.save();
+      // Translate to position and rotate according to the path angle to align text nicely
+      canvas.translate(pos.dx, pos.dy);
+      // Keep text upright if angle is pointing backwards
+      double drawAngle = angle;
+      if (drawAngle.abs() > 1.57) { // > 90 degrees in radians
+        drawAngle += 3.14159; // Rotate 180 degrees
+      }
+      canvas.rotate(drawAngle);
+
+      // Draw background pill
+      final rect = Rect.fromCenter(
+        center: Offset.zero,
+        width: textPainter.width + 8,
+        height: textPainter.height + 4,
+      );
+      final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..color = const Color(0xFF15151A).withOpacity(0.9)
+          ..style = PaintingStyle.fill,
+      );
+      // Draw border
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..color = color.withOpacity(0.2)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.5,
+      );
+
+      // Draw text
+      textPainter.paint(
+        canvas,
+        Offset(-textPainter.width / 2, -textPainter.height / 2),
+      );
+      canvas.restore();
+    }
+  }
+
   void _paintArrowOnPath(Canvas canvas, Path path, Color color) {
     final metricsList = path.computeMetrics().toList();
     if (metricsList.isEmpty) return;
@@ -658,15 +846,15 @@ class _StateMachinePainter extends CustomPainter {
     final tangent = metric.getTangentForOffset(offset);
 
     if (tangent != null) {
-      final angle = tangent.angle;
+      final angle = atan2(tangent.vector.dy, tangent.vector.dx);
       final pos = tangent.position;
 
       final arrowPath = Path();
-      const arrowSize = 6.0;
+      const arrowSize = 12.0;
 
-      arrowPath.moveTo(-arrowSize, -arrowSize * 0.7);
+      arrowPath.moveTo(-arrowSize, -arrowSize * 0.5);
       arrowPath.lineTo(0, 0);
-      arrowPath.lineTo(-arrowSize, arrowSize * 0.7);
+      arrowPath.lineTo(-arrowSize, arrowSize * 0.5);
       arrowPath.close();
 
       canvas.save();

@@ -36,9 +36,10 @@ class GithubService {
       cleanUrl = cleanUrl.substring(0, cleanUrl.length - 4);
     }
     
-    // git@github.com:owner/repo
-    if (cleanUrl.startsWith('git@github.com:')) {
-      final parts = cleanUrl.substring(15).split('/');
+    // Handle SSH format: git@github.com:owner/repo
+    if (cleanUrl.contains('git@github.com:')) {
+      final index = cleanUrl.indexOf('git@github.com:');
+      final parts = cleanUrl.substring(index + 15).split('/');
       if (parts.length >= 2) {
         return {
           'owner': parts[0],
@@ -47,20 +48,26 @@ class GithubService {
       }
     }
     
-    // https://github.com/owner/repo
-    if (cleanUrl.startsWith('https://github.com/')) {
-      final parts = cleanUrl.substring(19).split('/');
-      if (parts.length >= 2) {
-        return {
-          'owner': parts[0],
-          'repo': parts[1],
-        };
+    // Try parsing as standard URI (handles http, https, tokens, credentials)
+    try {
+      final uri = Uri.parse(cleanUrl);
+      if (uri.host == 'github.com' || uri.host.endsWith('.github.com')) {
+        final pathSegments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+        if (pathSegments.length >= 2) {
+          return {
+            'owner': pathSegments[0],
+            'repo': pathSegments[1],
+          };
+        }
       }
+    } catch (_) {
+      // Fallback if Uri.parse fails
     }
-    
-    // http://github.com/owner/repo
-    if (cleanUrl.startsWith('http://github.com/')) {
-      final parts = cleanUrl.substring(18).split('/');
+
+    // Fallback substring matching for safety (e.g. cleanUrl might contain github.com/owner/repo)
+    if (cleanUrl.contains('github.com/')) {
+      final index = cleanUrl.indexOf('github.com/');
+      final parts = cleanUrl.substring(index + 11).split('/');
       if (parts.length >= 2) {
         return {
           'owner': parts[0],

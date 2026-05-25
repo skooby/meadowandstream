@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:statemachine/statemachine.dart' as sm;
 import 'state_machine_models.dart';
@@ -94,19 +95,90 @@ class AiBridgeStateMachine {
         ),
       ],
       transitions: [
-        TransitionConfig(from: 'idle', to: 'dispatching', label: 'queueTask'),
-        TransitionConfig(from: 'dispatching', to: 'busy', label: 'onAgyBusy'),
-        TransitionConfig(from: 'dispatching', to: 'error', label: 'timeout/focusLoss'),
-        TransitionConfig(from: 'busy', to: 'compiling', label: 'onAgyIdle'),
-        TransitionConfig(from: 'busy', to: 'previewing', label: 'onAgyPreview'),
-        TransitionConfig(from: 'busy', to: 'error', label: 'crash/timeout'),
-        TransitionConfig(from: 'compiling', to: 'synchronizing', label: 'analyzePass'),
-        TransitionConfig(from: 'compiling', to: 'error', label: 'analyzeFail'),
-        TransitionConfig(from: 'synchronizing', to: 'idle', label: 'syncCompleted'),
-        TransitionConfig(from: 'synchronizing', to: 'error', label: 'missingFiles'),
-        TransitionConfig(from: 'previewing', to: 'idle', label: 'userSubmit'),
-        TransitionConfig(from: 'previewing', to: 'dispatching', label: 'retryTask'),
-        TransitionConfig(from: 'error', to: 'idle', label: 'reset'),
+        const TransitionConfig(
+          from: 'idle',
+          to: 'dispatching',
+          label: 'queueTask',
+          conditions: [TransitionCondition(inputName: 'BridgeActive', op: ConditionOp.equals, value: true)],
+        ),
+        const TransitionConfig(
+          from: 'dispatching',
+          to: 'busy',
+          label: 'onAgyBusy',
+          conditions: [TransitionCondition(inputName: 'AgentStatus', op: ConditionOp.equals, value: true)],
+        ),
+        const TransitionConfig(
+          from: 'dispatching',
+          to: 'error',
+          label: 'timeout/focusLoss',
+          conditions: [TransitionCondition(inputName: 'BridgeActive', op: ConditionOp.equals, value: false)],
+        ),
+        const TransitionConfig(
+          from: 'busy',
+          to: 'compiling',
+          label: 'onAgyIdle',
+          conditions: [
+            TransitionCondition(inputName: 'AgentBusy', op: ConditionOp.equals, value: false),
+            TransitionCondition(inputName: 'AgentStatus', op: ConditionOp.equals, value: false),
+          ],
+        ),
+        const TransitionConfig(
+          from: 'busy',
+          to: 'previewing',
+          label: 'onAgyPreview',
+          conditions: [
+            TransitionCondition(inputName: 'AgentBusy', op: ConditionOp.equals, value: false),
+            TransitionCondition(inputName: 'AgentStatus', op: ConditionOp.equals, value: true),
+          ],
+        ),
+        const TransitionConfig(
+          from: 'busy',
+          to: 'error',
+          label: 'crash/timeout',
+          conditions: [TransitionCondition(inputName: 'BridgeActive', op: ConditionOp.equals, value: false)],
+        ),
+        const TransitionConfig(
+          from: 'compiling',
+          to: 'synchronizing',
+          label: 'analyzePass',
+          conditions: [TransitionCondition(inputName: 'AgentThinking', op: ConditionOp.equals, value: false)],
+        ),
+        const TransitionConfig(
+          from: 'compiling',
+          to: 'error',
+          label: 'analyzeFail',
+          conditions: [TransitionCondition(inputName: 'BridgeActive', op: ConditionOp.equals, value: false)],
+        ),
+        const TransitionConfig(
+          from: 'synchronizing',
+          to: 'idle',
+          label: 'syncCompleted',
+          conditions: [TransitionCondition(inputName: 'AgentStatus', op: ConditionOp.equals, value: false)],
+        ),
+        const TransitionConfig(
+          from: 'synchronizing',
+          to: 'error',
+          label: 'missingFiles',
+          conditions: [TransitionCondition(inputName: 'BridgeActive', op: ConditionOp.equals, value: false)],
+        ),
+        const TransitionConfig(
+          from: 'previewing',
+          to: 'idle',
+          label: 'userSubmit',
+          conditions: [TransitionCondition(inputName: 'AgentStatus', op: ConditionOp.equals, value: false)],
+        ),
+        const TransitionConfig(
+          from: 'previewing',
+          to: 'dispatching',
+          label: 'retryTask',
+          conditions: [TransitionCondition(inputName: 'AgentThinking', op: ConditionOp.equals, value: true)],
+        ),
+        const TransitionConfig(
+          from: 'error',
+          to: 'idle',
+          label: 'reset',
+          conditions: [TransitionCondition(inputName: 'BridgeActive', op: ConditionOp.equals, value: true)],
+        ),
       ],
     );
 
@@ -114,6 +186,9 @@ class AiBridgeStateMachine {
       config: config,
       initialActiveStateId: 'idle',
     );
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      visualController.enableBindingTimer = false;
+    }
 
     // 2. Initialize statemachine.dart states
     idleState = _machine.newState('idle');

@@ -1,11 +1,22 @@
 [
   {
+    "id": "bad22888a1823e63ee3dc975a8020c2fe063271c",
+    "taskIds": [
+      "1779724163873"
+    ],
+    "title": "PIPELINE VISUALIZER",
+    "summary": "",
+    "commitHash": "bad22888a1823e63ee3dc975a8020c2fe063271c",
+    "commitDate": "2026-05-25T16:31:36Z",
+    "verifiedNotes": "- make nodes movable and sizable\n- zooming not centered on cursor"
+  },
+  {
     "id": "b965d96f3fd428ec5f1b1aec585a9c3b0fe75b87",
     "taskIds": [],
     "title": "Checkpoint",
     "summary": "Before State Machine Transition",
     "commitHash": "b965d96f3fd428ec5f1b1aec585a9c3b0fe75b87",
-    "commitDate": "2026-05-25T07:22:05-06:00",
+    "commitDate": "2026-05-25T13:22:05Z",
     "verifiedNotes": ""
   },
   {
@@ -16,7 +27,7 @@
     "title": "Task Manager [Filtered hidden categories from SystemLogsWindow top bar chips]",
     "summary": "Improvements for Task Manager",
     "commitHash": "ab6bcf9ff5f99769ed44176cd5b9539463614e60",
-    "commitDate": "2026-05-25T07:21:44-06:00",
+    "commitDate": "2026-05-25T13:21:44Z",
     "verifiedNotes": "- Lock a checklist item if it is currently being worked on by the LLM, since we don't want it to be out of sync.\n- Test, return immediately test"
   },
   {
@@ -27,7 +38,7 @@
     "title": "Task Manager [Reclassified AiBridge logs to SYNC category]",
     "summary": "Improvements for Task Manager",
     "commitHash": "4824a01f2b603c67c5c6d0edfd8ddc6c8879d42e",
-    "commitDate": "2026-05-25T06:54:28-06:00",
+    "commitDate": "2026-05-25T12:54:28Z",
     "verifiedNotes": "- Add a General tab to Config as the very first tab\nAdd list for all System Log types, and check boxes if they should be outputted to System Log and to Console Log\nLets make this editable and reorderable. System Log window would show these in order.\n- Lets reclassify some common logs entries:\n\nAiBridge > SYNC\n- If an entry is hidden in config then don't show that entry for the top bar of the system logs"
   },
   {
@@ -38,7 +49,7 @@
     "title": "Task Manager [Implement retry and log suppression for transcript poller]",
     "summary": "Improvements for Task Manager",
     "commitHash": "d62cb6c391444cbc9f3849d9881c92c5c388f200",
-    "commitDate": "2026-05-25T05:37:59-06:00",
+    "commitDate": "2026-05-25T11:37:59Z",
     "verifiedNotes": "- Testing Updated Prompt Syntax\n- For each checklist item lets save and transmit a notes area. Make this section always avaible on a checklist task, don't reuse the proof box since we want this editable\n- We keep getting spam for this, is it an issue:\n[AiBridge] Poller error reading last line of transcript: FileSystemException: Cannot open file, path = 'C:\\Users\\David\\.gemini\\antigravity\\brain\\43a2ba71-9a7a-4f99-8f12-358d454fba23/.system_generated/logs/transcript.jsonl' (OS Error: The operation completed successfully, errno = 0)"
   },
   {
@@ -49,7 +60,7 @@
     "title": "Task Manager [Task Manager [Append Ending Instruction Helper and fix analyzer timeout process leakage]]",
     "summary": "Improvements for Task Manager",
     "commitHash": "44a60bb4ab331a36a02087c88aaf22a87f58219f",
-    "commitDate": "2026-05-24T23:34:28-06:00",
+    "commitDate": "2026-05-25T05:34:28Z",
     "verifiedNotes": "No verification notes."
   },
   {
@@ -60,7 +71,7 @@
     "title": "Task Manager [Append Ending Instruction Helper and fix analyzer timeout process leakage]",
     "summary": "Improvements for Task Manager",
     "commitHash": "946f99b49e5fc39cdd03a2c68c688e316f05dcf6",
-    "commitDate": "2026-05-24T23:15:13-06:00",
+    "commitDate": "2026-05-25T05:15:13Z",
     "verifiedNotes": "- Remove checklists from Folders\n- Disable ability to hit enter for Name in Task Editor, one line only\n- Test 2, return immediately\n- Test 3, return immediately\n- Test 4, return immediately\n- Clear sync error status when sending anything to the LLM\n- Append the ENDING INSTRUCTION HELPER to the LLM Prompt\n- Expose static AudioPlayerService.instance and clean up native audio C++ drivers context-free on hot reload/restart"
   },
   {
@@ -71,7 +82,7 @@
     "title": "SYSTEM",
     "summary": "General system bugs",
     "commitHash": "66476dceb871e288d4f7900d5f8405be0a35ebf8",
-    "commitDate": "2026-05-24T14:02:26-06:00",
+    "commitDate": "2026-05-24T20:02:26Z",
     "verifiedNotes": "- Hot Restart changed and was crashing"
   },
   {
@@ -82,7 +93,7 @@
     "title": "VERSION CONTROL [Isolate custom commit notes in SharedPreferences]",
     "summary": "Version Control System improvements and tasks",
     "commitHash": "4a5fcdf95aa72c72e8ee8f8f8543afafc008c5b5",
-    "commitDate": "2026-05-24T10:33:52-06:00",
+    "commitDate": "2026-05-24T16:33:52Z",
     "verifiedNotes": "- Lets add a Note to the Active Tasks to be appended to the commit name\n- Commit verification check implemented and auto-triggered\n- Resolve Conflict button notifies LLM to resolve the problem with full details\n- Git error detection in diagnostics window is case-insensitive\n- database dump sync does not block or deadlock status processing\n- SharedPreferences is pre-cached to prevent platform channel channel locks\n- When sending to ai bridge... only checklist items that are unchecked and not ignored are considered. The orange ones are in testing and don't need to be sent"
   },
   {
@@ -91,7 +102,7 @@
     "title": "Bridge monitor and task manager improvements",
     "summary": "- Remove checklists from folders\n- Limit Task Editor Name field to single line and disable enter key\n- Clear sync error status on prompt dispatch\n- Optimize brain directory scan by sorting and checking only top 3 subdirectories\n- Fix conversation_history.md crash in log outcomes monitor\n- Add simulated dry run tab to Bridge Monitor\n- Gracefully validate missing/empty local files in AudioPlayerService to prevent crashes",
     "commitHash": "400b2d4abc810c9b6086deb9824c267f30d33b0a",
-    "commitDate": "2026-05-24T07:52:08-06:00",
+    "commitDate": "2026-05-24T13:52:08Z",
     "verifiedNotes": ""
   },
   {
@@ -102,7 +113,7 @@
     "title": "BRIDGE MONITOR",
     "summary": "",
     "commitHash": "7383ff3699431bdae0fbff044c8f8ebdd83582f8",
-    "commitDate": "2026-05-22T17:09:16-06:00",
+    "commitDate": "2026-05-22T23:09:16Z",
     "verifiedNotes": "- Add a tab to the Bridge Monitor for doing a dry run... we will want to see all of the commands and prompts that will be going out in a simulated environment."
   },
   {
@@ -113,7 +124,7 @@
     "title": "BRIDGE MONITOR [fix: resolve AI Bridge sync error and transition to IDLE]",
     "summary": "",
     "commitHash": "62730daf0e00d95134df0d7bef76dbdf77699a80",
-    "commitDate": "2026-05-22T15:30:39-06:00",
+    "commitDate": "2026-05-22T21:30:39Z",
     "verifiedNotes": "- Log Outcomes Monitor have the area take up the whole space\n- Lets show the log outcomes monitor as a collapsible with text areas that are scrollable and fixed to a certain height, lets have it remember which is collapsed\n- at the top lets have a reset button which tries to put it into a clean state\n- At the top lets link to a markdown document that reviews the code base and determines the design and flow of the ai bridge. A button to view this document in the notes editor and a button to have this rebuilt which copies a prompt to the clipboard that we can put into the LLM manually\n- log outcome monitor adjust each size to the height of the content if it is > 120 pixels then make it scrollable and limited\n- Modify our rebuild prompt to keep it simple, mainly focus on the flow and detection of the AI Bridge. Have it analize if it is correctly doing a list of tasks. Instruct it to only do the areas that I mention and to keep it very brief and to the point. Have it list by number specific areas that we can then pinpoint as not working properly.  Include launching app, after sending to ai bridge, after returning to ai bridge, while processing, include any others that are relevant\n- Split the Bridge Monitor into its own window, I don't like the toggle idea"
   },
   {
@@ -125,7 +136,7 @@
     "title": "TASK MANAGER [ui: update Task Manager title theme color and Task List toolbar background] | CONNECTION [test: verify busy state detection and task status writing in unit tests [TRY #2]]",
     "summary": "Connection test 2.0 passed.",
     "commitHash": "454ae7ef824a11bddce4c7f5529cedc17d0de5c6",
-    "commitDate": "2026-05-22T10:28:31-06:00",
+    "commitDate": "2026-05-22T16:28:31Z",
     "verifiedNotes": "- Main Task Manager window title isn't using the theme color\n- Task List toolbar should use black for its color\n\n- Test for determining busy state of ai bridge and writing status in tasks\n- Lets create an AI BRIDGE WINDOW that we can use to diagnose problems, send tests and monitor outcomes. Have test state and regular state icon\n- Move the task manager toolbar below our worksheet toolbar"
   },
   {
@@ -136,7 +147,7 @@
     "title": "VERSION CONTROL [feat: Add manual copy prompt to clipboard button in active tasks]",
     "summary": "Version Control System improvements and tasks",
     "commitHash": "ec466315cef8f94e9de7211eee3e5974f76aba15",
-    "commitDate": "2026-05-22T07:28:39-06:00",
+    "commitDate": "2026-05-22T13:28:39Z",
     "verifiedNotes": "- Lets add a manual copy prompt to clipboard button in our Active Tasks area. Idea is to be able to manually paste this into a prompt instead of using the AI Bridge\n- Lets change the design up a bit, move the version control top toolbar inside of the different tabs, and we will assign different buttons according to the tab.\n- Move the copy prompt to clipboard icon/button to the toolbar, Left side\n- Move the refresh icon/button to the Version Control title bar on the right side\n- add a send to ai bridge in the active tasks toolbar on the far left, should be a yellow lighting bolt"
   },
   {
@@ -147,7 +158,7 @@
     "title": "TEST [fix: resolve AI Bridge sync error and update status to IDLE]",
     "summary": "",
     "commitHash": "d3ea8a347ed011ec3dd124873f73ce2fc8405cd3",
-    "commitDate": "2026-05-21T23:17:30-06:00",
+    "commitDate": "2026-05-22T05:17:30Z",
     "verifiedNotes": "- Resolved ai bridge sync, stopped repeated reloading, http connection to CLI\n- Lets have a debug setting in our config file and hook this to the log [AntigravityStatusService] HTTP bridge check: state=IDLE, activeJobs=0, isBusy=false... Also if we could make that a bit more intelligent to only output if the value changes... that would be great\n- testing busy"
   },
   {
@@ -158,7 +169,7 @@
     "title": "TEST [fix: resolve AI Bridge sync error and update status to IDLE]",
     "summary": "",
     "commitHash": "f7a24d5f9f551611d35eaf6c5f926905b73ef0b5",
-    "commitDate": "2026-05-21T18:39:16-06:00",
+    "commitDate": "2026-05-22T00:39:16Z",
     "verifiedNotes": "- Resolved ai bridge sync, stopped repeated reloading, http connection to CLI"
   },
   {
@@ -167,7 +178,7 @@
     "title": "Auto-backup before hard reset",
     "summary": "",
     "commitHash": "a0f95ec3556772e9d478e583893911ee31ee4152",
-    "commitDate": "2026-05-21T11:42:26-06:00",
+    "commitDate": "2026-05-21T17:42:26Z",
     "verifiedNotes": ""
   },
   {
@@ -176,7 +187,7 @@
     "title": "Checkpoint",
     "summary": "Before Log Scraping",
     "commitHash": "c01d2fcb2ccd0a98e774c1ee85c3432811904506",
-    "commitDate": "2026-05-21T10:55:17-06:00",
+    "commitDate": "2026-05-21T16:55:17Z",
     "verifiedNotes": ""
   },
   {
@@ -187,7 +198,7 @@
     "title": "TASK MANAGER [refactor: implement silent compiler error resolution policy moving forward]",
     "summary": "",
     "commitHash": "1c95632d641f541992d25f625857b49194b1965d",
-    "commitDate": "2026-05-21T10:54:26-06:00",
+    "commitDate": "2026-05-21T16:54:26Z",
     "verifiedNotes": "- At some point we stopped seeing the active task in the AI BRIDGE PIPELINE QUEUE.\n- Lets not create a task for resolving compiler errors... Lets just do that behind the scenes"
   },
   {
@@ -200,7 +211,7 @@
     "title": "PROMPT HELPER SETTINGS [refactor: Fix Slider Sluggishness and Limit Dispatch Delay to Max 5s] | CONNECTION [Make AI Bridge dispatch delay configurable in Task Manager Settings] | VERSION CONTROL [style(vc): match checkpoint actions to commits, clean titles, and remove flag icon]",
     "summary": "Tasks for Prompt Helper\n\nConnection test 2.0 passed.\n\nVersion Control System improvements and tasks",
     "commitHash": "12726c774266d8f7aa72de2eb9710b078761e0cd",
-    "commitDate": "2026-05-21T07:56:34-06:00",
+    "commitDate": "2026-05-21T13:56:34Z",
     "verifiedNotes": "- Show the titles for each with standard text sizes and UPPERCASE, use theme colors, move colon at end of each label. Make it not so ugly\n- Lets have the Dispatch Delay be more granular. 0, .5, 1, 1.5, etc\n- Have the Dispatch Delay max out at 5 seconds\n- Slider is very sluggish... why?\n\n- There is a long pause after we hit the \"Send to AI Bridge\" button. Lets have the delay be defined in our Task Manager Settings at the bottom of Workflow\n\n- Checkpoints can now match other commits with a open in GitHub icon, lets match these up\n- We don't need the title of \"Manual Checkpoint\" since these visually stand out... and loose the flag icon"
   },
   {
@@ -209,7 +220,7 @@
     "title": "Checkpoint",
     "summary": "Timeline and Version Control",
     "commitHash": "d5ca4c45ad67312713ad4e54be13e61f6be952e6",
-    "commitDate": "2026-05-21T07:18:25-06:00",
+    "commitDate": "2026-05-21T13:18:25Z",
     "verifiedNotes": ""
   },
   {
@@ -220,7 +231,7 @@
     "title": "VERSION CONTROL [refactor(vc): unify auto and manual commit naming logic via shared generateCommitName helper]",
     "summary": "Version Control System improvements and tasks",
     "commitHash": "eda904e197909553c6008829eefc55e48cac8011",
-    "commitDate": "2026-05-21T07:05:13-06:00",
+    "commitDate": "2026-05-21T13:05:13Z",
     "verifiedNotes": "- Have the \"Commit Tasks\" auto populate with the name that we have pre-defined\n- Lets have the Commit Tasks button just allow the automatic version to proceed. No need for a new name, since it should be doing that automatically in the other portion. It will bypass any locks on a task. But it should continue to flag if not all tasks have not been resolved.\n- Name is wrong... it should be using the same as the automatic version... have that call a common function between the two... sheesh"
   },
   {
@@ -232,7 +243,7 @@
     "title": "ui: Bypass name dialog in Commit Tasks button and directly commit | ui: Add task lock toggle button to prevent auto-committing to GitHub",
     "summary": "Version Control System improvements and tasks\n\nImprovements and enhancements",
     "commitHash": "ab4b053d0f80dbf1e02df491c96fb186cc339296",
-    "commitDate": "2026-05-21T07:01:38-06:00",
+    "commitDate": "2026-05-21T13:01:38Z",
     "verifiedNotes": "- Have the \"Commit Tasks\" auto populate with the name that we have pre-defined\n- Lets have the Commit Tasks button just allow the automatic version to proceed. No need for a new name, since it should be doing that automatically in the other portion. It will bypass any locks on a task. But it should continue to flag if not all tasks have not been resolved.\n- Show our committed checkmark as green not red\n- Modify the add new task location to be just below the last entry in the checklist.. it is popping to the bottom\n- Next to our top icon area \"Add to active tasks\" lets include a LOCK icon that we can select that when locked it won't commit to github until we are ready."
   },
   {
@@ -243,7 +254,7 @@
     "title": "Task Editor [ui: Update committed checkmark color to green and checklist layout to shrink-wrap]",
     "summary": "Improvements and enhancements",
     "commitHash": "ed2fb94c34ba3f22ebe5c6d7a28b616b3ca0429b",
-    "commitDate": "2026-05-21T06:42:43-06:00",
+    "commitDate": "2026-05-21T12:42:43Z",
     "verifiedNotes": "- Show our committed checkmark as green not red\n- Modify the add new task location to be just below the last entry in the checklist.. it is popping to the bottom"
   },
   {
@@ -254,7 +265,7 @@
     "title": "VERSION CONTROL TIMELINE HISTORY [Allow up to three lines in timeline history entries]",
     "summary": "Version Control System improvements and tasks",
     "commitHash": "d83d757c02b9d44bb864f65053ced9bfa8117833",
-    "commitDate": "2026-05-21T06:33:37-06:00",
+    "commitDate": "2026-05-21T12:33:37Z",
     "verifiedNotes": "- What I want is for the timeline history to be the same list as the commit list in GitHub... we should be pulling this from GitHub not managing on our own\n- Lets have entries in the timeline history be limited to two lines. For the status instead of a date when it was committed, show something more like \"committed 6 hours ago\"\n- Lets allow up to three lines two for the name + one for sub title"
   },
   {
@@ -265,7 +276,7 @@
     "title": "VERSION CONTROL TIMELINE HISTORY [Constrain timeline history entries to two lines with relative commit status times]",
     "summary": "Version Control System improvements and tasks",
     "commitHash": "0076e1b651d2368ae0bde85b61b65538379b20a6",
-    "commitDate": "2026-05-21T06:31:30-06:00",
+    "commitDate": "2026-05-21T12:31:30Z",
     "verifiedNotes": "- What I want is for the timeline history to be the same list as the commit list in GitHub... we should be pulling this from GitHub not managing on our own\n- Lets have entries in the timeline history be limited to two lines. For the status instead of a date when it was committed, show something more like \"committed 6 hours ago\""
   },
   {
@@ -277,7 +288,7 @@
     "title": "VERSION CONTROL TIMELINE HISTORY | Task Editor [Fix task checkbox clearance when returning from AI bridge] | VERSION CONTROL TIMELINE HISTORY | Task Editor [Fix task checkbox clearance when returning from AI bridge] | VERSION CONTROL TIMELINE HISTORY | Task Editor [Fix task checkbox clearance when returning from AI bridge] | VERSION CONTROL TIMELINE HISTORY | Task Editor [Fix task checkbox clearance when returning from AI bridge] | VERSION CONTROL TIMELINE HISTORY | Task Editor [Fix task checkbox clearance when returning from AI bridge] | VERSION CONTROL TIMELINE HISTORY | Task Editor [Fix task checkbox clearance when returning from AI bridge] | VERSION CONTROL TIMELINE HISTORY | Task Editor [Fix task checkbox clearance when returning from AI bridge] | VERSION CONTROL TIMELINE HISTORY | Task Editor [Fix task checkbox clearance when returning from AI bridge]",
     "summary": "Version Control System improvements and tasks\n\nImprovements and enhancements\n\nVersion Control System improvements and tasks\n\nImprovements and enhancements\n\nVersion Control System improvements and tasks\n\nImprovements and enhancements\n\nVersion Control System improvements and tasks\n\nImprovements and enhancements\n\nVersion Control System improvements and tasks\n\nImprovements and enhancements\n\nVersion Control System improvements and tasks\n\nImprovements and enhancements\n\nVersion Control System improvements and tasks\n\nImprovements and enhancements\n\nVersion Control System improvements and tasks\n\nImprovements and enhancements",
     "commitHash": "6eeb6fc2e874a3e75e362cdfc0d71aa44b57e088",
-    "commitDate": "2026-05-20T23:30:48-06:00",
+    "commitDate": "2026-05-21T05:30:48Z",
     "verifiedNotes": "- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States"
   },
   {
@@ -286,7 +297,7 @@
     "title": "Auto-sync from Antigravity Visual Editor",
     "summary": "",
     "commitHash": "27ffe5e1595493acefa1851a81c20e5d900feecd",
-    "commitDate": "2026-05-20T23:20:08-06:00",
+    "commitDate": "2026-05-21T05:20:08Z",
     "verifiedNotes": ""
   },
   {
@@ -297,7 +308,7 @@
     "title": "Spell Checker",
     "summary": "Lets add a simple spell checker",
     "commitHash": "52a7b679452cbdafa24a352612f9661937cdcf58",
-    "commitDate": "2026-05-20T23:14:51-06:00",
+    "commitDate": "2026-05-21T05:14:51Z",
     "verifiedNotes": "- Contractions working like let's don't... not getting flagged as incorrect"
   },
   {
@@ -308,654 +319,7 @@
     "title": "Spell Checker",
     "summary": "Lets add a simple spell checker",
     "commitHash": "ce4f3c76e2d75eaf34d6e385e3e44a2863fbc1f0",
-    "commitDate": "2026-05-20T23:14:08-06:00",
+    "commitDate": "2026-05-21T05:14:08Z",
     "verifiedNotes": "- Contractions working like let's don't... not getting flagged as incorrect"
-  },
-  {
-    "id": "e56836e48656c38703bb7b71b8391d44f1f66dd9",
-    "taskIds": [
-      "1779304030000"
-    ],
-    "title": "[3/3] Version Control Window Explorer Action Integration [fix(vc): fix duplicate folder breadcrumbs display in explorer navigation]",
-    "summary": "Integrate context menu options and hover actions in the sidebar explorer and connect it with the safety restore flow.",
-    "commitHash": "e56836e48656c38703bb7b71b8391d44f1f66dd9",
-    "commitDate": "2026-05-20T18:28:58-06:00",
-    "verifiedNotes": "- Add a 'Restore from GitHub' action icon and context menu option next to files in the Version Control explorer tree.\n- Implement safe overwrite sequence (create pre-restore backup using AutoBackupService, overwrite local file, trigger file system listeners).\n- Verify editor pane refreshes dynamically showing the restored file state without app restart.\n- Implement safe overwrite sequence (create pre-restore backup using AutoBackupService, fetch raw file from GitHub, overwrite local file, trigger file system listeners).\n- Add a 'Restore from Git' action icon and context menu option next to files in the Version Control explorer tree.\n- Implement safe overwrite sequence (create pre-restore backup using AutoBackupService, fetch raw file from git show, overwrite local file, trigger file system listeners).\n- Window Explorer is not showing folders that begin with a . like our .ai_bridge\n- Reduce the size of the text and the gap between items\n- Put the size of the file to the far right next to the icons so it doesn't take so much room\n- Clicking into a folder is not looking right"
-  },
-  {
-    "id": "398d17d30ad501441260357bb9d8a85486a798ea",
-    "taskIds": [
-      "1779304030000"
-    ],
-    "title": "[3/3] Version Control Window Explorer Action Integration",
-    "summary": "Integrate context menu options and hover actions in the sidebar explorer and connect it with the safety restore flow.",
-    "commitHash": "398d17d30ad501441260357bb9d8a85486a798ea",
-    "commitDate": "2026-05-20T13:38:09-06:00",
-    "verifiedNotes": "- Add a 'Restore from GitHub' action icon and context menu option next to files in the Version Control explorer tree.\n- Implement safe overwrite sequence (create pre-restore backup using AutoBackupService, overwrite local file, trigger file system listeners).\n- Verify editor pane refreshes dynamically showing the restored file state without app restart.\n- Implement safe overwrite sequence (create pre-restore backup using AutoBackupService, fetch raw file from GitHub, overwrite local file, trigger file system listeners).\n- Add a 'Restore from Git' action icon and context menu option next to files in the Version Control explorer tree.\n- Implement safe overwrite sequence (create pre-restore backup using AutoBackupService, fetch raw file from git show, overwrite local file, trigger file system listeners)."
-  },
-  {
-    "id": "08f9eb65243fe8e6daa77680f53ef9a1fde6af8d",
-    "taskIds": [
-      "1779304020000"
-    ],
-    "title": "[2/3] File History Dialog & GitHub Web Link Integration",
-    "summary": "Build FileHistoryDialog widget to show the list of commits touching a file, with links to view the diff details directly on GitHub Web.",
-    "commitHash": "08f9eb65243fe8e6daa77680f53ef9a1fde6af8d",
-    "commitDate": "2026-05-20T13:26:11-06:00",
-    "verifiedNotes": "- Create FileHistoryDialog displaying a list of commits with date/author/message metadata.\n- Build a side-by-side or unified code diff viewer comparing local file vs selected revision content.\n- Implement external link launcher that opens the diff on GitHub Web (e.g. url_launcher to commit URL)."
-  },
-  {
-    "id": "de20d9124d4f2694e9f782afeb44a9b968d9ff6e",
-    "taskIds": [
-      "1779304010000"
-    ],
-    "title": "[1/3] Git Local File History & Content Integration [feat(vc): implement local git history, git show, and github service fetch helpers]",
-    "summary": "Implement helper methods in VersionControlService to retrieve a single file's commit history and contents at specific SHAs using local git CLI commands.",
-    "commitHash": "de20d9124d4f2694e9f782afeb44a9b968d9ff6e",
-    "commitDate": "2026-05-20T13:22:41-06:00",
-    "verifiedNotes": "- Create github_service.dart and define personal access token authorization header handling.\n- Implement fetchCommits(String filePath) to retrieve the commit history of a specific file.\n- Implement fetchFileContent(String filePath, String commitSha) to pull the raw text of the file.\n- Implement getFileCommitHistory(String filePath) using git log --follow --format=%H===%s===%an===%ad --date=iso -- <filePath>\n- Implement getFileContentAtCommit(String filePath, String commitSha) using git show <commitSha>:<filePath>"
-  },
-  {
-    "id": "ac7836896ee21168dc23b7218af73ce095e724cf",
-    "taskIds": [],
-    "title": "Checkpoint",
-    "summary": "Before GitHub Connection",
-    "commitHash": "ac7836896ee21168dc23b7218af73ce095e724cf",
-    "commitDate": "2026-05-20T13:20:34-06:00",
-    "verifiedNotes": ""
-  },
-  {
-    "id": "5033a0124caaae101a6709d0fbef448d9af4fefd",
-    "taskIds": [
-      "1779299719063"
-    ],
-    "title": "TASK MANAGER [style(ui): update Add Folder and Add Task header icon sizes and colors]",
-    "summary": "",
-    "commitHash": "5033a0124caaae101a6709d0fbef448d9af4fefd",
-    "commitDate": "2026-05-20T12:39:08-06:00",
-    "verifiedNotes": "- To the right of the worksheet button bar move the Do Work button, make it look like the Send to AI Bridge icon in Task Editor\n- In the Header of Task Manager to the right of Add Folder, have an Add Task icon, which will add a task in the root of the current worksheet\n- Lets show the folder as yellow and match the folder and + with the task list versions (size and color)"
-  },
-  {
-    "id": "27ab2ab18a33d6eac56fc6c1a4534f7b6afffa10",
-    "taskIds": [
-      "1779299719063"
-    ],
-    "title": "TASK MANAGER",
-    "summary": "",
-    "commitHash": "27ab2ab18a33d6eac56fc6c1a4534f7b6afffa10",
-    "commitDate": "2026-05-20T12:15:28-06:00",
-    "verifiedNotes": "- Move the worksheet + icon to the end of the worksheet icons in the toolbar\n- Task Editor Remove the dropdown for the type of task this is... not sure where that came from... the dropdown to the left of status"
-  },
-  {
-    "id": "f3a1018044cd36769c9afd0072efd497ee4acb1e",
-    "taskIds": [
-      "1778503455784"
-    ],
-    "title": "TASK MANAGER [test(task-manager): verify task manager improvements persist across restarts]",
-    "summary": "General improvements for Task Manager",
-    "commitHash": "f3a1018044cd36769c9afd0072efd497ee4acb1e",
-    "commitDate": "2026-05-20T11:23:37-06:00",
-    "verifiedNotes": "- Remove Icons and internal functions for Toggle Empty Folders\n- Remove icon for Mark all tasks as read\n- When outputting a task to the ai bridge traverse the name of the task with its parents... starting with the worksheet...\n- Test Restart"
-  },
-  {
-    "id": "a461cb6362c66b6a248eb1ec38404f7b10b5f18a",
-    "taskIds": [
-      "1779295760360"
-    ],
-    "title": "System Logs [feat(logs): implement auto-scroll and manual scroll override for system logs]",
-    "summary": "Updates for system logs",
-    "commitHash": "a461cb6362c66b6a248eb1ec38404f7b10b5f18a",
-    "commitDate": "2026-05-20T11:00:01-06:00",
-    "verifiedNotes": "- Have the scrollbar set to scroll to bottom to always see the latest messages, if we try to scroll then disable the automatic scroll to bottom"
-  },
-  {
-    "id": "8f33d85d46f6df06bb3e04f0c126253236f07297",
-    "taskIds": [
-      "1779292935054"
-    ],
-    "title": "RESTART/RELOAD [test(bridge): verify return sequence stability without lockups]",
-    "summary": "",
-    "commitHash": "8f33d85d46f6df06bb3e04f0c126253236f07297",
-    "commitDate": "2026-05-20T10:49:01-06:00",
-    "verifiedNotes": "- Testing restart/reload at end of processing task\n- Checking for return lockups from AI Bridge"
-  },
-  {
-    "id": "e5407764b0e7154eebf1ce4ea301f312531e4dbf",
-    "taskIds": [
-      "1779292935054"
-    ],
-    "title": "RESTART/RELOAD [test(bridge): verify restart and reload flow on completion]",
-    "summary": "",
-    "commitHash": "e5407764b0e7154eebf1ce4ea301f312531e4dbf",
-    "commitDate": "2026-05-20T10:47:47-06:00",
-    "verifiedNotes": "- Testing restart/reload at end of processing task"
-  },
-  {
-    "id": "383fd52d423e9e68df01b44b78753fd12cc39e80",
-    "taskIds": [
-      "1779292935054"
-    ],
-    "title": "RESTART/RELOAD [test(bridge): verify restart and reload flow on completion]",
-    "summary": "",
-    "commitHash": "383fd52d423e9e68df01b44b78753fd12cc39e80",
-    "commitDate": "2026-05-20T10:17:26-06:00",
-    "verifiedNotes": "- Testing restart/reload at end of processing task"
-  },
-  {
-    "id": "07376504647427b75ebc2f6737ad43382763fa29",
-    "taskIds": [
-      "1779282807012"
-    ],
-    "title": "SYSTEM LOG [test(bridge): verify return lockup stability in try #3]",
-    "summary": "",
-    "commitHash": "07376504647427b75ebc2f6737ad43382763fa29",
-    "commitDate": "2026-05-20T09:59:51-06:00",
-    "verifiedNotes": "- Resolved return lockups"
-  },
-  {
-    "id": "d9f5ccaa6d0c22a97cbae240ceb60484886bbac0",
-    "taskIds": [
-      "1779282807012"
-    ],
-    "title": "SYSTEM LOG [test(bridge): verify preview filtering and prevent status loop lockup]",
-    "summary": "",
-    "commitHash": "d9f5ccaa6d0c22a97cbae240ceb60484886bbac0",
-    "commitDate": "2026-05-20T08:06:19-06:00",
-    "verifiedNotes": "- Add the ability to PIN the window on top\n- Add an icon to have background to toggle between 25%, 50%, 75% transparent\n- Test preview tasks make sure they are not appearing, and check for return lockups"
-  },
-  {
-    "id": "b0add38543b36bd20cc3ce59e3acae021383a46f",
-    "taskIds": [
-      "1779282807012"
-    ],
-    "title": "SYSTEM LOG [feat(bridge): filter preview items from active task verification and prompt generation]",
-    "summary": "",
-    "commitHash": "b0add38543b36bd20cc3ce59e3acae021383a46f",
-    "commitDate": "2026-05-20T07:53:04-06:00",
-    "verifiedNotes": "- Add the ability to PIN the window on top\n- Add an icon to have background to toggle between 25%, 50%, 75% transparent"
-  },
-  {
-    "id": "4100d6ad3a9d622a6ce25cc3f5a04834a0d6d138",
-    "taskIds": [
-      "1779281289688"
-    ],
-    "title": "CLI [feat(cli): implement tag creation and tags-table folder alias support]",
-    "summary": "",
-    "commitHash": "4100d6ad3a9d622a6ce25cc3f5a04834a0d6d138",
-    "commitDate": "2026-05-20T07:12:36-06:00",
-    "verifiedNotes": "- Test bridge with CLI"
-  },
-  {
-    "id": "2e028d3994403f78d6e3ebe9c8e8d899228db805",
-    "taskIds": [
-      "1779227119674"
-    ],
-    "title": "ANTIGRAVITY CONNECTION [Fix Antigravity model dropdown styling and formatting]",
-    "summary": "",
-    "commitHash": "2e028d3994403f78d6e3ebe9c8e8d899228db805",
-    "commitDate": "2026-05-19T22:58:23-06:00",
-    "verifiedNotes": "- Lets output to the log what is received from Antigravity, this should be in readable form\n- In the Config we need to query what models are available and be able to set the target model that is used\n- dropdown box for choosing the model is white text on white background"
-  },
-  {
-    "id": "db92fe16bde8cc75608f4d71de3413e6d33c925d",
-    "taskIds": [
-      "1800000000014",
-      "1779063155069",
-      "1800000000013"
-    ],
-    "title": "STEP 7 - Final Validation | Task Editor [Fix task checkbox clearance when returning from AI bridge] | STEP 6 - Add Optional Embeddings Support [feat: verify optional local embeddings support via nomic-embed-text]",
-    "summary": "E2E Testing of Native AI integration.\n\nImprovements and enhancements\n\nVector database capabilities.",
-    "commitHash": "db92fe16bde8cc75608f4d71de3413e6d33c925d",
-    "commitDate": "2026-05-19T21:24:01-06:00",
-    "verifiedNotes": "- Run an end-to-end UI test of the Task Summarizer.\n- Ensure UI performance is maintained without main-thread blocking.\n\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Install nomic-embed-text locally.\n- Add generateEmbeddings() method to LocalAiService."
-  },
-  {
-    "id": "dbc5a85caaa080e64c47095202291780c468d70b",
-    "taskIds": [
-      "1800000000013"
-    ],
-    "title": "STEP 6 - Add Optional Embeddings Support [fix: Delete processed latest_notes.json, latest_verification.json, and latest_preview.json files to prevent stale values from overriding subsequent tasks]",
-    "summary": "Vector database capabilities.",
-    "commitHash": "dbc5a85caaa080e64c47095202291780c468d70b",
-    "commitDate": "2026-05-19T20:42:03-06:00",
-    "verifiedNotes": "No verification notes."
-  },
-  {
-    "id": "2a60e0d06f081f6cd6108e78f0acfabec2696650",
-    "taskIds": [
-      "1776705616800"
-    ],
-    "title": "AI BRIDGE PIPELINE QUEUE [fix: Implement dynamic dot animation and fix hot reload/restart timing issue]",
-    "summary": "",
-    "commitHash": "2a60e0d06f081f6cd6108e78f0acfabec2696650",
-    "commitDate": "2026-05-19T20:25:10-06:00",
-    "verifiedNotes": "- Need a better indicator that ai bridge hasn't locked up... maybe have the current one add dots as characters are received\n- Verify that we are sending hot reload/restart when changes are detected, same way as before."
-  },
-  {
-    "id": "b0ad04de90b2625d789a475fa64565bf14e4724e",
-    "taskIds": [
-      "1776705616800"
-    ],
-    "title": "AI BRIDGE PIPELINE QUEUE [chore: Verify connection to Antigravity]",
-    "summary": "",
-    "commitHash": "b0ad04de90b2625d789a475fa64565bf14e4724e",
-    "commitDate": "2026-05-19T19:07:47-06:00",
-    "verifiedNotes": "- Testing connection to antigravity"
-  },
-  {
-    "id": "51cedbf7e8bfa34fd4440971abf2875638614205",
-    "taskIds": [
-      "1779224338775"
-    ],
-    "title": "2. Integrate Core SDK Client",
-    "summary": "Initialize the Antigravity SDK client in AiBridgeService and replace wscript SendKeys with native API calls.",
-    "commitHash": "51cedbf7e8bfa34fd4440971abf2875638614205",
-    "commitDate": "2026-05-19T15:44:26-06:00",
-    "verifiedNotes": "- Add the `antigravity_sdk` dependency to `pubspec.yaml`.\n- Initialize `AntigravityClient` within the `AiBridgeService` constructor.\n- Replace `_sendToAiAgent` logic with `AntigravityClient.sendPrompt(...)` API call."
-  },
-  {
-    "id": "445e77eb748579533d6171fe3bebd7e8f74ebe0e",
-    "taskIds": [
-      "1779224338774"
-    ],
-    "title": "1. Remove Legacy Automation Scripts",
-    "summary": "Delete paste.vbs, clipboard injection logic, and agent_status.txt polling.",
-    "commitHash": "445e77eb748579533d6171fe3bebd7e8f74ebe0e",
-    "commitDate": "2026-05-19T15:14:21-06:00",
-    "verifiedNotes": "- Delete `.ai_bridge/paste.vbs` from the filesystem.\n- Remove the `Clipboard.setData` and `wscript` shell execution blocks from `AiBridgeService._sendToAiAgent`.\n- Remove file watcher dependencies on `agent_status.txt` for idle state polling."
-  },
-  {
-    "id": "92ed3dcb8ee0102e96c90797b59f266142df9010",
-    "taskIds": [],
-    "title": "Checkpoint",
-    "summary": "Before Antigravity SDK",
-    "commitHash": "92ed3dcb8ee0102e96c90797b59f266142df9010",
-    "commitDate": "2026-05-19T15:07:32-06:00",
-    "verifiedNotes": ""
-  },
-  {
-    "id": "7e4addf2ce1eeae169214838231ece1c125e1639",
-    "taskIds": [
-      "1778559578740",
-      "1800000000012"
-    ],
-    "title": "PREVIEW MODE | STEP 5 - Add Request Timeouts & Fallbacks",
-    "summary": "Enhancements for preview mode\n\nEnsure robustness for LocalAiService.",
-    "commitHash": "7e4addf2ce1eeae169214838231ece1c125e1639",
-    "commitDate": "2026-05-19T15:07:08-06:00",
-    "verifiedNotes": "- Modify the preview mode tasks to be more directly tied to the task in the task list, which is the current task. Lets have it add new tasks in the task editor instead of this current mechanism.\n- Test preview stuff\n- Do stuff\n\n- Implement retry mechanism in LocalAiService for failed HTTP requests.\n- Implement cloud API fallback routing if local Ollama instance is completely unreachable.\n- If service not found, can we start up a new service?"
-  },
-  {
-    "id": "033ad697916a6a3a9272c858d0b034fc4bf5fc7c",
-    "taskIds": [
-      "1800000000011"
-    ],
-    "title": "STEP 4 - Hook UI to AI Utility Pipelines [Hook UI areas to AI Assistant]",
-    "summary": "Wire the native LocalAiService into the Global Task Editor UI.",
-    "commitHash": "033ad697916a6a3a9272c858d0b034fc4bf5fc7c",
-    "commitDate": "2026-05-19T10:36:13-06:00",
-    "verifiedNotes": "- Verify 'Prompt Review' button/action is added to Global Task Editor and successfully triggers LocalAiService.\n- Verify 'Task Summarizer' button/action is added to Global Task Editor and successfully injects summary.\n- Add a Config tab for AI Assistant. We will add some connection and configuration options there."
-  },
-  {
-    "id": "e005a89e1af4435193e0d54a0d447c9c0aca4be1",
-    "taskIds": [
-      "1800000000003"
-    ],
-    "title": "STEP 3 - Verify Local API",
-    "summary": "",
-    "commitHash": "e005a89e1af4435193e0d54a0d447c9c0aca4be1",
-    "commitDate": "2026-05-19T06:37:24-06:00",
-    "verifiedNotes": "- Verify Ollama API is accessible at Default endpoint: http://localhost:11434.\n- Test endpoint POST http://localhost:11434/api/chat with valid JSON body containing model and messages.\n- Confirm valid JSON response."
-  },
-  {
-    "id": "7818f45a933eb74bcd83beee5eaf9d66f9585b47",
-    "taskIds": [
-      "1800000000002"
-    ],
-    "title": "STEP 2 - Download Local Model",
-    "summary": "",
-    "commitHash": "7818f45a933eb74bcd83beee5eaf9d66f9585b47",
-    "commitDate": "2026-05-19T06:33:37-06:00",
-    "verifiedNotes": "- Install lightweight orchestration model: `ollama pull qwen2.5:3b`.\n- Optional alternative: `ollama pull gemma3:4b`.\n- Verify model works: `ollama run qwen2.5:3b`.\n- Test prompt: 'Summarize the purpose of a prompt review assistant.'"
-  },
-  {
-    "id": "12d60abfbbf5cbd94f4f2da1588fac45d500aa7f",
-    "taskIds": [
-      "1800000000001"
-    ],
-    "title": "STEP 1 - Install Ollama",
-    "summary": "",
-    "commitHash": "12d60abfbbf5cbd94f4f2da1588fac45d500aa7f",
-    "commitDate": "2026-05-19T06:28:28-06:00",
-    "verifiedNotes": "- Detect operating system.\n- Install Ollama from https://ollama.com.\n- Windows: Ensure Ollama service is running.\n- Mac/Linux: Run `ollama --version`."
-  },
-  {
-    "id": "d87e5897da88e86c7291cf5b9cb27ec46f7c55d8",
-    "taskIds": [],
-    "title": "Checkpoint",
-    "summary": "Before AI ASSISTANT Stuff",
-    "commitHash": "d87e5897da88e86c7291cf5b9cb27ec46f7c55d8",
-    "commitDate": "2026-05-19T06:19:55-06:00",
-    "verifiedNotes": ""
-  },
-  {
-    "id": "2d9978ffeaaab67a3cc053388cec456deeb3758e",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor",
-    "summary": "Improvements and enhancements",
-    "commitHash": "2d9978ffeaaab67a3cc053388cec456deeb3758e",
-    "commitDate": "2026-05-19T06:18:57-06:00",
-    "verifiedNotes": "- Change the Complete All to be an icon\n- Add a Uncheck all icon next to the Complete All icon\n- Uncheck all ... should uncheck items in the checklist"
-  },
-  {
-    "id": "1e131686212de8a97e279c7d37d7b65c1478fb68",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor",
-    "summary": "Improvements and enhancements",
-    "commitHash": "1e131686212de8a97e279c7d37d7b65c1478fb68",
-    "commitDate": "2026-05-19T06:13:58-06:00",
-    "verifiedNotes": "- Change the Complete All to be an icon\n- Add a Uncheck all icon next to the Complete All icon"
-  },
-  {
-    "id": "aa38702916955e0cf0bedb536444f2023f9ffd72",
-    "taskIds": [
-      "1779190114830",
-      "1775069020512"
-    ],
-    "title": "Fix compile errors | Implement Primary Directives Injection",
-    "summary": "The recent Hot Reload/Restart resulted in compilation errors. Fix them immediately.\n\nImplement the hybrid approach for communicating Primary Directives to the AI. Create a dedicated directives file and update the bridge to inject it into every task.",
-    "commitHash": "aa38702916955e0cf0bedb536444f2023f9ffd72",
-    "commitDate": "2026-05-19T06:01:17-06:00",
-    "verifiedNotes": "- Expand the Prompt Helper UI to include a 'Primary Directives' settings panel. The application should automatically generate, maintain, and overwrite the `.ai_bridge/primary_directives.md` file whenever these user-defined settings are modified.\n- Modify `AiBridgeService` to asynchronously read the contents of `.ai_bridge/primary_directives.md` as part of the payload construction phase. If the file doesn't exist, ensure it falls back gracefully or creates a default version automatically.\n- Update the payload generation logic to embed the contents of `primary_directives.md` directly into the system instructions. Ensure it uses a strong marker like `> [!IMPORTANT]` so the AI gives it maximum weight before proceeding with execution.\n- Perform an end-to-end test. Enqueue a dummy task into the AI Bridge, execute it, and review the prompt logs to verify that the Primary Directives were successfully injected into the system prompt and that the AI acknowledged them before starting the task.\n- Testing Prime Directives and pipeline\n- Primary directives file looks wrong..."
-  },
-  {
-    "id": "462ce9e9e4d4b39acf817719ea98ff7b49d9b210",
-    "taskIds": [],
-    "title": "Checkpoint",
-    "summary": "BEFORE CHANGES PRIME DIRECTIVES METHOD",
-    "commitHash": "462ce9e9e4d4b39acf817719ea98ff7b49d9b210",
-    "commitDate": "2026-05-19T05:00:55-06:00",
-    "verifiedNotes": ""
-  },
-  {
-    "id": "6da4b04ecda1eba4cceeb6598a1fa58e62d48f0d",
-    "taskIds": [
-      "1779167205871",
-      "1778503455784"
-    ],
-    "title": "Fix compile errors | TASK MANAGER [Fix: Task editor bottom toolbar separators]",
-    "summary": "The recent Hot Reload/Restart resulted in compilation errors. Fix them immediately.\n\nGeneral improvements for Task Manager",
-    "commitHash": "6da4b04ecda1eba4cceeb6598a1fa58e62d48f0d",
-    "commitDate": "2026-05-19T04:44:06-06:00",
-    "verifiedNotes": "- Feels like summary is getting rewritten as we mark checklist items as complete. The summary should summarize all items within the task editor. This is for sure happening. summary should not\n- Remove the double separator in the bottom area the one after duplicate task"
-  },
-  {
-    "id": "275379c19b948f61f136f736b73e005b921524f0",
-    "taskIds": [
-      "1778503455784"
-    ],
-    "title": "TASK MANAGER [Fix: Increase task list strikethrough thickness]",
-    "summary": "General improvements for Task Manager",
-    "commitHash": "275379c19b948f61f136f736b73e005b921524f0",
-    "commitDate": "2026-05-18T22:56:22-06:00",
-    "verifiedNotes": "- Hide the focus: Ancestor TextFieldTapRegion and icon from top toolbar\n- Tasklist show crossed out line as white"
-  },
-  {
-    "id": "d486a6b4a2bc7d0b139b4ff2ed830095aad16dd8",
-    "taskIds": [
-      "1779156022892",
-      "1779154106804"
-    ],
-    "title": "Fix compile errors | Spell Checker [Implement right-click spell check suggestions via context menu]",
-    "summary": "The recent Hot Reload/Restart resulted in compilation errors. Fix them immediately.\n\nLets add a simple spell checker",
-    "commitHash": "d486a6b4a2bc7d0b139b4ff2ed830095aad16dd8",
-    "commitDate": "2026-05-18T20:04:27-06:00",
-    "verifiedNotes": "- https://pub.dev/packages/simple_spell_checker\n- Show in input fields only while editing\n- Not working for Add new task input field\n- Can we add right mouse click suggestions"
-  },
-  {
-    "id": "7f92d5fdda6889abf35f49af548805c4fa69969d",
-    "taskIds": [
-      "1779154106804"
-    ],
-    "title": "Spell Checker [Implement simple_spell_checker with focus-aware custom TextEditingController]",
-    "summary": "Lets add a simple spell checker",
-    "commitHash": "7f92d5fdda6889abf35f49af548805c4fa69969d",
-    "commitDate": "2026-05-18T19:36:51-06:00",
-    "verifiedNotes": "- https://pub.dev/packages/simple_spell_checker\n- Show in input fields only while editing"
-  },
-  {
-    "id": "f9be98a86cdafa920aa9b61e87c6c8dd1a991a2b",
-    "taskIds": [
-      "1778869915153"
-    ],
-    "title": "VERSION CONTROL TIMELINE HISTORY [Replace ListTile with InkWell+Row+Column for pixel-accurate vertical centering in Active Tasks and Timeline History rows]",
-    "summary": "Version Control System improvements and tasks",
-    "commitHash": "f9be98a86cdafa920aa9b61e87c6c8dd1a991a2b",
-    "commitDate": "2026-05-18T19:22:44-06:00",
-    "verifiedNotes": "- SHow our standard text smaller at 1.0x the normal size, make the restore points 20% larger\n- Make the sub title lines in our timeline history entries 20% smaller\n- Reduce the white space between entries\n- consolidate icons to not be so spaced out\n- Show the bithub hash number left of the time stamp\n- Alternate the colors by row\n- Active Tasks reduce the white space between entries, alternate colors by row as well\n- Vertically Center enries in Acitve tasks and timeline history"
-  },
-  {
-    "id": "2232dce2a9c2b479090fe4a986fc1168c7c292e5",
-    "taskIds": [],
-    "title": "Checkpoint",
-    "summary": "After the nightware of locked waiting cycles",
-    "commitHash": "2232dce2a9c2b479090fe4a986fc1168c7c292e5",
-    "commitDate": "2026-05-18T18:53:49-06:00",
-    "verifiedNotes": ""
-  },
-  {
-    "id": "4f2d1a8b63c0904f73882b7016fc6f0895a435e3",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor",
-    "summary": "Improvements and enhancements",
-    "commitHash": "4f2d1a8b63c0904f73882b7016fc6f0895a435e3",
-    "commitDate": "2026-05-18T18:48:52-06:00",
-    "verifiedNotes": "- Fix auto submit when all tasks in checklist are completed"
-  },
-  {
-    "id": "abbc5105c542441a9327b1a419d9a9e955801ac8",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor : FORCED, fixed area of holding till not editing before hot reload/restart",
-    "summary": "Improvements and enhancements",
-    "commitHash": "abbc5105c542441a9327b1a419d9a9e955801ac8",
-    "commitDate": "2026-05-18T17:57:04-06:00",
-    "verifiedNotes": "- Lets test editing while ai is busy and it waiting for us to finish the current input before performing a hot restart/reload\n- This is a test of editing in this field... it will come back with a hot reload and hopefully it will wait for me to finish beofre interruppting me... we shall see\n- Getting a lot of these errors,\n\"Unable to parse JSON message:\nThe document is empty.\"\n- Test if stuff is properly blocking while editing\n- Test waiting before sending reload/restart should work! testing test test again"
-  },
-  {
-    "id": "28cc31b56fe76d22289e87e5da127262eef3f751",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor [Verify hot reload loop resolution]",
-    "summary": "Improvements and enhancements",
-    "commitHash": "28cc31b56fe76d22289e87e5da127262eef3f751",
-    "commitDate": "2026-05-18T15:13:32-06:00",
-    "verifiedNotes": "- Lets test editing while ai is busy and it waiting for us to finish the current input before performing a hot restart/reload\n- Getting a lot of these errors,\n\"Unable to parse JSON message:\nThe document is empty.\"\n- Lets show an icon in the bottom left corner when we are editing an input field. This is for debug purposes to make sure this state is correct."
-  },
-  {
-    "id": "dff4e0bbde1119dd79dda9922acc2ae510dc2185",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor [Isolate AI bridge queue lock to dispatch button]",
-    "summary": "Improvements and enhancements",
-    "commitHash": "dff4e0bbde1119dd79dda9922acc2ae510dc2185",
-    "commitDate": "2026-05-18T13:46:23-06:00",
-    "verifiedNotes": "- Verify we are not busy editing when trying to execute a hot reload or hot restart\n- Don't allow multiple send to AI Bridge presses from Task Editor.\n- I want to still be able to edit a task... it is after the app detects that a hot reload/restart needs to happen that it needs to wait until I am not editing an input field... Since it flashes away and looses focus"
-  },
-  {
-    "id": "f33bfa2201866e3d79d4a6a0e9934197e360560f",
-    "taskIds": [
-      "1778503455784"
-    ],
-    "title": "TASK MANAGER [Remove completed tasks foldout UI]",
-    "summary": "General improvements for Task Manager",
-    "commitHash": "f33bfa2201866e3d79d4a6a0e9934197e360560f",
-    "commitDate": "2026-05-18T12:30:48-06:00",
-    "verifiedNotes": "- Don't move completed tasks into the Completed Tasks foldout. Just show it completed in place. Lets get rid of the COMPLETED TASKS foldout area"
-  },
-  {
-    "id": "cca18f7958cdcb878e00ef4c333710382b229976",
-    "taskIds": [
-      "1778869915153"
-    ],
-    "title": "VERSION CONTROL [Fix completion block for tasks without Git diffs]",
-    "summary": "Version Control System improvements and tasks",
-    "commitHash": "cca18f7958cdcb878e00ef4c333710382b229976",
-    "commitDate": "2026-05-18T12:17:12-06:00",
-    "verifiedNotes": "- Don't allow a commit while ai bridge is working on something\n- Don't allow a commit in a task with open items, unless a checklist item is set to be ignored\n- Give a message to resolve open items before committing\n- Add manual commit button, prompt to verify the Commit Name\n- Show goal messages as subtitles to checklist entries in Version Control\n- Version Control line strikethrough color should be white\n- All items are completed... yet it isn't comitting it"
-  },
-  {
-    "id": "6d14e8ff6810671f4821c25ceb61e61d5c65e4d3",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor [Clear checklist item checkmark on content edit]",
-    "summary": "Improvements and enhancements",
-    "commitHash": "6d14e8ff6810671f4821c25ceb61e61d5c65e4d3",
-    "commitDate": "2026-05-18T11:04:08-06:00",
-    "verifiedNotes": "- Checking committed flag"
-  },
-  {
-    "id": "58f5323871c4c8a3058705f723ab8355333c88af",
-    "taskIds": [],
-    "title": "Verified Items:",
-    "summary": "",
-    "commitHash": "58f5323871c4c8a3058705f723ab8355333c88af",
-    "commitDate": "2026-05-18T11:01:05-06:00",
-    "verifiedNotes": "No items verified."
-  },
-  {
-    "id": "307f5f142267fa99ac553362ce519645028fc83a",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor [Verify checkmark committed flag]",
-    "summary": "Improvements and enhancements",
-    "commitHash": "307f5f142267fa99ac553362ce519645028fc83a",
-    "commitDate": "2026-05-18T10:45:59-06:00",
-    "verifiedNotes": "- Checking committed flag"
-  },
-  {
-    "id": "95a03d44502125560b54b998c3d62ab21dc8a3d3",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor [Add animated Big Red Checkmark on checklist completion]",
-    "summary": "Improvements and enhancements",
-    "commitHash": "95a03d44502125560b54b998c3d62ab21dc8a3d3",
-    "commitDate": "2026-05-18T10:37:28-06:00",
-    "verifiedNotes": "- Add a Complete all, which will set each checklist item as completed\n- After a checklist item has been committed .. show an big Red Checkmark in the bottom right corner."
-  },
-  {
-    "id": "4f0b6f45c3c7ab08b885a93423b409c73234ffcc",
-    "taskIds": [],
-    "title": "Verified Items:",
-    "summary": "",
-    "commitHash": "4f0b6f45c3c7ab08b885a93423b409c73234ffcc",
-    "commitDate": "2026-05-18T10:16:25-06:00",
-    "verifiedNotes": "No items verified."
-  },
-  {
-    "id": "b8042510032968a96f619b25bf4288c39d1eca9c",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor [Add SnackBar notification for checklist item completion]",
-    "summary": "Improvements and enhancements",
-    "commitHash": "b8042510032968a96f619b25bf4288c39d1eca9c",
-    "commitDate": "2026-05-18T10:12:32-06:00",
-    "verifiedNotes": "- Add a Complete all, which will set each checklist item as completed\n- After a checklist item has been committed lets show a note on the bottom to let us know"
-  },
-  {
-    "id": "0c4b6767134c52cf411b168a6e501286fac3c224",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor [Add Complete All button to Task Editor checklist]",
-    "summary": "Improvements and enhancements",
-    "commitHash": "0c4b6767134c52cf411b168a6e501286fac3c224",
-    "commitDate": "2026-05-18T09:56:38-06:00",
-    "verifiedNotes": "- Add a Complete all, which will set each checklist item as completed"
-  },
-  {
-    "id": "cc0d337a8452503196685dbeccbf1571dfa5b160",
-    "taskIds": [
-      "task_timeline_cleanup_1779079091180"
-    ],
-    "title": "Implement Timeline History Cleanup Engine [Implement workspace stashing for safe timeline squash]",
-    "summary": "Build a safe 'Clean Up History' mechanism that squashes old Git checkpoints to reduce bloat, while simultaneously deleting those nodes from timeline_history.json to prevent UI crashes.",
-    "commitHash": "cc0d337a8452503196685dbeccbf1571dfa5b160",
-    "commitDate": "2026-05-18T07:59:18-06:00",
-    "verifiedNotes": "- Squash Error:\nException: Failed timeline cleanup: Exception: Failed to cherry-pick: error: could not apply d2361e3... [CHECKPOINT] - Manual Checkpoint: Before moving onto Step 2 of VC\nhint: After resolving the conflicts, mark them with\nhint: \"git add/rm <pathspec>\", then run\nhint: \"git cherry-pick --continue\".\nhint: You can instead skip this commit with \"git cherry-pick --skip\".\nhint: To abort and get back to the state before \"git cherry-pick\",\nhint: run \"git cherry-pick --abort\".\nhint: Disable this message with \"git config set advice.mergeConflict false\"\n\n#0      VersionControlService.cleanupTimelineHistory (package:music_app/services/version_control_service.dart:490:7)\n<asynchronous suspension>\n#1      _VersionControlWindowState._buildTimelineNodes.<anonymous closure> (package:music_app/screens/visual_editor/panels/version_control_window.dart:483:19)\n<asynchronous suspension>"
-  },
-  {
-    "id": "b52727880ffddc74bf2dc9e33ca21a150e31863e",
-    "taskIds": [
-      "1778869915153",
-      "1779063155069"
-    ],
-    "title": "VERSION CONTROL TASKS [Improve Squash error UI and logging mechanisms] | Task Editor [Fix task editor Reset button to clear summary]",
-    "summary": "Version Control System improvements and tasks\n\nImprovements and enhancements",
-    "commitHash": "b52727880ffddc74bf2dc9e33ca21a150e31863e",
-    "commitDate": "2026-05-18T07:55:10-06:00",
-    "verifiedNotes": "- Squash causing an error but error isn't getting output to log or console to tell you what is happening, output error to log and console and when allow for being able to copy an error to clipboard with an icon next to the message\n- Squash Error:\nException: Failed timeline cleanup: Exception: Failed to cherry-pick: The previous cherry-pick is now empty, possibly due to conflict resolution.\nIf you wish to commit it anyway, use:\n\n    git commit --allow-empty\n\nOtherwise, please use 'git cherry-pick --skip'\n\n#0      VersionControlService.cleanupTimelineHistory (package:music_app/services/version_control_service.dart:490:7)\n<asynchronous suspension>\n#1      _VersionControlWindowState._buildTimelineNodes.<anonymous closure> (package:music_app/screens/visual_editor/panels/version_control_window.dart:483:19)\n<asynchronous suspension>\n- Reset button not clearing SUMMARY!"
-  },
-  {
-    "id": "44ceaa1f51779203b53270eaa31f98b1ac52e794",
-    "taskIds": [
-      "task_timeline_cleanup_1779079091180"
-    ],
-    "title": "Implement Timeline History Cleanup Engine [Recover documentation lost during compiler trap]",
-    "summary": "Build a safe 'Clean Up History' mechanism that squashes old Git checkpoints to reduce bloat, while simultaneously deleting those nodes from timeline_history.json to prevent UI crashes.",
-    "commitHash": "44ceaa1f51779203b53270eaa31f98b1ac52e794",
-    "commitDate": "2026-05-18T07:17:33-06:00",
-    "verifiedNotes": "- Add a 'Clean Up History' button to the Timeline UI that triggers the cleanup sequence.\n- Implement Git squashing logic that isolates the most recent N checkpoints (e.g., 50), and permanently squashes all older commits into a single baseline commit to reduce repository bloat.\n- Update the UI JSON logic to synchronously delete the squashed timeline nodes from timeline_history.json, ensuring users cannot click 'Restore' on hashes that no longer exist.\n- Summary not created, I think it is due to there being compile errors and it not writing notes before trying to resolve compile errors resulting in the latest_notes.json information getting lost.\n- Clean up History, we need to have this be connected to commit or checkpoint"
-  },
-  {
-    "id": "c6180fe7657abf276441f21219f9e7686f553d5a",
-    "taskIds": [
-      "1778503455784"
-    ],
-    "title": "TASK MANAGER [Enforce strict priority for active task highlight styling]",
-    "summary": "General improvements for Task Manager",
-    "commitHash": "c6180fe7657abf276441f21219f9e7686f553d5a",
-    "commitDate": "2026-05-17T18:46:30-06:00",
-    "verifiedNotes": "- Highlight Active tasks within the TaskManager Task list. Maybe the highlight color\n- Add the highlight color to the theme colors in Config"
-  },
-  {
-    "id": "7baa12e14f0d7d542f19901e55311cba186dc640",
-    "taskIds": [],
-    "title": "Squashed History Baseline",
-    "summary": "",
-    "commitHash": "7baa12e14f0d7d542f19901e55311cba186dc640",
-    "commitDate": "2026-05-18T07:59:59-06:00",
-    "verifiedNotes": ""
-  },
-  {
-    "id": "602ee58834bec0482e51b1363d5c11ccc24f0d35",
-    "taskIds": [],
-    "title": "Squashed History Baseline",
-    "summary": "",
-    "commitHash": "602ee58834bec0482e51b1363d5c11ccc24f0d35",
-    "commitDate": "2026-05-18T08:03:14-06:00",
-    "verifiedNotes": ""
-  },
-  {
-    "id": "4a33feb93d13f07bddd6082af0c6de24a5a89cc2",
-    "taskIds": [],
-    "title": "Squashed History Baseline",
-    "summary": "",
-    "commitHash": "4a33feb93d13f07bddd6082af0c6de24a5a89cc2",
-    "commitDate": "2026-05-18T08:14:25-06:00",
-    "verifiedNotes": ""
   }
 ]

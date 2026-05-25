@@ -1469,6 +1469,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     json['endingInstructions'] = _endingInstructions;
     final connection = await antigravityClient.invokeSubagent(json);
     _activeAgents[task.id] = connection;
+    _isAntigravityBusy = true;
+    stateMachine.enterBusy();
+    _updateStateMachineInputs();
     notifyListeners();
 
     connection.statusStream.listen((status) async {
@@ -1476,6 +1479,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
         _activeAgents.remove(task.id);
         _isAntigravityBusy = false;
         _antigravityLastChangeObservedAt = null;
+        _updateStateMachineInputs();
         await triggerPendingUpdate(force: true);
       }
       notifyListeners();
@@ -1641,6 +1645,7 @@ wshShell.AppActivate $myPid
     final statusFile = File('$_dirPath/agent_status.txt');
     await statusFile.writeAsString('BUSY');
     stateMachine.enterBusy();
+    _updateStateMachineInputs();
   }
 
   String? _lastJsonParseError;
@@ -1830,12 +1835,20 @@ wshShell.AppActivate $myPid
     }
   }
 
+  void _updateStateMachineInputs() {
+    final controller = stateMachine.visualController;
+    controller.updateInputValue('AgentBusy', _isAntigravityBusy);
+    controller.updateInputValue('AgentThinking', isThinking);
+    controller.updateInputValue('BridgeActive', _activePrompt != null || _activeAgents.isNotEmpty);
+  }
+
   Future<void> clearQueue() async {
     _errorDebounceTimer?.cancel();
     _errorBuffer.clear();
     _pendingUpdateType = null;
     _isHandlingAgentStatus = false;
     _isProcessingQueue = false;
+    _updateStateMachineInputs();
 
     for (final connection in _activeAgents.values) {
       try {
@@ -1924,6 +1937,7 @@ wshShell.AppActivate $myPid
     }
 
     await _saveQueueState();
+    _updateStateMachineInputs();
     notifyListeners();
     _processQueue();
   }
@@ -2454,7 +2468,7 @@ wshShell.AppActivate $myPid
                       final String statusName = modelContent.contains('<preview>') ? 'PREVIEW' : 'IDLE';
 
                       final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
-                      if (isAgentBusy && !_isHandlingAgentStatus) {
+                      if (isAgentBusy && !_isHandlingAgentStatus && !_isAntigravityBusy) {
                         print('[AiBridge] Poller detected completed PLANNER_RESPONSE in transcript.jsonl. Triggering status processing: $statusName');
                         await _processStatusChange(statusName);
                       }
@@ -2524,6 +2538,7 @@ wshShell.AppActivate $myPid
           }
         }
 
+        _updateStateMachineInputs();
         // Detect AI Bridge Sync Error
         await checkForSyncError();
       } catch (_) {
@@ -3308,6 +3323,7 @@ wshShell.AppActivate $myPid
     } else {
       stateMachine.enterCompiling();
     }
+    _updateStateMachineInputs();
     if (_isHandlingAgentStatus) {
       if (_statusHandlingLockAcquiredAt != null &&
           DateTime.now().difference(_statusHandlingLockAcquiredAt!).inSeconds > 25) {
