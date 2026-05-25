@@ -430,6 +430,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
         if (verificationCriteriaList[i].status != _shadowTask!.verificationCriteria[i].status) return 'verificationCriteriaList[$i].status';
         if (verificationCriteriaList[i].isVerified != _shadowTask!.verificationCriteria[i].isVerified) return 'verificationCriteriaList[$i].isVerified';
         if (verificationCriteriaList[i].proof != _shadowTask!.verificationCriteria[i].proof) return 'verificationCriteriaList[$i].proof';
+        if (verificationCriteriaList[i].notes != _shadowTask!.verificationCriteria[i].notes) return 'verificationCriteriaList[$i].notes';
         if (verificationCriteriaList[i].requestClarification != _shadowTask!.verificationCriteria[i].requestClarification) return 'verificationCriteriaList[$i].requestClarification';
         if (verificationCriteriaList[i].tryCount != _shadowTask!.verificationCriteria[i].tryCount) return 'verificationCriteriaList[$i].tryCount';
     }
@@ -542,6 +543,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                 isVerified: e.isVerified,
                 status: e.status,
                 proof: e.proof,
+                notes: e.notes,
                 requestClarification: e.requestClarification,
                 tryCount: e.tryCount,
                 attachments: List.from(e.attachments),
@@ -605,6 +607,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                 isVerified: e.isVerified,
                 status: e.status,
                 proof: e.proof,
+                notes: e.notes,
                 requestClarification: e.requestClarification,
                 tryCount: e.tryCount,
                 attachments: List.from(e.attachments),
@@ -789,6 +792,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                 updatedTask.verificationCriteria[i].isVerified != _shadowTask!.verificationCriteria[i].isVerified ||
                 updatedTask.verificationCriteria[i].status != _shadowTask!.verificationCriteria[i].status ||
                 updatedTask.verificationCriteria[i].proof != _shadowTask!.verificationCriteria[i].proof ||
+                updatedTask.verificationCriteria[i].notes != _shadowTask!.verificationCriteria[i].notes ||
                 updatedTask.verificationCriteria[i].isCommitted != _shadowTask!.verificationCriteria[i].isCommitted ||
                 updatedTask.verificationCriteria[i].isPreview != _shadowTask!.verificationCriteria[i].isPreview) {
               
@@ -796,6 +800,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
               _shadowTask!.verificationCriteria[i].isVerified = updatedTask.verificationCriteria[i].isVerified;
               _shadowTask!.verificationCriteria[i].status = updatedTask.verificationCriteria[i].status;
               _shadowTask!.verificationCriteria[i].proof = updatedTask.verificationCriteria[i].proof;
+              _shadowTask!.verificationCriteria[i].notes = updatedTask.verificationCriteria[i].notes;
               _shadowTask!.verificationCriteria[i].isCommitted = updatedTask.verificationCriteria[i].isCommitted;
               _shadowTask!.verificationCriteria[i].isPreview = updatedTask.verificationCriteria[i].isPreview;
               
@@ -803,6 +808,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
               existingTask!.verificationCriteria[i].isVerified = updatedTask.verificationCriteria[i].isVerified;
               existingTask!.verificationCriteria[i].status = updatedTask.verificationCriteria[i].status;
               existingTask!.verificationCriteria[i].proof = updatedTask.verificationCriteria[i].proof;
+              existingTask!.verificationCriteria[i].notes = updatedTask.verificationCriteria[i].notes;
               existingTask!.verificationCriteria[i].isCommitted = updatedTask.verificationCriteria[i].isCommitted;
               existingTask!.verificationCriteria[i].isPreview = updatedTask.verificationCriteria[i].isPreview;
               criteriaChanged = true;
@@ -819,6 +825,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                 isVerified: e.isVerified,
                 status: e.status,
                 proof: e.proof,
+                notes: e.notes,
                 requestClarification: e.requestClarification,
                 tryCount: e.tryCount,
                 attachments: List.from(e.attachments),
@@ -953,6 +960,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                   isVerified: e.isVerified,
                   status: e.status,
                   proof: e.proof,
+                  notes: e.notes,
                   requestClarification: e.requestClarification,
                   tryCount: e.tryCount,
                   attachments: List.from(e.attachments),
@@ -1815,6 +1823,34 @@ verificationCriteriaList[i].isCommitted = false;
                               },
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 120),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black38,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: TextFormField(
+                            key: ValueKey('${existingTask?.id}_verification_notes_$i'),
+                            initialValue: verificationCriteriaList[i].notes,
+                            style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: AppUIConfig.rootFontSize * 0.9),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              hintText: 'Add notes for this checklist item...',
+                              hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: AppUIConfig.rootFontSize * 0.9),
+                              border: InputBorder.none,
+                            ),
+                            maxLines: null,
+                            onChanged: (val) {
+                              verificationCriteriaList[i].notes = val;
+                              _executeAutoSave();
+                            },
+                          ),
                         ),
                         if (verificationCriteriaList[i].status == AiVerificationStatus.verified) ...[
                           const SizedBox(height: 8),
@@ -3227,14 +3263,14 @@ verificationCriteriaList[i].isCommitted = false;
                                                           .fileAttachments),
                                                   hyperlinks: List.from(
                                                       existingTask!.hyperlinks),
-                                                  verificationCriteria: existingTask!
-                                                      .verificationCriteria
+                                                  verificationCriteria: existingTask!.verificationCriteria
                                                       .map((item) => AiVerificationCriteria(
                                                             description: item.description,
                                                             goal: item.goal,
                                                             isVerified: item.isVerified,
                                                             status: item.status,
                                                             proof: item.proof,
+                                                            notes: item.notes,
                                                             requestClarification: item.requestClarification,
                                                             tryCount: item.tryCount,
                                                             isCommitted: item.isCommitted,

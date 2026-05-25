@@ -68,6 +68,7 @@ class AiVerificationCriteria {
   bool isVerified;
   AiVerificationStatus status;
   String? proof;
+  String notes;
   bool requestClarification;
   int tryCount;
   List<String> attachments;
@@ -80,6 +81,7 @@ class AiVerificationCriteria {
     this.isVerified = false,
     this.status = AiVerificationStatus.none,
     this.proof,
+    this.notes = '',
     this.requestClarification = false,
     this.tryCount = 0,
     this.isCommitted = false,
@@ -94,6 +96,7 @@ class AiVerificationCriteria {
         'isVerified': isVerified,
         'status': status.name,
         'proof': proof,
+        'notes': notes,
         'requestClarification': requestClarification,
         'tryCount': tryCount,
         'attachments': attachments,
@@ -118,6 +121,7 @@ class AiVerificationCriteria {
       isVerified: json['isVerified'] ?? false,
       status: parsedStatus,
       proof: json['proof'],
+      notes: json['notes'] ?? '',
       requestClarification: json['requestClarification'] ?? false,
       tryCount: json['tryCount'] ?? 0,
       isCommitted: json['isCommitted'] ?? false,
@@ -603,6 +607,30 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     }
   }
 
+  Future<List<String>> _readAsLinesWithRetry(File file, {int maxRetries = 3, Duration delay = const Duration(milliseconds: 100)}) async {
+    int attempts = 0;
+    while (attempts < maxRetries) {
+      try {
+        return await file.readAsLines().timeout(
+          const Duration(milliseconds: 1000),
+          onTimeout: () => const [],
+        );
+      } catch (e) {
+        attempts++;
+        if (attempts >= maxRetries) {
+          rethrow;
+        }
+        await Future.delayed(delay);
+      }
+    }
+    return const [];
+  }
+
+  @visibleForTesting
+  Future<List<String>> readAsLinesWithRetryForTesting(File file, {int maxRetries = 3, Duration delay = const Duration(milliseconds: 100)}) {
+    return _readAsLinesWithRetry(file, maxRetries: maxRetries, delay: delay);
+  }
+
   Future<void> syncConversationHistory([File? file]) async {
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
       return;
@@ -624,7 +652,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
       if (!targetFile.existsSync()) return;
 
-      final lines = await targetFile.readAsLines();
+      final lines = await _readAsLinesWithRetry(targetFile);
 
       // Check if we need to reset the logged steps index (e.g. new session or file was cleared/shrunk)
       bool hasReset = false;
@@ -1004,6 +1032,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
                 isVerified: resolvedIsVerified,
                 status: resolvedStatus,
                 proof: match.proof ?? ext.proof,
+                notes: (match.notes.isNotEmpty) ? match.notes : ext.notes,
                 requestClarification: match.requestClarification || ext.requestClarification,
                 tryCount: match.tryCount > ext.tryCount ? match.tryCount : ext.tryCount,
                 attachments: ext.attachments.isNotEmpty ? ext.attachments : match.attachments,
@@ -2204,10 +2233,14 @@ wshShell.AppActivate $myPid
           for (var item in jsonList) {
             final desc = item['description']?.toString().trim() ?? '';
             final proof = item['proof']?.toString().trim();
+            final notes = item['notes']?.toString().trim();
             if (desc.isNotEmpty) {
               final vcIdx = _tasks[taskIdx].verificationCriteria.indexWhere((vc) => vc.description == desc);
               if (vcIdx != -1) {
                 _tasks[taskIdx].verificationCriteria[vcIdx].proof = proof;
+                if (notes != null) {
+                  _tasks[taskIdx].verificationCriteria[vcIdx].notes = notes;
+                }
                 changed = true;
               }
             }
@@ -2393,10 +2426,7 @@ wshShell.AppActivate $myPid
               if (file.path.endsWith('transcript.jsonl')) {
                 await syncConversationHistory(file);
                 try {
-                  final lines = await file.readAsLines().timeout(
-                    const Duration(milliseconds: 1000),
-                    onTimeout: () => const [],
-                  );
+                  final lines = await _readAsLinesWithRetry(file);
                   if (lines.isNotEmpty) {
                     Map<String, dynamic>? lastStep;
                     for (int i = lines.length - 1; i >= 0; i--) {
@@ -2420,7 +2450,10 @@ wshShell.AppActivate $myPid
                     }
                   }
                 } catch (e) {
-                  print('[AiBridge] Poller error reading last line of transcript: $e');
+                  final errStr = e.toString();
+                  if (!errStr.contains('Cannot open file') && !errStr.contains('Sharing violation')) {
+                    print('[AiBridge] Poller error reading last line of transcript: $e');
+                  }
                 }
               }
             }
@@ -2917,6 +2950,7 @@ wshShell.AppActivate $myPid
       sb.writeln('Verification Criteria:');
       String extraInfo = '';
       if (targetItem.goal.isNotEmpty) extraInfo += ' [Goal: ${targetItem.goal}]';
+      if (targetItem.notes.isNotEmpty) extraInfo += ' [Notes: ${targetItem.notes}]';
       if (targetItem.tryCount > 0) extraInfo += ' [TRY #${targetItem.tryCount}]';
       if (targetItem.requestClarification) {
         sb.writeln('1. [CLARIFY] ${targetItem.description}$extraInfo');
@@ -2981,6 +3015,7 @@ wshShell.AppActivate $myPid
                 isVerified: e.isVerified,
                 status: e.status,
                 proof: e.proof,
+                notes: e.notes,
                 requestClarification: e.requestClarification,
                 tryCount: e.tryCount,
                 attachments: List.from(e.attachments),
@@ -3649,6 +3684,7 @@ wshShell.AppActivate $myPid
                     });
                     if (matchIdx != -1) {
                       existing[matchIdx].proof = newItem.proof;
+                      existing[matchIdx].notes = newItem.notes;
                       if (existing[matchIdx].status == AiVerificationStatus.submitted) {
                         existing[matchIdx].status = AiVerificationStatus.pendingReview;
                       }
@@ -4117,6 +4153,7 @@ wshShell.AppActivate $myPid
                       isVerified: resolvedIsVerified,
                       status: resolvedStatus,
                       proof: match.proof ?? ext.proof,
+                      notes: (match.notes.isNotEmpty) ? match.notes : ext.notes,
                       requestClarification: match.requestClarification || ext.requestClarification,
                       tryCount: match.tryCount > ext.tryCount ? match.tryCount : ext.tryCount,
                       attachments: ext.attachments.isNotEmpty ? ext.attachments : match.attachments,
@@ -4307,8 +4344,7 @@ wshShell.AppActivate $myPid
           debugPrint('Error executing BeforeReload macro: $e');
         }
 
-        if (_screenBlockerEnabledForCurrentTaskPhase &&
-            onAutoReloadTriggered != null) {
+        if (onAutoReloadTriggered != null) {
           await onAutoReloadTriggered!(type);
         } else {
           showUpdateCoverFor(type);

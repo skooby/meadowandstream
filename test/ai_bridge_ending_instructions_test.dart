@@ -258,4 +258,51 @@ Some user feedback details
       service.tasks.removeWhere((t) => t.id == 'test_queue_parsing');
     }
   });
+
+  test('AiVerificationCriteria supports notes field in serialization, deserialization and prompt formatting', () async {
+    final criteria = AiVerificationCriteria(
+      description: 'Check notes capability',
+      goal: 'Goal text',
+      status: AiVerificationStatus.none,
+      notes: 'Initial checklist notes',
+    );
+
+    // Serialization
+    final jsonMap = criteria.toJson();
+    expect(jsonMap['notes'], equals('Initial checklist notes'));
+
+    // Deserialization
+    final criteria2 = AiVerificationCriteria.fromJson(jsonMap);
+    expect(criteria2.notes, equals('Initial checklist notes'));
+
+    // Prompt Formatting
+    final service = AiBridgeService.instance;
+    await service.init();
+    final task = AiTask(
+      id: 'test_notes_task',
+      name: 'Task with criteria notes',
+      description: 'Checklist notes task description',
+      verificationCriteria: [criteria2],
+    );
+
+    final prompt = await service.buildTaskPrompt(task);
+    expect(prompt, contains('[Notes: Initial checklist notes]'));
+  });
+
+  test('AiBridgeService _readAsLinesWithRetry helper behaves correctly', () async {
+    final service = AiBridgeService.instance;
+    final tempFile = File('${tempBridgeDir.path}/test_retry_lines.txt');
+
+    // Test successful read
+    await tempFile.writeAsString('Line 1\nLine 2');
+    final lines = await service.readAsLinesWithRetryForTesting(tempFile);
+    expect(lines, equals(['Line 1', 'Line 2']));
+
+    // Test failing retry throws when file does not exist
+    final nonExistentFile = File('${tempBridgeDir.path}/non_existent_file.txt');
+    expect(
+      () => service.readAsLinesWithRetryForTesting(nonExistentFile, maxRetries: 2, delay: Duration.zero),
+      throwsA(isA<FileSystemException>()),
+    );
+  });
 }
