@@ -2877,10 +2877,6 @@ wshShell.AppActivate $myPid
       }
       sb.writeln('\nCRITICAL FOCUS CONSTRAINT:');
       sb.writeln('Your ONLY objective for this run is to satisfy Checklist Item #1 above. Do not attempt to work on, address, or implement any other features, checklist items, or criteria. Focus entirely on completing this single item, verify it is working, and then output your notes and verification proofs as requested.');
-      if (_endingInstructions.isNotEmpty) {
-        sb.writeln('');
-        sb.writeln(_endingInstructions);
-      }
     }
     
     if (task.fileAttachments.isNotEmpty) {
@@ -2896,8 +2892,8 @@ wshShell.AppActivate $myPid
         sb.writeln('- $link');
       }
     }
-
-    if (targetItem == null && _endingInstructions.isNotEmpty) {
+ 
+    if (_endingInstructions.isNotEmpty) {
       sb.writeln('');
       sb.writeln(_endingInstructions);
     }
@@ -3297,11 +3293,24 @@ wshShell.AppActivate $myPid
       if (content == 'IDLE') {
         bool hasCompileError = false;
         print('[AiBridge] Running dart analyze build check...');
+        Process? process;
         try {
-          final res = await Process.run('dart', ['analyze'],
-              runInShell: true).timeout(const Duration(seconds: 10));
-          final output =
-              res.stdout.toString() + '\n' + res.stderr.toString();
+          process = await Process.start('dart', ['analyze'], runInShell: true);
+          final stdoutBuffer = StringBuffer();
+          final stderrBuffer = StringBuffer();
+
+          final stdoutSub = process.stdout.transform(utf8.decoder).listen((data) {
+            stdoutBuffer.write(data);
+          });
+          final stderrSub = process.stderr.transform(utf8.decoder).listen((data) {
+            stderrBuffer.write(data);
+          });
+
+          await process.exitCode.timeout(const Duration(seconds: 15));
+          await stdoutSub.cancel();
+          await stderrSub.cancel();
+
+          final output = stdoutBuffer.toString() + '\n' + stderrBuffer.toString();
           if (output.contains('error -') ||
               output.contains('error •') ||
               output.contains('error \u2022')) {
@@ -3312,7 +3321,10 @@ wshShell.AppActivate $myPid
             print('[AiBridge] Build check passed.');
           }
         } on TimeoutException catch (e) {
-          print('[AiBridge] Automated dart analyze check timed out after 10s: $e');
+          print('[AiBridge] Automated dart analyze check timed out after 15s: $e. Terminating process.');
+          if (process != null) {
+            process.kill();
+          }
         } catch (e) {
           print('[AiBridge] Failed to run automated dart analyze check: $e');
         }
@@ -3962,6 +3974,9 @@ wshShell.AppActivate $myPid
             _syncErrorInstructions =
                 jsonTop['syncErrorInstructions'] as String? ??
                     _syncErrorInstructions;
+            _endingInstructions =
+                jsonTop['endingInstructions'] as String? ??
+                    _endingInstructions;
             jsonList = jsonTop['tasks'] as List<dynamic>? ?? [];
           } else if (jsonTop is List<dynamic>) {
             jsonList = jsonTop;
@@ -4297,6 +4312,7 @@ wshShell.AppActivate $myPid
         'systemHooksInstructions': _systemHooksInstructions,
         'missingFilesInstructions': _missingFilesInstructions,
         'syncErrorInstructions': _syncErrorInstructions,
+        'endingInstructions': _endingInstructions,
         'tasks': jsonTasksList
       };
       const encoder = JsonEncoder.withIndent('  ');

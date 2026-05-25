@@ -2532,22 +2532,11 @@ verificationCriteriaList[i].isCommitted = false;
                                             }
                                             sb.writeln('\nCRITICAL FOCUS CONSTRAINT:');
                                             sb.writeln('Your ONLY objective for this run is to satisfy Checklist Item #1 above. Do not attempt to work on, address, or implement any other features, checklist items, or criteria. Focus entirely on completing this single item, verify it is working, and then output your notes and verification proofs as requested.');
-                                            final endingInst = AiBridgeService.instance.endingInstructions;
-                                            if (endingInst.isNotEmpty) {
-                                              sb.writeln('');
-                                              sb.writeln(endingInst);
-                                            }
                                             
                                             item.status =
                                                 AiVerificationStatus.submitted;
-                                          } else {
-                                            final endingInst = AiBridgeService.instance.endingInstructions;
-                                            if (endingInst.isNotEmpty) {
-                                              sb.writeln('');
-                                              sb.writeln(endingInst);
-                                            }
                                           }
-
+ 
                                           if (fileAttachments.isNotEmpty) {
                                             sb.writeln('Attachments:');
                                             for (final attachment in fileAttachments) {
@@ -2561,7 +2550,13 @@ verificationCriteriaList[i].isCommitted = false;
                                               sb.writeln('- $link');
                                             }
                                           }
-
+ 
+                                          final endingInst = AiBridgeService.instance.endingInstructions;
+                                          if (endingInst.isNotEmpty) {
+                                            sb.writeln('');
+                                            sb.writeln(endingInst);
+                                          }
+ 
                                           existingTask!.status = AiTaskStatus.inTesting;
                                           await _executeAutoSave(instant: true);
                                           sb.writeln('---');
