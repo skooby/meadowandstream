@@ -74,4 +74,77 @@ void main() {
     );
     expect(scrollable.controller, isNotNull);
   });
+
+  test('SystemLogsService configuration serialization, filtering and reordering works', () async {
+    SharedPreferences.setMockInitialValues({});
+    final service = SystemLogsService.instance;
+    await service.init();
+
+    // Verify default configs are created
+    expect(service.categoryConfigs.length, equals(LogCategory.values.length));
+    expect(service.categoryConfigs.any((e) => e.category == LogCategory.GENERAL), isTrue);
+
+    // Verify filtering based on system log configuration
+    final generalConfig = service.categoryConfigs.firstWhere((e) => e.category == LogCategory.GENERAL);
+    generalConfig.system = false;
+    service.clearLogs();
+    service.addLog('Test General Log suppressed', category: LogCategory.GENERAL);
+    expect(service.logs.isEmpty, isTrue);
+
+    generalConfig.system = true;
+    service.addLog('Test General Log accepted', category: LogCategory.GENERAL);
+    expect(service.logs.length, equals(1));
+    expect(service.logs.first.message, equals('Test General Log accepted'));
+
+    // Verify reordering configurations
+    final firstCat = service.categoryConfigs[0].category;
+    final secondCat = service.categoryConfigs[1].category;
+
+    // Move first to second index (newIndex 2 means after second element, which lands at index 1)
+    service.reorderConfigs(0, 2);
+    expect(service.categoryConfigs[1].category, equals(firstCat));
+    expect(service.categoryConfigs[0].category, equals(secondCat));
+  });
+
+  testWidgets('SystemLogsWindow filters out hidden categories from top bar chips', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final service = SystemLogsService.instance;
+    if (service.categoryConfigs.isEmpty) {
+      service.categoryConfigs.addAll(LogCategory.values.map(
+        (cat) => LogTypeConfig(category: cat, system: true, console: true),
+      ));
+    }
+
+    // Disable system logs for DB category
+    final dbConfig = service.categoryConfigs.firstWhere((e) => e.category == LogCategory.DB);
+    dbConfig.system = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          useMaterial3: true,
+          splashFactory: NoSplash.splashFactory,
+        ),
+        home: Scaffold(
+          body: Stack(
+            children: [
+              SystemLogsWindow(
+                onClose: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // We should see ALL chip and other enabled chips, but DB chip should not be present
+    expect(find.text('ALL'), findsOneWidget);
+    expect(find.text('GENERAL'), findsOneWidget);
+    expect(find.text('DB'), findsNothing);
+
+    // Reset it back
+    dbConfig.system = true;
+  });
 }

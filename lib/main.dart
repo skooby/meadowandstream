@@ -53,15 +53,37 @@ Future<void> main(List<String> args) async {
   await SandboxService.instance.init(); // Load sandbox/timeline state early so Active Tasks are populated on startup
 
   final originalDebugPrint = debugPrint;
+  bool isLogging = false;
   debugPrint = (String? message, {int? wrapWidth}) {
     if (message != null) {
       if (message.contains('A KeyDownEvent is dispatched') ||
           message.contains('A KeyUpEvent is dispatched') ||
           message.contains('The document is empty') ||
           message.contains('Unable to parse JSON message')) return;
-      SystemLogsService.instance.addLog(message, category: LogCategory.GENERAL);
+      if (isLogging || message.startsWith('[LogCategory.')) {
+        originalDebugPrint(message, wrapWidth: wrapWidth);
+        return;
+      }
+      isLogging = true;
+      try {
+        final category = (message.contains('[AntigravityStatusService]') ||
+                          message.contains('[AiBridge]'))
+            ? LogCategory.SYNC
+            : LogCategory.GENERAL;
+        SystemLogsService.instance.addLog(message, category: category);
+        final config = SystemLogsService.instance.categoryConfigs.firstWhere(
+          (e) => e.category == category,
+          orElse: () => LogTypeConfig(category: category),
+        );
+        if (config.console && category == LogCategory.GENERAL) {
+          originalDebugPrint(message, wrapWidth: wrapWidth);
+        }
+      } finally {
+        isLogging = false;
+      }
+    } else {
+      originalDebugPrint(message, wrapWidth: wrapWidth);
     }
-    originalDebugPrint(message, wrapWidth: wrapWidth);
   };
 
   final originalOnError = FlutterError.onError;

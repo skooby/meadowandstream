@@ -326,8 +326,9 @@ class _SystemLogsWindowState extends State<SystemLogsWindow> {
                 ),
                 child: Wrap(spacing: 4.0, runSpacing: 4.0, children: [
                   _buildCategoryChip(null, 'ALL'),
-                  ...LogCategory.values
-                      .map((cat) => _buildCategoryChip(cat, cat.name))
+                  ...SystemLogsService.instance.categoryConfigs
+                      .where((cfg) => cfg.system)
+                      .map((cfg) => _buildCategoryChip(cfg.category, cfg.category.name))
                       .toList(),
                 ])),
             Expanded(

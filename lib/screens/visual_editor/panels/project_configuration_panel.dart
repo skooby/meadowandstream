@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../../services/system_logs_service.dart';
 import '../../../state/global_picker_state.dart';
 import 'package:cyclop/cyclop.dart' show EyedropperButton;
 import 'package:flutter/services.dart';
@@ -237,7 +238,7 @@ class ProjectConfigurationPanel extends StatefulWidget {
 }
 
 class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
-  static int _savedTabIndex = 5;
+  static int _savedTabIndex = 0;
   final _formKey = GlobalKey<FormBuilderState>();
   final _themeNameController = TextEditingController();
   bool _isLoading = true;
@@ -1692,18 +1693,19 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          _buildTabBtn(0, 'Media\nResolution'),
-                          _buildTabBtn(1, 'Remote\nPathing'),
-                          _buildTabBtn(2, 'Native\nIntegration'),
-                          _buildTabBtn(3, 'API\nBindings'),
-                          _buildTabBtn(4, 'Logical\nBindings'),
-                          _buildTabBtn(5, 'Themes'),
-                          _buildTabBtn(6, 'Custom\nWorkspaces'),
-                          _buildTabBtn(7, 'Window\nWorkspaces'),
-                          _buildTabBtn(8, 'Agentic\nMastery'),
-                          _buildTabBtn(9, 'Version\nControl'),
-                          _buildTabBtn(10, 'AI\nAssistant'),
-                          _buildTabBtn(11, 'AI\nBridge'),
+                          _buildTabBtn(0, 'General'),
+                          _buildTabBtn(1, 'Media\nResolution'),
+                          _buildTabBtn(2, 'Remote\nPathing'),
+                          _buildTabBtn(3, 'Native\nIntegration'),
+                          _buildTabBtn(4, 'API\nBindings'),
+                          _buildTabBtn(5, 'Logical\nBindings'),
+                          _buildTabBtn(6, 'Themes'),
+                          _buildTabBtn(7, 'Custom\nWorkspaces'),
+                          _buildTabBtn(8, 'Window\nWorkspaces'),
+                          _buildTabBtn(9, 'Agentic\nMastery'),
+                          _buildTabBtn(10, 'Version\nControl'),
+                          _buildTabBtn(11, 'AI\nAssistant'),
+                          _buildTabBtn(12, 'AI\nBridge'),
                         ],
                       )
                     ),
@@ -1712,6 +1714,99 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                     child: IndexedStack(
                         index: _savedTabIndex,
                       children: [
+                        ListenableBuilder(
+                          listenable: SystemLogsService.instance,
+                          builder: (context, _) {
+                            return ListView(key: const PageStorageKey('config_tab_general'),
+                              padding: const EdgeInsets.only(right: 16),
+                              children: [
+                                const SizedBox(height: 16),
+                                Text('GENERAL LOG CONFIGURATION', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                                const SizedBox(height: 8),
+                                Text('Drag handles on the right to reorder the log output priority. Toggle checkboxes to enable/disable output destinations.', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.9)),
+                                const SizedBox(height: 16),
+                                Container(
+                                  height: 400, // Bounded height for the reorderable list
+                                  decoration: BoxDecoration(
+                                    color: AppColors.panelBackground,
+                                    border: Border.all(color: AppColors.borderSubtle),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: ReorderableListView.builder(
+                                    shrinkWrap: true,
+                                    itemCount: SystemLogsService.instance.categoryConfigs.length,
+                                    onReorder: (oldIndex, newIndex) {
+                                      setState(() {
+                                        SystemLogsService.instance.reorderConfigs(oldIndex, newIndex);
+                                      });
+                                    },
+                                    itemBuilder: (context, i) {
+                                      final config = SystemLogsService.instance.categoryConfigs[i];
+                                      return ListTile(
+                                        key: ValueKey(config.category.name),
+                                        title: Text(
+                                          config.category.name,
+                                          style: TextStyle(
+                                            color: AppColors.panelTextPrimary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: AppUIConfig.rootFontSize * 1.1,
+                                          ),
+                                        ),
+                                        subtitle: Text(
+                                          'Configure destinations for ${config.category.name} type logs',
+                                          style: TextStyle(
+                                            color: AppColors.panelTextSecondary,
+                                            fontSize: AppUIConfig.rootFontSize * 0.9,
+                                          ),
+                                        ),
+                                        trailing: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Checkbox(
+                                                  value: config.system,
+                                                  activeColor: AppColors.accent,
+                                                  onChanged: (val) {
+                                                    setState(() {
+                                                      config.system = val ?? false;
+                                                      SystemLogsService.instance.saveConfigs();
+                                                    });
+                                                  },
+                                                ),
+                                                Text('System Log', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize)),
+                                              ],
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Checkbox(
+                                                  value: config.console,
+                                                  activeColor: AppColors.accent,
+                                                  onChanged: (val) {
+                                                    setState(() {
+                                                      config.console = val ?? false;
+                                                      SystemLogsService.instance.saveConfigs();
+                                                    });
+                                                  },
+                                                ),
+                                                Text('Console Log', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize)),
+                                              ],
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Icon(Icons.drag_handle, color: Colors.grey),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+                        ),
                         ListView(key: const PageStorageKey('config_tab_0'),
                           padding: const EdgeInsets.only(right: 16),
                           children: [

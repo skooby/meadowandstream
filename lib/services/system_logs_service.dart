@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum LogCategory { GENERAL, ERROR, NETWORK, DB, SYSTEM, AI, MACRO, VC, CLI, SYNC }
 
@@ -23,6 +25,32 @@ class LogEntry {
   LogEntry(this.message, {this.category = LogCategory.GENERAL}) : timestamp = DateTime.now();
 }
 
+class LogTypeConfig {
+  final LogCategory category;
+  bool system;
+  bool console;
+
+  LogTypeConfig({required this.category, this.system = true, this.console = true});
+
+  Map<String, dynamic> toJson() => {
+    'category': category.name,
+    'system': system,
+    'console': console,
+  };
+
+  factory LogTypeConfig.fromJson(Map<String, dynamic> json) {
+    final cat = LogCategory.values.firstWhere(
+      (e) => e.name == json['category'],
+      orElse: () => LogCategory.GENERAL,
+    );
+    return LogTypeConfig(
+      category: cat,
+      system: json['system'] ?? true,
+      console: json['console'] ?? true,
+    );
+  }
+}
+
 class SystemLogsService extends ChangeNotifier {
   static final SystemLogsService instance = SystemLogsService._internal();
   SystemLogsService._internal();
@@ -31,8 +59,11 @@ class SystemLogsService extends ChangeNotifier {
   List<LogEntry> get logs => List.unmodifiable(_logs);
   
   File? _logFile;
+  List<LogTypeConfig> _categoryConfigs = [];
+  List<LogTypeConfig> get categoryConfigs => _categoryConfigs;
 
   Future<void> init() async {
+    await loadConfigs();
     try {
       final dir = await getApplicationDocumentsDirectory();
       _logFile = File('${dir.path}/sandbox_session_logs.txt');
@@ -44,7 +75,70 @@ class SystemLogsService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> loadConfigs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString('system_log_types_config');
+      if (jsonStr != null) {
+        final List<dynamic> list = jsonDecode(jsonStr);
+        _categoryConfigs = list.map((e) => LogTypeConfig.fromJson(e)).toList();
+      } else {
+        _setDefaultConfigs();
+      }
+    } catch (_) {
+      _setDefaultConfigs();
+    }
+    // Ensure all categories are present
+    for (final cat in LogCategory.values) {
+      if (!_categoryConfigs.any((e) => e.category == cat)) {
+        _categoryConfigs.add(LogTypeConfig(category: cat));
+      }
+    }
+  }
+
+  void _setDefaultConfigs() {
+    _categoryConfigs = LogCategory.values
+        .map((cat) => LogTypeConfig(category: cat, system: true, console: true))
+        .toList();
+  }
+
+  Future<void> saveConfigs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = jsonEncode(_categoryConfigs.map((e) => e.toJson()).toList());
+      await prefs.setString('system_log_types_config', jsonStr);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  void reorderConfigs(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+    final item = _categoryConfigs.removeAt(oldIndex);
+    _categoryConfigs.insert(newIndex, item);
+    saveConfigs();
+  }
+
   void addLog(String message, {LogCategory category = LogCategory.GENERAL}) {
+    // Ensure configs are loaded
+    if (_categoryConfigs.isEmpty) {
+      _setDefaultConfigs();
+    }
+    final config = _categoryConfigs.firstWhere(
+      (e) => e.category == category,
+      orElse: () => LogTypeConfig(category: category),
+    );
+
+    // If console logging is enabled and it's not a GENERAL log (which is handled separately by debugPrint), print it.
+    if (config.console && category != LogCategory.GENERAL) {
+      debugPrint('[$category] $message');
+    }
+
+    if (!config.system) {
+      return;
+    }
+
     final entry = LogEntry(message, category: category);
     _logs.add(entry);
     // Keep max to avoid OOM
