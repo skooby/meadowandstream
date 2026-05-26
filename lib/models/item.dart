@@ -1,4 +1,3 @@
-
 class Item {
   final String id;
   final String title;
@@ -23,7 +22,54 @@ class Item {
     this.artworkUrl,
   });
 
+  Item copyWith({
+    String? id,
+    String? title,
+    String? artist,
+    int? assetFolderId,
+    int? durationMs,
+    String? collectionTitle,
+    String? collectionId,
+    String? audioUrl,
+    String? artworkUrl,
+  }) {
+    return Item(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      assetFolderId: assetFolderId ?? this.assetFolderId,
+      durationMs: durationMs ?? this.durationMs,
+      collectionTitle: collectionTitle ?? this.collectionTitle,
+      collectionId: collectionId ?? this.collectionId,
+      audioUrl: audioUrl ?? this.audioUrl,
+      artworkUrl: artworkUrl ?? this.artworkUrl,
+    );
+  }
 
+  @override
+  String toString() {
+    return 'Item(id: $id, title: $title, artist: $artist, assetFolderId: $assetFolderId, durationMs: $durationMs, collectionTitle: $collectionTitle, collectionId: $collectionId, audioUrl: $audioUrl, artworkUrl: $artworkUrl)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is Item &&
+        other.id == id &&
+        other.title == title &&
+        other.artist == artist &&
+        other.assetFolderId == assetFolderId &&
+        other.durationMs == durationMs &&
+        other.collectionTitle == collectionTitle &&
+        other.collectionId == collectionId &&
+        other.audioUrl == audioUrl &&
+        other.artworkUrl == artworkUrl;
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(id, title, artist, assetFolderId, durationMs, collectionTitle, collectionId, audioUrl, artworkUrl);
+  }
 
   factory Item.fromMap(Map<String, dynamic> map) {
     return Item(
@@ -54,4 +100,38 @@ class LocalCollection {
     this.artist,
     this.artworkUrl,
   });
+
+  LocalCollection copyWith({
+    String? id,
+    String? title,
+    String? artist,
+    String? artworkUrl,
+  }) {
+    return LocalCollection(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      artworkUrl: artworkUrl ?? this.artworkUrl,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'LocalCollection(id: $id, title: $title, artist: $artist, artworkUrl: $artworkUrl)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is LocalCollection &&
+        other.id == id &&
+        other.title == title &&
+        other.artist == artist &&
+        other.artworkUrl == artworkUrl;
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(id, title, artist, artworkUrl);
+  }
 }

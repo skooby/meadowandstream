@@ -21,6 +21,55 @@ class Collection {
     required this.titleStringId,
   });
 
+  Collection copyWith({
+    int? id,
+    int? tenantId,
+    String? slug,
+    String? artistName,
+    DateTime? releaseDate,
+    String? artworkUrl,
+    String? status,
+    int? sortOrder,
+    int? titleStringId,
+  }) {
+    return Collection(
+      id: id ?? this.id,
+      tenantId: tenantId ?? this.tenantId,
+      slug: slug ?? this.slug,
+      artistName: artistName ?? this.artistName,
+      releaseDate: releaseDate ?? this.releaseDate,
+      artworkUrl: artworkUrl ?? this.artworkUrl,
+      status: status ?? this.status,
+      sortOrder: sortOrder ?? this.sortOrder,
+      titleStringId: titleStringId ?? this.titleStringId,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'Collection(id: $id, tenantId: $tenantId, slug: $slug, artistName: $artistName, releaseDate: $releaseDate, artworkUrl: $artworkUrl, status: $status, sortOrder: $sortOrder, titleStringId: $titleStringId)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is Collection &&
+        other.id == id &&
+        other.tenantId == tenantId &&
+        other.slug == slug &&
+        other.artistName == artistName &&
+        other.releaseDate == releaseDate &&
+        other.artworkUrl == artworkUrl &&
+        other.status == status &&
+        other.sortOrder == sortOrder &&
+        other.titleStringId == titleStringId;
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(id, tenantId, slug, artistName, releaseDate, artworkUrl, status, sortOrder, titleStringId);
+  }
+
   factory Collection.fromJson(Map<String, dynamic> json) {
     return Collection(
       id: json['id'] as int,

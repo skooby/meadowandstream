@@ -2670,8 +2670,68 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                                         _systemHooksInstController.text,
                                                         _missingFilesInstController.text,
                                                         _syncErrorInstController.text,
-                                                        val),
-                                                AppColors.accent,
+                                                         val),
+                                                 AppColors.accent,
+                                              ),
+                                              const SizedBox(height: 12),
+                                              Padding(
+                                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                                child: Center(
+                                                  child: InkWell(
+                                                    onTap: () async {
+                                                      final promptText = '# PRIMARY DIRECTIVES\n'
+                                                          'Optimize all available model definitions in `lib/models/` and drift database tables in `lib/db/tables/` to align with the configurations, styling settings, and preferences defined within the Prompts and Rules.\n\n'
+                                                          '- [ ] Execute instructions directly against the active task.\n\n'
+                                                          '# TASKS TO ADDRESS\n'
+                                                          'Task: Optimize Model Definitions\n'
+                                                          'Description: Optimize all model definitions to include the settings within the Prompts and Rules.\n'
+                                                          'Status: open\n'
+                                                          '---\n';
+                                                      await AiBridgeService.instance.sendToQueue(promptText, false);
+                                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                                        SnackBar(
+                                                          content: const Text(
+                                                            'Optimization request added to AI Bridge Pipeline Queue.',
+                                                            style: TextStyle(color: Colors.white),
+                                                          ),
+                                                          backgroundColor: AppColors.accent,
+                                                        ),
+                                                      );
+                                                    },
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                                      decoration: BoxDecoration(
+                                                        color: AppColors.accent.withOpacity(0.15),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        border: Border.all(color: AppColors.accent, width: 1.5),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: AppColors.accent.withOpacity(0.1),
+                                                            blurRadius: 8,
+                                                            offset: const Offset(0, 4),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(Icons.auto_awesome, color: AppColors.accent, size: 20),
+                                                          const SizedBox(width: 8),
+                                                          Text(
+                                                            'OPTIMIZE MODEL DEFINITIONS',
+                                                            style: TextStyle(
+                                                              color: AppColors.accent,
+                                                              fontWeight: FontWeight.bold,
+                                                              letterSpacing: 1.2,
+                                                              fontSize: AppUIConfig.rootFontSize,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
                                               ),
                                             ],
                                           );

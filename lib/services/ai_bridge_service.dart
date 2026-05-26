@@ -3266,22 +3266,14 @@ wshShell.AppActivate $myPid
       sb.writeln('');
     }
 
-    String modeInstructions = _quickInstructions;
-    if (_isPreviewMode) {
-      final state = task.previewState;
-      String previewInst = _previewModeInstructions;
-      if (state == 'approved') {
-        previewInst = _previewApprovedInstructions;
-      } else if (state == 'rejected') {
-        previewInst = _previewRejectedInstructions;
-      }
-      modeInstructions = '$previewInst\n\n$modeInstructions';
-      if (_isIqMode) {
-        modeInstructions = 'IQ MODE ACTIVE: Prefix the `name` of each new sub-task with [RISKY], [FEEDBACK], or [SAFE].\n$modeInstructions';
-      }
+    String modeInstructions = '';
+    if (_isPreviewMode && _isIqMode) {
+      modeInstructions = 'IQ MODE ACTIVE: Prefix the `name` of each new sub-task with [RISKY], [FEEDBACK], or [SAFE].';
     }
-    sb.writeln(modeInstructions);
-    sb.writeln('');
+    if (modeInstructions.isNotEmpty) {
+      sb.writeln(modeInstructions);
+      sb.writeln('');
+    }
 
     sb.writeln('# TASKS TO ADDRESS');
     sb.writeln('Task: ${task.name}');

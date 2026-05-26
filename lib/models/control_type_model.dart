@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 class CustomControlType {
   final String id;
@@ -14,6 +15,39 @@ class CustomControlType {
     this.constraintKeys = const [],
     this.parentType,
   });
+
+  CustomControlType copyWith({
+    String? id,
+    String? label,
+    IconData? icon,
+    List<String>? constraintKeys,
+    String? parentType,
+  }) {
+    return CustomControlType(
+      id: id ?? this.id,
+      label: label ?? this.label,
+      icon: icon ?? this.icon,
+      constraintKeys: constraintKeys ?? this.constraintKeys,
+      parentType: parentType ?? this.parentType,
+    );
+  }
+
+  @override
+  String toString() => 'CustomControlType(id: $id, label: $label, icon: $icon, constraintKeys: $constraintKeys, parentType: $parentType)';
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is CustomControlType &&
+        other.id == id &&
+        other.label == label &&
+        other.icon == icon &&
+        listEquals(other.constraintKeys, constraintKeys) &&
+        other.parentType == parentType;
+  }
+
+  @override
+  int get hashCode => Object.hash(id, label, icon, Object.hashAll(constraintKeys), parentType);
 
   Map<String, dynamic> toJson() => {
     'id': id,

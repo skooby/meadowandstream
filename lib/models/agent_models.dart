@@ -19,6 +19,45 @@ class AgentNode {
     this.children = const [],
   });
 
+  AgentNode copyWith({
+    String? id,
+    String? title,
+    String? description,
+    String? prompt,
+    int? color,
+    int? iconCodePoint,
+    List<AgentNode>? children,
+  }) {
+    return AgentNode(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      prompt: prompt ?? this.prompt,
+      color: color ?? this.color,
+      iconCodePoint: iconCodePoint ?? this.iconCodePoint,
+      children: children ?? this.children,
+    );
+  }
+
+  @override
+  String toString() => 'AgentNode(id: $id, title: $title, description: $description, prompt: $prompt, color: $color, iconCodePoint: $iconCodePoint, children: ${children.length})';
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is AgentNode &&
+        other.id == id &&
+        other.title == title &&
+        other.description == description &&
+        other.prompt == prompt &&
+        other.color == color &&
+        other.iconCodePoint == iconCodePoint &&
+        listEquals(other.children, children);
+  }
+
+  @override
+  int get hashCode => Object.hash(id, title, description, prompt, color, iconCodePoint, Object.hashAll(children));
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
