@@ -231,6 +231,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     AiBridgeService.instance.addListener(_syncUnassignedState);
     AiBridgeService.instance.addListener(_checkRestoreActiveTask);
     AiBridgeService.instance.addListener(_handleTaskSandboxTransition);
+    SandboxService.instance.addListener(_onSandboxChanged);
     GlobalTaskEditorState.instance.activeRequest.addListener(_onActiveTaskChanged);
     VisualEditorScreen.configRefreshNotifier.addListener(_loadState);
 
@@ -258,6 +259,10 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   void _onActiveTaskChanged() {
     if (mounted) setState(() {});
     _handleTaskSandboxTransition();
+  }
+
+  void _onSandboxChanged() {
+    if (mounted) setState(() {});
   }
 
   String? _lastSandboxTaskId;
@@ -363,6 +368,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     AiBridgeService.instance.removeListener(_handleTaskSandboxTransition);
     AiBridgeService.instance.removeListener(_syncInstructions);
     AiBridgeService.instance.removeListener(_syncUnassignedState);
+    SandboxService.instance.removeListener(_onSandboxChanged);
     GlobalTaskEditorState.instance.activeRequest.removeListener(_onActiveTaskChanged);
     VisualEditorScreen.configRefreshNotifier.removeListener(_loadState);
     _primaryDirectivesController.dispose();
@@ -2950,6 +2956,58 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     return sb.toString();
   }
 
+  Future<void> _addWorksheetTasksToActive() async {
+    final tasks = AiBridgeService.instance.tasks;
+    final visibleWorksheets = tasks.where((t) => t.isWorksheet && t.isWorksheetVisible).toList();
+    List<AiTask> targetTasks = [];
+
+    void traverseTasks(String? parentId, {Set<String>? visited}) {
+      visited ??= {};
+      if (parentId != null) {
+        if (visited.contains(parentId)) return;
+        visited.add(parentId);
+      }
+      final children = tasks.where((t) => t.parentId == parentId).toList();
+      for (var child in children) {
+        if (child.isWorksheet) continue;
+        if (!child.isFolder) {
+          if (_configExportStatuses.contains(child.status)) {
+            targetTasks.add(child);
+          }
+        } else {
+          traverseTasks(child.id, visited: visited);
+        }
+      }
+    }
+
+    if (visibleWorksheets.isEmpty) {
+      traverseTasks(null);
+    } else {
+      for (var ws in visibleWorksheets) {
+        traverseTasks(ws.id);
+      }
+    }
+
+    if (targetTasks.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No tasks matching the configured statuses to proceed were found!'),
+            duration: Duration(seconds: 3)));
+      }
+      return;
+    }
+
+    final taskIds = targetTasks.map((t) => t.id).toList();
+    await SandboxService.instance.addToSandbox(taskIds);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              'Added ${targetTasks.length} tasks to Active Tasks!'),
+          duration: const Duration(seconds: 4)));
+    }
+  }
+
   Future<void> _executeBatchWorkPrompt() async {
     final tasks = AiBridgeService.instance.tasks;
     final visibleWorksheets = tasks.where((t) => t.isWorksheet && t.isWorksheetVisible).toList();
@@ -3263,7 +3321,24 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
               ),
             ),
             Container(
-              margin: EdgeInsets.only(left: 8 * scale, right: 12 * scale),
+              margin: EdgeInsets.only(left: 8 * scale, right: 4 * scale),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: Colors.white.withOpacity(0.8),
+                    width: 1.5 * scale),
+              ),
+              child: IconButton(
+                  icon: Icon(Icons.star, size: 20 * scale),
+                  tooltip: 'Add to Active Tasks',
+                  color: Colors.amber,
+                  padding: EdgeInsets.all(6 * scale),
+                  constraints: const BoxConstraints(),
+                  onPressed: _addWorksheetTasksToActive,
+              ),
+            ),
+            Container(
+              margin: EdgeInsets.only(left: 4 * scale, right: 12 * scale),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
