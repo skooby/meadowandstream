@@ -48,15 +48,24 @@ void main() {
     expect(service.simulatedActions, isNotEmpty);
     final hasQueueAction = service.simulatedActions.any((a) => a.type == 'QUEUE' && a.detail.contains('SIMULATED PROMPT'));
     final hasMetadataAction = service.simulatedActions.any((a) => a.type == 'METADATA' && a.detail.contains('mock_task_id'));
+    final hasQueueStatusAction = service.simulatedActions.any((a) => a.type == 'FILE_WRITE' && a.title.contains('queue_status.txt') && a.detail.contains('BUSY'));
     expect(hasQueueAction, isTrue);
     expect(hasMetadataAction, isTrue);
+    expect(hasQueueStatusAction, isTrue);
 
     // Wait for the simulated completion callback to execute
-    await Future.delayed(const Duration(milliseconds: 600));
+    await Future.delayed(const Duration(milliseconds: 1100));
 
     // Verify simulation completed log actions and queue clearance
     final hasStateComp = service.simulatedActions.any((a) => a.type == 'STATE' && a.title.contains('Simulation Completed'));
     expect(hasStateComp, isTrue);
+
+    final hasQueueStatusIdle = service.simulatedActions.any((a) => a.type == 'FILE_WRITE' && a.title.contains('queue_status.txt') && a.detail.contains('IDLE'));
+    expect(hasQueueStatusIdle, isTrue);
+
+    final hasHotRestartTriggered = service.simulatedActions.any((a) => a.type == 'UPDATE_TRIGGER' && a.title.contains('Trigger UpdateCoverType.hotRestart'));
+    expect(hasHotRestartTriggered, isTrue);
+
     expect(service.activePrompt, isNull);
   });
 }

@@ -270,6 +270,7 @@ class _AiBridgePanelState extends State<AiBridgePanel> with SingleTickerProvider
     'latest_notes.json',
     'latest_verification.json',
     'agent_status.txt',
+    'queue_status.txt',
   ];
   final Map<String, String> _loadedLogs = {};
   final Map<String, bool> _collapsedStates = {};
@@ -278,6 +279,7 @@ class _AiBridgePanelState extends State<AiBridgePanel> with SingleTickerProvider
     if (mounted) {
       setState(() {});
       _checkStatus();
+      _loadAllLogs();
     }
   }
 
@@ -354,7 +356,7 @@ class _AiBridgePanelState extends State<AiBridgePanel> with SingleTickerProvider
   Future<void> _loadAllLogs() async {
     for (final filename in _logFiles) {
       try {
-        final file = File('.ai_bridge/$filename');
+        final file = File('${AiBridgeService.instance.bridgeDirPath}/$filename');
         if (await file.exists()) {
           final contents = await file.readAsString();
           _loadedLogs[filename] = contents.trim().isEmpty ? '(File is empty)' : contents;
@@ -372,7 +374,7 @@ class _AiBridgePanelState extends State<AiBridgePanel> with SingleTickerProvider
 
   Future<void> _openBridgeDesignDocument() async {
     try {
-      final file = File('.ai_bridge/bridge_design_and_flow.md');
+      final file = File('${AiBridgeService.instance.bridgeDirPath}/bridge_design_and_flow.md');
       if (!await file.exists()) {
         await file.writeAsString('''# AI Bridge Design and Flow Reference
 
@@ -433,10 +435,10 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
 
   Future<void> _resetBridgeToCleanState() async {
     try {
-      final statusFile = File('.ai_bridge/agent_status.txt');
+      final statusFile = File('${AiBridgeService.instance.bridgeDirPath}/agent_status.txt');
       await statusFile.writeAsString('IDLE');
 
-      final notesFile = File('.ai_bridge/latest_notes.json');
+      final notesFile = File('${AiBridgeService.instance.bridgeDirPath}/latest_notes.json');
       if (await notesFile.exists()) {
         await notesFile.writeAsString(jsonEncode({
           "notes": "System reset to clean state.",
@@ -445,7 +447,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
         }));
       }
 
-      final verifFile = File('.ai_bridge/latest_verification.json');
+      final verifFile = File('${AiBridgeService.instance.bridgeDirPath}/latest_verification.json');
       if (await verifFile.exists()) {
         await verifFile.delete();
       }
@@ -457,7 +459,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
         'bridge_commit_debug.txt'
       ];
       for (final filename in logsToReset) {
-        final f = File('.ai_bridge/$filename');
+        final f = File('${AiBridgeService.instance.bridgeDirPath}/$filename');
         if (await f.exists()) {
           await f.writeAsString('');
         }
@@ -542,7 +544,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
         output.writeln('  - Agent ${entry.key}: Status: ${entry.value.currentStatus}');
       }
 
-      final statusFile = File('.ai_bridge/agent_status.txt');
+      final statusFile = File('${AiBridgeService.instance.bridgeDirPath}/agent_status.txt');
       if (await statusFile.exists()) {
         output.writeln('Local agent_status.txt: "${(await statusFile.readAsString()).trim()}"');
       } else {
@@ -701,6 +703,13 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
+                    _buildQuickIndicator(
+                      label: 'Queue',
+                      value: AiBridgeService.instance.queueStatus,
+                      color: AiBridgeService.instance.queueStatus == 'BUSY' ? Colors.orangeAccent : Colors.greenAccent,
+                      icon: Icons.queue_play_next_outlined,
+                    ),
+                    const SizedBox(width: 12),
                     _buildQuickIndicator(
                       label: 'Bridge',
                       value: _isOnline ? 'Online' : 'Offline',
@@ -1126,6 +1135,13 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                                     isOk: true,
                                     detail: 'Current Status: ${agentStatusText}',
                                     statusColor: agentStatusText == 'IDLE' ? Colors.greenAccent : Colors.orangeAccent,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  _buildReviewFileRow(
+                                    fileName: 'queue_status.txt',
+                                    isOk: true,
+                                    detail: 'Current Status: ${(_loadedLogs['queue_status.txt'] ?? 'UNKNOWN').trim()}',
+                                    statusColor: (_loadedLogs['queue_status.txt'] ?? 'UNKNOWN').trim() == 'IDLE' ? Colors.greenAccent : Colors.orangeAccent,
                                   ),
                                 ],
                               ),
@@ -1644,42 +1660,9 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                                 ],
                               ),
                               const Divider(color: Colors.white12, height: 16),
-                              if (!AiBridgeService.instance.isDryRunMode)
-                                Expanded(
-                                  child: Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(24),
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Icon(Icons.alt_route_outlined, size: 48, color: AppColors.textMuted),
-                                          const SizedBox(height: 16),
-                                          Text(
-                                            'Dry Run Simulation is Disabled',
-                                            style: TextStyle(
-                                              color: AppColors.textPrimary,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Enable Simulated Dry Run Mode above to log, capture, and inspect outgoing tasks, prompts, VBS paste scripts, and macros without executing real-world side effects.',
-                                            style: TextStyle(
-                                              color: AppColors.textSecondary,
-                                              fontSize: 11,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              else ...[
-                                Row(
-                                  children: [
+                              Row(
+                                children: [
+                                  if (AiBridgeService.instance.isDryRunMode) ...[
                                     ElevatedButton.icon(
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: AppColors.accent.withOpacity(0.1),
@@ -1714,124 +1697,168 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                                         );
                                       },
                                     ),
+                                    const SizedBox(width: 8),
                                   ],
-                                ),
-                                const SizedBox(height: 12),
-                                Expanded(
-                                  child: AiBridgeService.instance.simulatedActions.isEmpty
-                                      ? Center(
-                                          child: Text(
-                                            'No simulated transmissions captured yet.',
-                                            style: TextStyle(
-                                              color: AppColors.textMuted,
-                                              fontSize: 11,
-                                              fontStyle: FontStyle.italic,
-                                            ),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.cyan.withOpacity(0.1),
+                                      foregroundColor: Colors.cyan,
+                                      side: BorderSide(color: Colors.cyan.withOpacity(0.5)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    ),
+                                    icon: const Icon(Icons.copy_all_outlined, size: 14),
+                                    label: Text(
+                                      AiBridgeService.instance.isDryRunMode
+                                          ? 'Copy Dry Run Info'
+                                          : 'Copy Bridge Info',
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                    onPressed: () async {
+                                      final buffer = StringBuffer();
+                                      buffer.writeln(AiBridgeService.instance.isDryRunMode
+                                          ? '=== DRY RUN INFO ==='
+                                          : '=== LIVE RUN INFO ===');
+                                      buffer.writeln('Bridge Mode: ${AiBridgeService.instance.bridgeMode}');
+                                      buffer.writeln('Is Dry Run Mode: ${AiBridgeService.instance.isDryRunMode}');
+                                      buffer.writeln('Active Processing Task ID: ${AiBridgeService.instance.activeProcessingTaskId}');
+                                      buffer.writeln('Active Prompt: ${AiBridgeService.instance.activePrompt?.text}');
+                                      buffer.writeln(AiBridgeService.instance.isDryRunMode
+                                          ? '\n=== SIMULATED ACTIONS ==='
+                                          : '\n=== BRIDGE ACTIONS ===');
+                                      for (final act in AiBridgeService.instance.simulatedActions) {
+                                        buffer.writeln('[${act.timestamp.toLocal().toString().split(' ').last.split('.').first}] [${act.type}] ${act.title}: ${act.detail}');
+                                      }
+                                      await Clipboard.setData(ClipboardData(text: buffer.toString()));
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(AiBridgeService.instance.isDryRunMode
+                                                ? 'Dry run info copied to clipboard!'
+                                                : 'Bridge log info copied to clipboard!'),
                                           ),
-                                        )
-                                      : ListView.builder(
-                                          itemCount: AiBridgeService.instance.simulatedActions.length,
-                                          itemBuilder: (context, idx) {
-                                            final act = AiBridgeService.instance.simulatedActions[idx];
-                                            Color chipColor = Colors.grey;
-                                            switch (act.type) {
-                                              case 'PROMPT':
-                                                chipColor = Colors.greenAccent;
-                                                break;
-                                              case 'VBS_SCRIPT':
-                                                chipColor = Colors.blueAccent;
-                                                break;
-                                              case 'MACRO':
-                                                chipColor = Colors.orangeAccent;
-                                                break;
-                                              case 'QUEUE':
-                                                chipColor = Colors.cyanAccent;
-                                                break;
-                                              case 'API_CALL':
-                                                chipColor = Colors.purpleAccent;
-                                                break;
-                                              case 'FILE_WRITE':
-                                                chipColor = Colors.amberAccent;
-                                                break;
-                                              case 'STATE':
-                                                chipColor = Colors.pinkAccent;
-                                                break;
-                                              case 'STATUS_WRITE':
-                                                chipColor = Colors.tealAccent;
-                                                break;
-                                            }
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Expanded(
+                                child: AiBridgeService.instance.simulatedActions.isEmpty
+                                    ? Center(
+                                        child: Text(
+                                          AiBridgeService.instance.isDryRunMode
+                                              ? 'No simulated transmissions captured yet.'
+                                              : 'No bridge transmissions captured yet.',
+                                          style: TextStyle(
+                                            color: AppColors.textMuted,
+                                            fontSize: 11,
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                      )
+                                    : ListView.builder(
+                                        itemCount: AiBridgeService.instance.simulatedActions.length,
+                                        itemBuilder: (context, idx) {
+                                          final act = AiBridgeService.instance.simulatedActions[idx];
+                                          Color chipColor = Colors.grey;
+                                          switch (act.type) {
+                                            case 'PROMPT':
+                                              chipColor = Colors.greenAccent;
+                                              break;
+                                            case 'VBS_SCRIPT':
+                                              chipColor = Colors.blueAccent;
+                                              break;
+                                            case 'MACRO':
+                                              chipColor = Colors.orangeAccent;
+                                              break;
+                                            case 'QUEUE':
+                                              chipColor = Colors.cyanAccent;
+                                              break;
+                                            case 'API_CALL':
+                                              chipColor = Colors.purpleAccent;
+                                              break;
+                                            case 'FILE_WRITE':
+                                              chipColor = Colors.amberAccent;
+                                              break;
+                                            case 'STATE':
+                                              chipColor = Colors.pinkAccent;
+                                              break;
+                                            case 'STATUS_WRITE':
+                                              chipColor = Colors.tealAccent;
+                                              break;
+                                          }
 
-                                            return Card(
-                                              margin: const EdgeInsets.only(bottom: 8),
-                                              color: Colors.black.withOpacity(0.2),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(4),
-                                                side: const BorderSide(color: Colors.white10, width: 0.5),
-                                              ),
-                                              child: ExpansionTile(
-                                                dense: true,
-                                                iconColor: AppColors.textSecondary,
-                                                collapsedIconColor: AppColors.textSecondary,
-                                                title: Row(
-                                                  children: [
-                                                    Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                      decoration: BoxDecoration(
-                                                        color: chipColor.withOpacity(0.15),
-                                                        borderRadius: BorderRadius.circular(4),
-                                                        border: Border.all(color: chipColor.withOpacity(0.5)),
-                                                      ),
-                                                      child: Text(
-                                                        act.type,
-                                                        style: TextStyle(
-                                                          color: chipColor,
-                                                          fontSize: 9,
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Expanded(
-                                                      child: Text(
-                                                        act.title,
-                                                        style: TextStyle(
-                                                          color: AppColors.textPrimary,
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                subtitle: Text(
-                                                  '${act.timestamp.toLocal().toString().split(' ').last.split('.').first}',
-                                                  style: TextStyle(
-                                                    color: AppColors.textMuted,
-                                                    fontSize: 9,
-                                                  ),
-                                                ),
+                                          return Card(
+                                            margin: const EdgeInsets.only(bottom: 8),
+                                            color: Colors.black.withOpacity(0.2),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(4),
+                                              side: const BorderSide(color: Colors.white10, width: 0.5),
+                                            ),
+                                            child: ExpansionTile(
+                                              dense: true,
+                                              iconColor: AppColors.textSecondary,
+                                              collapsedIconColor: AppColors.textSecondary,
+                                              title: Row(
                                                 children: [
                                                   Container(
-                                                    width: double.infinity,
-                                                    padding: const EdgeInsets.all(8),
-                                                    color: Colors.black38,
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: chipColor.withOpacity(0.15),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      border: Border.all(color: chipColor.withOpacity(0.5)),
+                                                    ),
                                                     child: Text(
-                                                      act.detail,
-                                                      style: const TextStyle(
-                                                        color: Colors.lightGreenAccent,
-                                                        fontFamily: 'monospace',
-                                                        fontSize: 10,
+                                                      act.type,
+                                                      style: TextStyle(
+                                                        color: chipColor,
+                                                        fontSize: 9,
+                                                        fontWeight: FontWeight.bold,
                                                       ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      act.title,
+                                                      style: TextStyle(
+                                                        color: AppColors.textPrimary,
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                      overflow: TextOverflow.ellipsis,
                                                     ),
                                                   ),
                                                 ],
                                               ),
-                                            );
-                                          },
-                                        ),
-                                ),
-                              ],
+                                              subtitle: Text(
+                                                '${act.timestamp.toLocal().toString().split(' ').last.split('.').first}',
+                                                style: TextStyle(
+                                                  color: AppColors.textMuted,
+                                                  fontSize: 9,
+                                                ),
+                                              ),
+                                              children: [
+                                                Container(
+                                                  width: double.infinity,
+                                                  padding: const EdgeInsets.all(8),
+                                                  color: Colors.black38,
+                                                  child: Text(
+                                                    act.detail,
+                                                    style: const TextStyle(
+                                                      color: Colors.lightGreenAccent,
+                                                      fontFamily: 'monospace',
+                                                      fontSize: 10,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      ),
+                              ),
                             ],
                           ),
                         ),

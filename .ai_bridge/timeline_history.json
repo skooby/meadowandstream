@@ -1,5 +1,16 @@
 [
   {
+    "id": "0981ed93dd98c235bd0e997fea11705482f0459d",
+    "taskIds": [
+      "1779757239243"
+    ],
+    "title": "Bridge Monitor",
+    "summary": "Improvements",
+    "commitHash": "0981ed93dd98c235bd0e997fea11705482f0459d",
+    "commitDate": "2026-05-26T04:42:46Z",
+    "verifiedNotes": "- Testing queueing tasks, return immediately\n- Testing queueing tasks, return immediately #2\n- Testing queueing tasks, return immediately #3"
+  },
+  {
     "id": "e0dd684c75f4beafe172d595eb2c90b8b1f7f1b6",
     "taskIds": [
       "1779749735847",
@@ -315,14 +326,5 @@
     "commitHash": "6eeb6fc2e874a3e75e362cdfc0d71aa44b57e088",
     "commitDate": "2026-05-21T05:30:48Z",
     "verifiedNotes": "- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States\n\n- Remove the View in Timeline button\n- returning from ai bridge is clearing out the checkbox when it should not be doing anything with it\n- Testing States"
-  },
-  {
-    "id": "27ffe5e1595493acefa1851a81c20e5d900feecd",
-    "taskIds": [],
-    "title": "Auto-sync from Antigravity Visual Editor",
-    "summary": "",
-    "commitHash": "27ffe5e1595493acefa1851a81c20e5d900feecd",
-    "commitDate": "2026-05-21T05:20:08Z",
-    "verifiedNotes": ""
   }
 ]

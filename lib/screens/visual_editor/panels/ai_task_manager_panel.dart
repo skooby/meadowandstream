@@ -3,6 +3,7 @@ import 'package:antigravity_sdk/antigravity_sdk.dart';
 import 'global_task_editor_window.dart';
 import 'global_icon_picker_window.dart';
 import 'package:flutter/material.dart';
+import 'package:collection/collection.dart';
 import '../../../state/global_picker_state.dart';
 import 'package:flutter/scheduler.dart';
 import '../visual_editor_screen.dart';
@@ -2891,28 +2892,42 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
 
   Future<void> _executeBatchWorkPrompt() async {
     final tasks = AiBridgeService.instance.tasks;
-
+    final visibleWorksheets = tasks.where((t) => t.isWorksheet && t.isWorksheetVisible).toList();
     List<AiTask> focusTasks = [];
-    void traverseTasks(String? parentId) {
+
+    void traverseTasks(String? parentId, {Set<String>? visited}) {
+      visited ??= {};
+      if (parentId != null) {
+        if (visited.contains(parentId)) return;
+        visited.add(parentId);
+      }
       final children = tasks.where((t) => t.parentId == parentId).toList();
       for (var child in children) {
-        if (!child.isFolder && _configExportStatuses.contains(child.status)) {
-
-          if (child.verificationCriteria.any((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored))) {
-            focusTasks.add(child);
+        if (child.isWorksheet) continue;
+        if (!child.isFolder) {
+          if (child.status != AiTaskStatus.completed) {
+            if (child.verificationCriteria.any((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored))) {
+              focusTasks.add(child);
+            }
           }
-        }
-        if (child.isFolder) {
-          traverseTasks(child.id);
+        } else {
+          traverseTasks(child.id, visited: visited);
         }
       }
     }
-    traverseTasks(null);
+
+    if (visibleWorksheets.isEmpty) {
+      traverseTasks(null);
+    } else {
+      for (var ws in visibleWorksheets) {
+        traverseTasks(ws.id);
+      }
+    }
 
     if (focusTasks.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('No tasks found matching configuration!'),
+            content: Text('No active tasks with pending checklist items found!'),
             duration: Duration(seconds: 3)));
       }
       return;
@@ -2932,10 +2947,10 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   }
 
   Future<void> _executeSingleTaskPrompt(AiTask task, [int mode = 0, bool silent = false, bool copyOnly = false]) async {
-    if (!_configExportStatuses.contains(task.status)) {
+    if (task.status == AiTaskStatus.completed) {
       if (mounted && !silent) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Task status does not match active configuration!'),
+            content: Text('Task is completed and cannot be executed!'),
             duration: Duration(seconds: 3)));
       }
       return;
@@ -3462,7 +3477,162 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     );
   }
 
+  Widget _buildQueueChecklistItemRow({
+    required String taskName,
+    required String description,
+    required AiVerificationStatus status,
+    required int tryCount,
+    String? queueStatusLabel,
+    Color? headerColor,
+    VoidCallback? onCancel,
+  }) {
+    IconData statusIcon;
+    Color statusColor;
+    switch (status) {
+      case AiVerificationStatus.verified:
+        statusIcon = Icons.check_box;
+        statusColor = Colors.green;
+        break;
+      case AiVerificationStatus.pendingReview:
+        statusIcon = Icons.check_box;
+        statusColor = Colors.orange;
+        break;
+      case AiVerificationStatus.submitted:
+        statusIcon = Icons.hourglass_top;
+        statusColor = Colors.blueAccent;
+        break;
+      case AiVerificationStatus.ignored:
+        statusIcon = Icons.do_not_disturb_on;
+        statusColor = Colors.grey.withOpacity(0.5);
+        break;
+      default:
+        statusIcon = Icons.check_box_outline_blank;
+        statusColor = AppColors.controlBorder;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.overlaySubtle)),
+        color: headerColor?.withOpacity(0.05) ?? AppColors.windowBackground,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(statusIcon, color: statusColor, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (queueStatusLabel != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Row(
+                      children: [
+                        Text(
+                          queueStatusLabel,
+                          style: TextStyle(
+                            color: headerColor ?? AppColors.panelTextSecondary,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'TASK: $taskName',
+                            style: TextStyle(
+                              color: AppColors.panelTextSecondary,
+                              fontSize: 9,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Text(
+                  description,
+                  style: TextStyle(
+                    color: AppColors.panelTextPrimary,
+                    fontSize: AppUIConfig.rootFontSize,
+                  ),
+                ),
+                if (tryCount > 0) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: tryCount > 5 ? Colors.redAccent : Colors.white70,
+                            width: 1.0,
+                          ),
+                        ),
+                        child: Text(
+                          '$tryCount',
+                          style: TextStyle(
+                            color: tryCount > 5 ? Colors.redAccent : Colors.white70,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'attempts',
+                        style: TextStyle(
+                          color: AppColors.panelTextSecondary,
+                          fontSize: 8,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (onCancel != null)
+            IconButton(
+              icon: Icon(Icons.close, size: 14, color: AppColors.error),
+              onPressed: onCancel,
+              tooltip: 'Remove from Queue',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildActivePromptItem(QueuedPrompt prompt) {
+    if (prompt.taskIds != null && prompt.taskIds!.isNotEmpty) {
+      final taskId = prompt.taskIds!.first;
+      final taskList = AiBridgeService.instance.tasks.where((t) => t.id == taskId).toList();
+      if (taskList.isNotEmpty) {
+        final task = taskList.first;
+        final criteria = task.verificationCriteria.firstWhereOrNull(
+          (c) => c.description == prompt.targetCriteriaDescription
+        );
+        if (criteria != null) {
+          return _buildQueueChecklistItemRow(
+            taskName: task.name,
+            description: criteria.description,
+            status: criteria.status,
+            tryCount: criteria.tryCount,
+            queueStatusLabel: 'ACTIVE MAIN PROMPT',
+            headerColor: AppColors.accent,
+          );
+        }
+      }
+    }
+
     final displayTitle = 'ACTIVE MAIN PROMPT';
     return Container(
       padding: const EdgeInsets.all(8),
@@ -3506,15 +3676,82 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   }
 
   Widget _buildPendingPromptItem(QueuedPrompt prompt, int index) {
-    String displayTitle = 'QUEUED PROMPT #${index + 1}';
     if (prompt.taskIds != null && prompt.taskIds!.isNotEmpty) {
       final taskId = prompt.taskIds!.first;
       final taskList = AiBridgeService.instance.tasks.where((t) => t.id == taskId).toList();
       if (taskList.isNotEmpty) {
-        displayTitle = 'QUEUED: ${taskList.first.name.toUpperCase()}';
+        final task = taskList.first;
+        if (prompt.targetCriteriaDescription != null) {
+          final criteria = task.verificationCriteria.firstWhereOrNull(
+            (c) => c.description == prompt.targetCriteriaDescription
+          );
+          if (criteria != null) {
+            return _buildQueueChecklistItemRow(
+              taskName: task.name,
+              description: criteria.description,
+              status: criteria.status,
+              tryCount: criteria.tryCount,
+              queueStatusLabel: 'QUEUED TASK #${index + 1}',
+              headerColor: Colors.blueAccent,
+              onCancel: () => AiBridgeService.instance.removeFromQueue(prompt),
+            );
+          }
+        }
+        // If there's no targeted checklist item but we have the task, render a clean, compact item
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.overlaySubtle)),
+            color: AppColors.windowBackground,
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.queue, color: Colors.blueAccent, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'QUEUED TASK #${index + 1}: ${task.name.toUpperCase()}',
+                      style: TextStyle(
+                        color: Colors.blueAccent,
+                        fontSize: AppUIConfig.rootFontSize - 1,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (prompt.text.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          prompt.text,
+                          style: TextStyle(
+                            color: AppColors.panelTextSecondary,
+                            fontSize: 10,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.close, size: 14, color: AppColors.error),
+                onPressed: () => AiBridgeService.instance.removeFromQueue(prompt),
+                tooltip: 'Remove from Queue',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+        );
       }
     }
 
+    String displayTitle = 'QUEUED PROMPT #${index + 1}';
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -3538,6 +3775,19 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (prompt.text.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      prompt.text,
+                      style: TextStyle(
+                        color: AppColors.panelTextSecondary,
+                        fontSize: 10,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -3812,12 +4062,65 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                               children: [
                                 if (AiBridgeService.instance.isSyncErrorDetected)
                                   _buildSyncErrorBanner(context),
-                                if (AiBridgeService.instance.activeProcessingTaskId != null && AiBridgeService.instance.activePrompt != null)
-                                  _buildActiveTaskItem(AiBridgeService.instance.activeProcessingTaskId!, AiBridgeService.instance.activePrompt!),
-                                if (AiBridgeService.instance.activeProcessingTaskId == null && AiBridgeService.instance.activePrompt != null)
-                                  _buildActivePromptItem(AiBridgeService.instance.activePrompt!),
-                                ...AiBridgeService.instance.activeAgents.entries.map((entry) => _buildSubagentItem(entry.key, entry.value)),
-                                ...AiBridgeService.instance.pendingPrompts.asMap().entries.map((entry) => _buildPendingPromptItem(entry.value, entry.key)),
+                                 if (AiBridgeService.instance.activeProcessingTaskId != null)
+                                   () {
+                                     final taskId = AiBridgeService.instance.activeProcessingTaskId!;
+                                     final matches = AiBridgeService.instance.tasks.where((t) => t.id == taskId).toList();
+                                     if (matches.isNotEmpty) {
+                                       final task = matches.first;
+                                       final activePrompt = AiBridgeService.instance.activePrompt;
+                                       if (activePrompt != null && activePrompt.targetCriteriaDescription != null) {
+                                         final criteria = task.verificationCriteria.firstWhereOrNull(
+                                           (c) => c.description == activePrompt.targetCriteriaDescription
+                                         );
+                                         if (criteria != null) {
+                                           return Column(
+                                             crossAxisAlignment: CrossAxisAlignment.start,
+                                             children: [
+                                               _buildQueueChecklistItemRow(
+                                                 taskName: task.name,
+                                                 description: criteria.description,
+                                                 status: criteria.status,
+                                                 tryCount: criteria.tryCount,
+                                                 queueStatusLabel: 'ACTIVE AGENT TASK',
+                                                 headerColor: AppColors.accent,
+                                               ),
+                                               Divider(color: AppColors.overlaySubtle, height: 1),
+                                             ],
+                                           );
+                                         }
+                                       }
+                                       // Fallback to task item if no target criteria
+                                       return Column(
+                                         crossAxisAlignment: CrossAxisAlignment.start,
+                                         children: [
+                                           Container(
+                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                             color: AppColors.accent.withOpacity(0.1),
+                                             child: Row(
+                                               children: [
+                                                 Icon(Icons.autorenew, color: AppColors.accent, size: 12),
+                                                 const SizedBox(width: 4),
+                                                 Text('ACTIVE AGENT TASK', style: TextStyle(color: AppColors.accent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                               ],
+                                             ),
+                                           ),
+                                           _buildTaskItem(task, 0, isDraggable: false),
+                                           Divider(color: AppColors.overlaySubtle, height: 1),
+                                         ],
+                                       );
+                                     }
+                                     if (AiBridgeService.instance.activePrompt != null) {
+                                       return _buildActivePromptItem(AiBridgeService.instance.activePrompt!);
+                                     }
+                                     return const SizedBox.shrink();
+                                   }()
+                                 else if (AiBridgeService.instance.activePrompt != null)
+                                   _buildActivePromptItem(AiBridgeService.instance.activePrompt!),
+                                 ...AiBridgeService.instance.activeAgents.entries.map((entry) => _buildSubagentItem(entry.key, entry.value)),
+                                 ...AiBridgeService.instance.pendingPrompts.asMap().entries.map((entry) {
+                                   return _buildPendingPromptItem(entry.value, entry.key);
+                                 }),
                               ],
                             ),
                           ),

@@ -18,12 +18,15 @@ void main() {
     AiBridgeService.instance.forceDiskSaveInTests = true;
   });
 
-  tearDown(() {
+  tearDown(() async {
     AiBridgeService.instance.forceDiskSaveInTests = false;
+    await AiBridgeService.instance.clearQueue();
     AiBridgeService.instance.testDirPath = '.ai_bridge';
     AiBridgeService.instance.testFilePath = '.ai_bridge/tasks.json';
     if (tempBridgeDir.existsSync()) {
-      tempBridgeDir.deleteSync(recursive: true);
+      try {
+        tempBridgeDir.deleteSync(recursive: true);
+      } catch (_) {}
     }
   });
 

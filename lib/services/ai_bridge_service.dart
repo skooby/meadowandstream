@@ -1158,6 +1158,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   String _dirPath = '.ai_bridge';
   String _filePath = '.ai_bridge/tasks.json';
+  String get bridgeDirPath => _dirPath;
 
   @visibleForTesting
   Directory? testBrainDir;
@@ -1205,6 +1206,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   int _lastProcessedLogIndex = 0;
   int _lastLoggedStepIndex = -1;
   Timer? _errorDebounceTimer;
+  Timer? _dryRunTimer;
   final List<DetectedError> _errorBuffer = [];
   bool _isLogListenerRegistered = false;
 
@@ -1214,6 +1216,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     SystemLogsService.instance.removeListener(_handleSystemLogsChanged);
     _isLogListenerRegistered = false;
     _errorDebounceTimer?.cancel();
+    _dryRunTimer?.cancel();
     _watchSubscription?.cancel();
     _libWatchSubscription?.cancel();
     _rootWatchSubscription?.cancel();
@@ -1324,6 +1327,32 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   List<QueuedPrompt> get completedPrompts => _completedPrompts;
   QueuedPrompt? get activePrompt => _activePrompt;
 
+  String _queueStatus = 'IDLE';
+  String get queueStatus => _queueStatus;
+
+  void _writeQueueStatus(String status) {
+    _queueStatus = status;
+    if (_isDryRunMode) {
+      logSimulatedAction('FILE_WRITE', 'Write queue_status.txt', 'Writing status: $status');
+    }
+    try {
+      final qFile = File('$_dirPath/queue_status.txt');
+      if (!qFile.parent.existsSync()) {
+        qFile.parent.createSync(recursive: true);
+      }
+      qFile.writeAsStringSync(status);
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        try {
+          File('queue_status.txt').writeAsStringSync(status);
+        } catch (_) {}
+      }
+      print('[AiBridge] Wrote $status to queue_status.txt');
+    } catch (e) {
+      print('[AiBridge] Failed to write queue_status.txt: $e');
+    }
+    notifyListeners();
+  }
+
   String? _activeProcessingTaskId;
   DateTime? _activeProcessingTaskAssignedAt;
 
@@ -1390,6 +1419,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
           json['verificationCriteria'] = [];
         }
       }
+      if (_isDryRunMode) {
+        logSimulatedAction('FILE_WRITE', 'Write current_task.json', jsonEncode(json));
+      }
       File('$_dirPath/current_task.json')
           .writeAsString(jsonEncode(json), flush: true)
           .catchError((e) {
@@ -1414,6 +1446,89 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       if (taskIds != null && taskIds.isNotEmpty) {
         if (_isDryRunMode) {
           logSimulatedAction('API_CALL', 'Invoke Subagent (SDK Mode)', 'Task ID: ${taskIds.first}');
+          _writeCurrentTaskFile(taskIds.first);
+          _activeProcessingTaskId = taskIds.first;
+          _activeProcessingTaskAssignedAt = DateTime.now();
+          _activePrompt = QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription);
+          _writeQueueStatus('BUSY');
+          notifyListeners();
+          
+          try {
+            final statusFile = File('$_dirPath/agent_status.txt');
+            if (!statusFile.parent.existsSync()) {
+              statusFile.parent.createSync(recursive: true);
+            }
+            statusFile.writeAsStringSync('BUSY');
+          } catch (_) {}
+          _dryRunTimer = Timer(const Duration(seconds: 1), () async {
+            try {
+              final notesFile = File('$_dirPath/latest_notes.json');
+              if (!notesFile.parent.existsSync()) {
+                notesFile.parent.createSync(recursive: true);
+              }
+              final targetDesc = targetCriteriaDescription;
+              final notesJson = jsonEncode({
+                "summary": targetDesc != null ? "Processed: $targetDesc" : "Processed",
+                "notes": targetDesc != null ? "Successfully processed checklist item: $targetDesc" : "Processed"
+              });
+              logSimulatedAction('FILE_WRITE', 'Write latest_notes.json', notesJson);
+              notesFile.writeAsStringSync(notesJson);
+              
+              final List<dynamic> verifList = [];
+              if (taskIds.isNotEmpty) {
+                try {
+                  final task = _tasks.firstWhere((t) => t.id == taskIds.first);
+                  final targetDesc = targetCriteriaDescription;
+                  logSimulatedAction('STATE', 'Simulation verif list build (SDK)', 'targetDesc: $targetDesc, task criteria count: ${task.verificationCriteria.length}');
+                  final targetDescNorm = targetDesc?.trim().toLowerCase();
+                  final hasExactMatch = targetDescNorm != null && task.verificationCriteria.any((vc) => vc.description.trim().toLowerCase() == targetDescNorm);
+                  for (final vc in task.verificationCriteria) {
+                    final vcDescNorm = vc.description.trim().toLowerCase();
+                    final isMatch = targetDescNorm == null ||
+                        (hasExactMatch
+                            ? vcDescNorm == targetDescNorm
+                            : (vcDescNorm == targetDescNorm ||
+                               targetDescNorm.startsWith(vcDescNorm) ||
+                               vcDescNorm.startsWith(targetDescNorm)));
+                    logSimulatedAction('STATE', 'Matching criteria (SDK)', 'vc: $vcDescNorm vs target: $targetDescNorm - Match: $isMatch');
+                    if (isMatch) {
+                      verifList.add({
+                        "description": vc.description,
+                        "proof": "Processed in simulator",
+                        "notes": "All checks completed."
+                      });
+                    }
+                  }
+                } catch (_) {}
+              }
+              if (verifList.isEmpty) {
+                verifList.add({
+                  "description": "Verification Criteria",
+                  "proof": "Processed in simulator",
+                  "notes": "All checks completed."
+                });
+              }
+              
+              final verifFile = File('$_dirPath/latest_verification.json');
+              final verifJson = jsonEncode(verifList);
+              logSimulatedAction('FILE_WRITE', 'Write latest_verification.json', verifJson);
+              verifFile.writeAsStringSync(verifJson);
+            } catch (_) {}
+
+            _isAntigravityBusy = false;
+            _antigravityLastChangeObservedAt = null;
+            _writeQueueStatus('IDLE');
+
+            try {
+              final statusFile = File('$_dirPath/agent_status.txt');
+              if (!statusFile.parent.existsSync()) {
+                statusFile.parent.createSync(recursive: true);
+              }
+              statusFile.writeAsStringSync('IDLE');
+            } catch (_) {}
+
+            await _processStatusChange('IDLE');
+          });
           return;
         }
         await SandboxService.instance.addToSandbox(taskIds);
@@ -1425,6 +1540,66 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       } else {
         if (_isDryRunMode) {
           logSimulatedAction('API_CALL', 'Send Prompt (SDK Mode)', text);
+          try {
+            final json = {
+              "id": "free_prompt",
+              "name": "Free-form Request",
+              "description": text,
+              "verificationCriteria": []
+            };
+            File('$_dirPath/current_task.json').writeAsStringSync(jsonEncode(json), flush: true);
+          } catch (_) {}
+          _activePrompt = QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription);
+          _writeQueueStatus('BUSY');
+          notifyListeners();
+          
+          try {
+            final statusFile = File('$_dirPath/agent_status.txt');
+            if (!statusFile.parent.existsSync()) {
+              statusFile.parent.createSync(recursive: true);
+            }
+            statusFile.writeAsStringSync('BUSY');
+          } catch (_) {}
+          _dryRunTimer = Timer(const Duration(seconds: 1), () async {
+            try {
+              final notesFile = File('$_dirPath/latest_notes.json');
+              if (!notesFile.parent.existsSync()) {
+                notesFile.parent.createSync(recursive: true);
+              }
+              final targetDesc = targetCriteriaDescription;
+              final notesJson = jsonEncode({
+                "summary": targetDesc != null ? "Processed: $targetDesc" : "Processed",
+                "notes": targetDesc != null ? "Successfully processed checklist item: $targetDesc" : "Processed"
+              });
+              logSimulatedAction('FILE_WRITE', 'Write latest_notes.json', notesJson);
+              notesFile.writeAsStringSync(notesJson);
+              
+              final verifFile = File('$_dirPath/latest_verification.json');
+              final verifJson = jsonEncode([
+                {
+                  "description": "Verification Criteria",
+                  "proof": "Processed in simulator",
+                  "notes": "All checks completed."
+                }
+              ]);
+              logSimulatedAction('FILE_WRITE', 'Write latest_verification.json', verifJson);
+              verifFile.writeAsStringSync(verifJson);
+            } catch (_) {}
+
+            _isAntigravityBusy = false;
+            _antigravityLastChangeObservedAt = null;
+            _writeQueueStatus('IDLE');
+
+            try {
+              final statusFile = File('$_dirPath/agent_status.txt');
+              if (!statusFile.parent.existsSync()) {
+                statusFile.parent.createSync(recursive: true);
+              }
+              statusFile.writeAsStringSync('IDLE');
+            } catch (_) {}
+
+            await _processStatusChange('IDLE');
+          });
           return;
         }
         await _ensureBackendRunning();
@@ -1445,12 +1620,14 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
           }
         } else {
           logSimulatedAction('FILE_WRITE', 'Write current_task.json (Simulated)', 'Writing task ID: ${taskIds.first}');
+          _writeCurrentTaskFile(taskIds.first);
         }
       }
 
       await _saveQueueState();
       notifyListeners();
 
+      _writeQueueStatus('BUSY');
       if (_activeProcessingTaskId == null && _activePrompt == null) {
         _pendingUpdateType = null;
         await _processQueue();
@@ -1499,6 +1676,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       
       if (_activeProcessingTaskId != null) {
         logSimulatedAction('FILE_WRITE', 'Write current_task.json', 'Writing task ID: $_activeProcessingTaskId');
+        _writeCurrentTaskFile(_activeProcessingTaskId!);
       } else {
         final json = {
           "id": "free_prompt",
@@ -1507,6 +1685,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
           "verificationCriteria": []
         };
         logSimulatedAction('FILE_WRITE', 'Write current_task.json (Free-form)', jsonEncode(json));
+        try {
+          File('$_dirPath/current_task.json').writeAsStringSync(jsonEncode(json), flush: true);
+        } catch (_) {}
       }
       
       if (_bridgeMode == AntigravityBridgeMode.cli || _bridgeMode == AntigravityBridgeMode.desktop) {
@@ -1530,25 +1711,85 @@ wshShell.AppActivate $pid
       }
       
       logSimulatedAction('STATUS_WRITE', 'Set Status File (agent_status.txt)', 'BUSY');
+      try {
+        final statusFile = File('$_dirPath/agent_status.txt');
+        if (!statusFile.parent.existsSync()) {
+          statusFile.parent.createSync(recursive: true);
+        }
+        statusFile.writeAsStringSync('BUSY');
+      } catch (_) {}
       
-      Future.delayed(const Duration(milliseconds: 500), () {
+      _dryRunTimer = Timer(const Duration(seconds: 1), () async {
         if (_activePrompt != null) {
           logSimulatedAction('STATE', 'Simulation Completed', 'Active prompt finished simulated run.');
-          logSimulatedAction('STATUS_WRITE', 'Set Status File (agent_status.txt)', 'IDLE');
           
-          stateMachine.enterCompiling();
-          stateMachine.enterSynchronizing();
-          stateMachine.enterIdle();
+          try {
+            final notesFile = File('$_dirPath/latest_notes.json');
+            if (!notesFile.parent.existsSync()) {
+              notesFile.parent.createSync(recursive: true);
+            }
+            final targetDesc = _activePrompt?.targetCriteriaDescription;
+            final notesJson = jsonEncode({
+              "summary": targetDesc != null ? "Processed: $targetDesc" : "Processed",
+              "notes": targetDesc != null ? "Successfully processed checklist item: $targetDesc" : "Processed"
+            });
+            logSimulatedAction('FILE_WRITE', 'Write latest_notes.json', notesJson);
+            notesFile.writeAsStringSync(notesJson);
+            
+            final List<dynamic> verifList = [];
+            if (_activeProcessingTaskId != null) {
+              try {
+                final task = _tasks.firstWhere((t) => t.id == _activeProcessingTaskId);
+                final targetDesc = _activePrompt?.targetCriteriaDescription;
+                logSimulatedAction('STATE', 'Simulation verif list build', 'targetDesc: $targetDesc, task criteria count: ${task.verificationCriteria.length}');
+                final targetDescNorm = targetDesc?.trim().toLowerCase();
+                final hasExactMatch = targetDescNorm != null && task.verificationCriteria.any((vc) => vc.description.trim().toLowerCase() == targetDescNorm);
+                for (final vc in task.verificationCriteria) {
+                  final vcDescNorm = vc.description.trim().toLowerCase();
+                  final isMatch = targetDescNorm == null ||
+                      (hasExactMatch
+                          ? vcDescNorm == targetDescNorm
+                          : (vcDescNorm == targetDescNorm ||
+                             targetDescNorm.startsWith(vcDescNorm) ||
+                             vcDescNorm.startsWith(targetDescNorm)));
+                  logSimulatedAction('STATE', 'Matching criteria', 'vc: $vcDescNorm vs target: $targetDescNorm - Match: $isMatch');
+                  if (isMatch) {
+                    verifList.add({
+                      "description": vc.description,
+                      "proof": "Processed in simulator",
+                      "notes": "All checks completed."
+                    });
+                  }
+                }
+              } catch (_) {}
+            }
+            if (verifList.isEmpty) {
+              verifList.add({
+                "description": "Verification Criteria",
+                "proof": "Processed in simulator",
+                "notes": "All checks completed."
+              });
+            }
+            
+            final verifFile = File('$_dirPath/latest_verification.json');
+            final verifJson = jsonEncode(verifList);
+            logSimulatedAction('FILE_WRITE', 'Write latest_verification.json', verifJson);
+            verifFile.writeAsStringSync(verifJson);
+          } catch (_) {}
+          
+          _isAntigravityBusy = false;
+          _antigravityLastChangeObservedAt = null;
 
-          _activePrompt!.completedAt = DateTime.now();
-          _completedPrompts.add(_activePrompt!);
-          _activePrompt = null;
-          _activeProcessingTaskId = null;
-          _activeProcessingTaskAssignedAt = null;
-          _saveQueueState();
-          setScreenBlockerEnabled(false);
-          notifyListeners();
-          _processQueue();
+          logSimulatedAction('STATUS_WRITE', 'Set Status File (agent_status.txt)', 'IDLE');
+          try {
+            final statusFile = File('$_dirPath/agent_status.txt');
+            if (!statusFile.parent.existsSync()) {
+              statusFile.parent.createSync(recursive: true);
+            }
+            statusFile.writeAsStringSync('IDLE');
+          } catch (_) {}
+
+          await _processStatusChange('IDLE');
         }
       });
       return;
@@ -1561,7 +1802,10 @@ wshShell.AppActivate $pid
 
     // Write current_task.json as a robust fallback so the CLI agent receives
     // the context even if Windows UAC/UIPI prevents clipboard pasting.
+    logSimulatedAction('STATE', 'Dispatch Prompt', 'Dispatching prompt to agent.');
+    logSimulatedAction('PROMPT', 'Prompt Text', text);
     if (_activeProcessingTaskId != null) {
+      logSimulatedAction('FILE_WRITE', 'Write current_task.json', 'Writing task ID: $_activeProcessingTaskId');
       _writeCurrentTaskFile(_activeProcessingTaskId!);
     } else {
       final json = {
@@ -1570,6 +1814,7 @@ wshShell.AppActivate $pid
         "description": text,
         "verificationCriteria": []
       };
+      logSimulatedAction('FILE_WRITE', 'Write current_task.json (Free-form)', jsonEncode(json));
       try {
         File('$_dirPath/current_task.json')
             .writeAsStringSync(jsonEncode(json), flush: true);
@@ -1584,6 +1829,7 @@ wshShell.AppActivate $pid
         if (_sendViaClipboard) {
           final isRunning = await AntigravityStatusService.instance.isProcessRunning();
           if (!isRunning) {
+            logSimulatedAction('STATE', 'CLI Process Offline', 'Launching terminal window...');
             debugPrint('[AiBridgeService] CLI terminal process is offline. Launching terminal window...');
             await AntigravityStatusService.instance.ensureTerminalDaemonRunning();
             await Future.delayed(const Duration(milliseconds: 2000));
@@ -1593,6 +1839,7 @@ wshShell.AppActivate $pid
 
       if (_bridgeMode == AntigravityBridgeMode.desktop || _sendViaClipboard) {
         try {
+          logSimulatedAction('MACRO', 'Execute Macro Trigger', 'BridgeConnect');
           await MacroService.instance.executeTrigger('BridgeConnect');
         } catch (e) {
           debugPrint('[AiBridgeService] Error executing BridgeConnect macro: $e');
@@ -1608,7 +1855,7 @@ wshShell.AppActivate $pid
           vbsFile.parent.createSync(recursive: true);
         }
         if (_bridgeMode == AntigravityBridgeMode.cli) {
-          await vbsFile.writeAsString('''
+          final script = '''
 Set wshShell = CreateObject("WScript.Shell")
 wshShell.AppActivate "$targetTitle"
 WScript.Sleep 500
@@ -1617,9 +1864,11 @@ WScript.Sleep 200
 wshShell.SendKeys "~"
 WScript.Sleep 300
 wshShell.AppActivate $myPid
-''');
+''';
+          logSimulatedAction('VBS_SCRIPT', 'Write paste.vbs (CLI)', script);
+          await vbsFile.writeAsString(script);
         } else {
-          await vbsFile.writeAsString('''
+          final script = '''
 Set wshShell = CreateObject("WScript.Shell")
 success = wshShell.AppActivate("AI Bridge")
 If Not success Then
@@ -1634,15 +1883,20 @@ WScript.Sleep 200
 wshShell.SendKeys "~"
 WScript.Sleep 300
 wshShell.AppActivate $myPid
-''');
+''';
+          logSimulatedAction('VBS_SCRIPT', 'Write paste.vbs (Desktop)', script);
+          await vbsFile.writeAsString(script);
         }
+        logSimulatedAction('VBS_SCRIPT', 'Run paste.vbs script', 'Executing wscript paste.vbs');
         await Process.run('wscript', [vbsFile.path]);
       }
     } else if (_bridgeMode == AntigravityBridgeMode.handsfree) {
+      logSimulatedAction('STATE', 'Handsfree mode transition', 'Writing task context to current_task.json.');
       debugPrint('[AiBridgeService] Handsfree mode: context written to current_task.json.');
     }
 
     final statusFile = File('$_dirPath/agent_status.txt');
+    logSimulatedAction('STATUS_WRITE', 'Set Status File (agent_status.txt)', 'BUSY');
     await statusFile.writeAsString('BUSY');
     stateMachine.enterBusy();
     _updateStateMachineInputs();
@@ -1698,6 +1952,10 @@ wshShell.AppActivate $myPid
   Future<void> _processQueue() async {
     if (_isQueuePaused || _isProcessingQueue) return;
 
+    if (_pendingPrompts.isEmpty && _activePrompt == null && _activeProcessingTaskId == null) {
+      _writeQueueStatus('IDLE');
+    }
+
     _isProcessingQueue = true;
     try {
       if (_pendingUpdateType != null) {
@@ -1712,6 +1970,7 @@ wshShell.AppActivate $myPid
       }
 
       if (_pendingPrompts.isNotEmpty) {
+        _writeQueueStatus('BUSY');
         final nextPrompt = _pendingPrompts.first;
 
         if (nextPrompt.taskIds != null && nextPrompt.taskIds!.isNotEmpty) {
@@ -1742,8 +2001,8 @@ wshShell.AppActivate $myPid
         // Natively wait configured seconds before dispatch to IDE to guarantee the queue settles perfectly and hot reloads reset focus securely
         final prefs = await SharedPreferences.getInstance();
         final delayVal = prefs.get('ai_tasks_delay_seconds');
-        double delaySeconds = 5.0;
-        if (delayVal != null && delayVal is num) {
+        double delaySeconds = _isDryRunMode ? 0.05 : 5.0;
+        if (!_isDryRunMode && delayVal != null && delayVal is num) {
           delaySeconds = delayVal.toDouble().clamp(0.0, 5.0);
         }
         await Future.delayed(Duration(milliseconds: (delaySeconds * 1000).round()));
@@ -1856,7 +2115,9 @@ wshShell.AppActivate $myPid
   }
 
   Future<void> clearQueue() async {
+    _writeQueueStatus('IDLE');
     _errorDebounceTimer?.cancel();
+    _dryRunTimer?.cancel();
     _errorBuffer.clear();
     _pendingUpdateType = null;
     _isHandlingAgentStatus = false;
@@ -1940,6 +2201,7 @@ wshShell.AppActivate $myPid
   }
 
   Future<void> forceResetIdle() async {
+    _dryRunTimer?.cancel();
     _isAntigravityBusy = false;
     _antigravityLastChangeObservedAt = null;
     _isTriggeringUpdate = false;
@@ -2516,7 +2778,7 @@ wshShell.AppActivate $myPid
                       final String statusName = modelContent.contains('<preview>') ? 'PREVIEW' : 'IDLE';
 
                       final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
-                      if (isAgentBusy && !_isHandlingAgentStatus && !_isAntigravityBusy) {
+                      if (isAgentBusy && !_isHandlingAgentStatus && !_isAntigravityBusy && !_isDryRunMode) {
                         print('[AiBridge] Poller detected completed PLANNER_RESPONSE in transcript.jsonl. Triggering status processing: $statusName');
                         await _processStatusChange(statusName);
                       }
@@ -2556,15 +2818,17 @@ wshShell.AppActivate $myPid
         }
 
         // Unified status check: if daemon is not busy, but active prompt is still active.
-        if (!foundBusy) {
+        if (!foundBusy && !_isDryRunMode) {
           try {
             final statusFile = File('$_dirPath/agent_status.txt');
             if (await statusFile.exists()) {
               final content = (await statusFile.readAsString()).trim();
               final norm = content.toUpperCase();
               if (norm.startsWith('ID') || norm.startsWith('PR')) {
-                  if (_bridgeMode == AntigravityBridgeMode.sdk || _bridgeMode == AntigravityBridgeMode.desktop) {
-                    print('[AiBridge] SDK/Desktop mode detected agent transition to IDLE/PREVIEW (raw: $content). Clearing busy state and processing status change.');
+                final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
+                if (isAgentBusy) {
+                  if (_bridgeMode == AntigravityBridgeMode.sdk || _bridgeMode == AntigravityBridgeMode.desktop || _bridgeMode == AntigravityBridgeMode.cli || _bridgeMode == AntigravityBridgeMode.handsfree) {
+                    print('[AiBridge] Active mode detected agent transition to IDLE/PREVIEW (raw: $content). Clearing busy state and processing status change.');
                     _activeAgents.clear();
                     _isAntigravityBusy = false;
                     _antigravityLastChangeObservedAt = null;
@@ -2573,6 +2837,7 @@ wshShell.AppActivate $myPid
                       await _processStatusChange(statusName);
                     }
                   }
+                }
               }
             }
           } catch (e) {
@@ -3209,6 +3474,7 @@ wshShell.AppActivate $myPid
   }
 
   Future<void> init() async {
+    _writeQueueStatus('IDLE');
     try {
       _queueCleanupTimer?.cancel();
       _pendingPrompts.clear();
@@ -3323,12 +3589,23 @@ wshShell.AppActivate $myPid
               } catch (_) {}
             }
           }
+          if ((currentStatus == 'IDLE' || currentStatus == 'PREVIEW') && _activePrompt != null) {
+            debugPrint('[AiBridge] Startup check: agent_status.txt is $currentStatus and activePrompt is not null. Advancing queue.');
+            Future.delayed(const Duration(milliseconds: 600), () {
+              _processStatusChange(currentStatus);
+            });
+          }
         }
       }
       await _loadFromFile();
       if (!Platform.environment.containsKey('FLUTTER_TEST')) {
         _startWatching();
         _startWatchingAntigravity();
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (_activePrompt == null) {
+            _processQueue();
+          }
+        });
       }
 
       if (!_isLogListenerRegistered) {
@@ -3412,7 +3689,9 @@ wshShell.AppActivate $myPid
       }
       _antigravityLastChangeObservedAt = null;
       print('[AiBridge] Busy wait finished. Proceeding with status processing.');
-      await Future.delayed(const Duration(milliseconds: 800));
+      if (!_isDryRunMode) {
+        await Future.delayed(const Duration(milliseconds: 800));
+      }
 
       String rawModelContent = '';
       try {
@@ -3645,16 +3924,23 @@ wshShell.AppActivate $myPid
               }
             }
 
-            await attemptIngestion();
-
-            bool notesMissing = notesContent.trim().isEmpty;
             bool hasVerificationCriteria = _tasks[taskIdx].verificationCriteria.isNotEmpty;
-            bool verificationMissing = hasVerificationCriteria && verificationContent.trim().isEmpty;
-
-            if (notesMissing || verificationMissing) {
-              print('[AiBridge] Missing files detected on first ingestion attempt. Waiting 500ms for retry...');
-              await Future.delayed(const Duration(milliseconds: 500));
+            int attemptCount = 0;
+            while (attemptCount < 25) {
+              if (attemptCount > 0) {
+                print('[AiBridge] Missing or incomplete files detected (attempt ${attemptCount + 1}/25). Waiting 500ms...');
+                await Future.delayed(const Duration(milliseconds: 500));
+              }
               await attemptIngestion();
+              
+              final bool notesMissing = notesContent.trim().isEmpty;
+              final bool verificationMissing = hasVerificationCriteria && verificationContent.trim().isEmpty;
+              final bool previewMissing = content == 'PREVIEW' && previewContent.trim().isEmpty;
+              
+              if (!notesMissing && !verificationMissing && !previewMissing) {
+                break;
+              }
+              attemptCount++;
             }
 
             try {
@@ -3670,8 +3956,15 @@ wshShell.AppActivate $myPid
               if (verificationFile.existsSync()) verificationFile.deleteSync();
             } catch (_) {}
 
+            if (!_isDryRunMode) {
+              logSimulatedAction('STATE', 'Status Ingestion', 'Agent transition to $content. Processing output files.');
+            }
+
             // 1. Absorb Notes
             if (notesContent.trim().isNotEmpty) {
+              if (!_isDryRunMode) {
+                logSimulatedAction('FILE_READ', 'Read latest_notes.json', notesContent);
+              }
               String parsedSummary = '';
               String parsedNotes = '';
               try {
@@ -3728,6 +4021,9 @@ wshShell.AppActivate $myPid
             // 2. Absorb Preview
             bool generatedPreviewItems = false;
             if (previewContent.trim().isNotEmpty) {
+              if (!_isDryRunMode) {
+                logSimulatedAction('FILE_READ', 'Read latest_preview.json', previewContent);
+              }
               try {
                 String content = previewContent;
                 if (content.trim().isNotEmpty) {
@@ -3767,6 +4063,9 @@ wshShell.AppActivate $myPid
 
             // 3. Absorb Verification
             if (verificationContent.trim().isNotEmpty) {
+              if (!_isDryRunMode) {
+                logSimulatedAction('FILE_READ', 'Read latest_verification.json', verificationContent);
+              }
               try {
                 String content = verificationContent;
                 if (content.trim().isNotEmpty) {
@@ -3786,11 +4085,19 @@ wshShell.AppActivate $myPid
 
                     final existing = _tasks[taskIdx].verificationCriteria;
                     for (final newItem in newItems) {
-                      final matchIdx = existing.indexWhere((e) {
+                      int matchIdx = existing.indexWhere((e) {
                         final eDesc = e.description.trim().toLowerCase();
                         final nDesc = newItem.description.trim().toLowerCase();
-                        return nDesc.startsWith(eDesc);
+                        return nDesc == eDesc;
                       });
+                      if (matchIdx == -1) {
+                        // Fall back to prefix matching if no exact match is found
+                        matchIdx = existing.indexWhere((e) {
+                          final eDesc = e.description.trim().toLowerCase();
+                          final nDesc = newItem.description.trim().toLowerCase();
+                          return nDesc.startsWith(eDesc) || eDesc.startsWith(nDesc);
+                        });
+                      }
                       if (matchIdx != -1) {
                         existing[matchIdx].proof = newItem.proof;
                         existing[matchIdx].notes = newItem.notes;
@@ -3890,6 +4197,8 @@ wshShell.AppActivate $myPid
       }
 
       if (content == 'IDLE' || content == 'PREVIEW') {
+        _isAntigravityBusy = false;
+        _antigravityLastChangeObservedAt = null;
         setScreenBlockerEnabled(false);
         print('[AiBridge] $content detected. Completing and archiving active prompt.');
         try {
@@ -3924,11 +4233,14 @@ wshShell.AppActivate $myPid
       _saveQueueState();
       notifyListeners();
 
-      if (_pendingUpdateType == null) {
-        _pendingUpdateType = UpdateCoverType.hotReload;
+      if (_pendingPrompts.isEmpty) {
+        _writeQueueStatus('IDLE');
+        _pendingUpdateType = UpdateCoverType.hotRestart;
+        print('[AiBridge] Queue is empty. Triggering pending update. Type: $_pendingUpdateType');
+        await triggerPendingUpdate(force: true);
+      } else {
+        print('[AiBridge] Queue still has ${_pendingPrompts.length} items. Deferring update/reload until end of queue.');
       }
-      print('[AiBridge] Triggering pending update. Type: $_pendingUpdateType');
-      await triggerPendingUpdate(force: true);
 
       print('[AiBridge] Executing _processQueue() for any remaining prompts.');
       _processQueue();
@@ -4448,6 +4760,17 @@ wshShell.AppActivate $myPid
 
   Future<void> triggerPendingUpdate({bool force = false}) async {
     if (_isTriggeringUpdate) return;
+    if (_pendingPrompts.isNotEmpty || _activePrompt != null) {
+      print('[AiBridge] Deferring update/reload since the queue is not empty (Pending: ${_pendingPrompts.length}, Active: ${_activePrompt != null}).');
+      return;
+    }
+    if (_isDryRunMode) {
+      if (_pendingUpdateType != null) {
+        logSimulatedAction('UPDATE_TRIGGER', 'Trigger $_pendingUpdateType', 'Triggering simulated $_pendingUpdateType');
+        _pendingUpdateType = null;
+      }
+      return;
+    }
     if ((force || !isThinking) && _pendingUpdateType != null) {
       _isTriggeringUpdate = true;
       try {

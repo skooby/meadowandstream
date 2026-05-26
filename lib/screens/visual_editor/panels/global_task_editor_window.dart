@@ -1881,7 +1881,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                     border: Border.all(color: Colors.white10),
                                   ),
                                   child: TextFormField(
-                                    key: ValueKey('${existingTask?.id}_verification_notes_$i'),
+                                    key: ValueKey('${existingTask?.id}_verification_notes_${i}_${verificationCriteriaList[i].notes}'),
                                     initialValue: verificationCriteriaList[i].notes,
                                     readOnly: isItemLocked,
                                     style: TextStyle(
@@ -1911,6 +1911,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                       border: Border.all(color: Colors.white.withOpacity(0.1)),
                                     ),
                                     child: TextFormField(
+                                      key: ValueKey('${existingTask?.id}_verification_proof_${i}_${verificationCriteriaList[i].proof ?? ""}'),
                                       initialValue: verificationCriteriaList[i].proof ?? '',
                                       readOnly: isItemLocked,
                                       style: TextStyle(
@@ -2596,71 +2597,22 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                         padding: const EdgeInsets.all(6),
                                         constraints: const BoxConstraints(),
                                         onPressed: (isTaskReadOnly || AiBridgeService.instance.isThinking) ? null : () async {
-                                          await AiBridgeService.instance.compilePrimaryDirectivesFile();
-                                          final sb = StringBuffer();
-                                          sb.writeln('# PRIMARY DIRECTIVES');
-                                          sb.writeln('> [!IMPORTANT]');
-                                          sb.writeln('CRITICAL: You MUST read the `.ai_bridge/primary_directives.md` file natively using your tool to understand the GLOBAL CONSTRAINTS and NATIVE SYSTEM HOOKS before proceeding. Failure to do so will break the application.');
-                                          sb.writeln('To align context with the current workspace state, you must also read the recent conversation history in `.ai_bridge/conversation_history.md` and the database dump in `.ai_bridge/db_dump.json` using your file-reading tools.\n');
-                                          
-                                          sb.writeln('\n# TASKS TO ADDRESS');
-                                          sb.writeln('Task: ${existingTask!.name}');
-                                          if (existingTask!.description.isNotEmpty) {
-                                            sb.writeln(
-                                                'Description: ${existingTask!.description}');
-                                          }
-                                          sb.writeln('Status: ${existingTask!.status.name}');
-                                          final uncheckedTasks =
-                                              verificationCriteriaList
-                                                  .where((e) =>
-                                                      e.status ==
-                                                      AiVerificationStatus.none && !e.isPreview)
-                                                  .toList();
-                                          if (uncheckedTasks.isNotEmpty) {
-                                            sb.writeln('Verification Criteria:');
-                                            final item = uncheckedTasks.first;
-                                            String extraInfo = '';
-                                            if (item.goal.isNotEmpty) extraInfo += ' [Goal: ${item.goal}]';
-                                            if (item.tryCount > 0) extraInfo += ' [TRY #${item.tryCount}]';
-                                            if (item.requestClarification) {
-                                              sb.writeln('1. [CLARIFY] ${item.description}$extraInfo');
+                                          print('[AiBridge] Active Tasks and Checklist Items:');
+                                          for (final t in AiBridgeService.instance.tasks) {
+                                            if (t.isFolder || t.isWorksheet || t.status == AiTaskStatus.completed) continue;
+                                            print('Task: ${t.name} (Status: ${t.status.name})');
+                                            if (t.verificationCriteria.isEmpty) {
+                                              print('  - No checklist items');
                                             } else {
-                                              sb.writeln('1. ${item.description}$extraInfo');
-                                            }
-                                            sb.writeln('\nCRITICAL FOCUS CONSTRAINT:');
-                                            sb.writeln('Your ONLY objective for this run is to satisfy Checklist Item #1 above. Do not attempt to work on, address, or implement any other features, checklist items, or criteria. Focus entirely on completing this single item, verify it is working, and then output your notes and verification proofs as requested.');
-                                            
-                                            item.status =
-                                                AiVerificationStatus.submitted;
-                                          }
- 
-                                          if (fileAttachments.isNotEmpty) {
-                                            sb.writeln('Attachments:');
-                                            for (final attachment in fileAttachments) {
-                                              sb.writeln('- $attachment');
+                                              for (final criteria in t.verificationCriteria) {
+                                                print('  - Checklist Item: ${criteria.description} (Status: ${criteria.status.name}, Try Count: ${criteria.tryCount})');
+                                              }
                                             }
                                           }
-                                          
-                                          if (hyperlinks.isNotEmpty) {
-                                            sb.writeln('Hyperlinks:');
-                                            for (final link in hyperlinks) {
-                                              sb.writeln('- $link');
-                                            }
-                                          }
- 
-                                          final endingInst = AiBridgeService.instance.endingInstructions;
-                                          if (endingInst.isNotEmpty) {
-                                            sb.writeln('');
-                                            sb.writeln(endingInst);
-                                          }
- 
-                                          existingTask!.status = AiTaskStatus.inTesting;
-                                          await _executeAutoSave(instant: true);
-                                          sb.writeln('---');
-                                          await AiBridgeService.instance.sendToQueue(
-                                              sb.toString(), true,
-                                              taskIds: [existingTask!.id],
-                                              targetCriteriaDescription: uncheckedTasks.isNotEmpty ? uncheckedTasks.first.description : null);
+                                          await AiBridgeService.instance.submitTaskChecklist(
+                                            existingTask!,
+                                            blockScreen: true,
+                                          );
                                           ScaffoldMessenger.of(context)
                                               .showSnackBar(const SnackBar(
                                             content:
