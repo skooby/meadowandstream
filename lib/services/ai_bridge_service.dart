@@ -453,6 +453,24 @@ class SimulatedAction {
     required this.detail,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() {
+    return {
+      'type': type,
+      'title': title,
+      'detail': detail,
+      'timestamp': timestamp.toIso8601String(),
+    };
+  }
+
+  factory SimulatedAction.fromJson(Map<String, dynamic> json) {
+    return SimulatedAction(
+      type: json['type'] ?? '',
+      title: json['title'] ?? '',
+      detail: json['detail'] ?? '',
+      timestamp: json['timestamp'] != null ? DateTime.parse(json['timestamp']) : null,
+    );
+  }
 }
 
 class AiBridgeService extends ChangeNotifier with WindowListener {
@@ -468,18 +486,30 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   void setDryRunMode(bool enabled) {
     _isDryRunMode = enabled;
-    _simulatedActions.clear();
-    notifyListeners();
+    clearSimulatedActions();
   }
 
   void logSimulatedAction(String type, String title, String detail) {
     _simulatedActions.add(SimulatedAction(type: type, title: title, detail: detail));
+    _saveSimulatedActions();
     notifyListeners();
   }
 
   void clearSimulatedActions() {
     _simulatedActions.clear();
+    _saveSimulatedActions();
     notifyListeners();
+  }
+
+  Future<void> _saveSimulatedActions() async {
+    try {
+      final prefs = await _getPrefs();
+      final List<String> encoded =
+          _simulatedActions.map((a) => jsonEncode(a.toJson())).toList();
+      await prefs.setStringList('ai_bridge_simulated_actions', encoded);
+    } catch (e) {
+      debugPrint('Failed to save simulated actions: $e');
+    }
   }
 
   late AntigravityClient antigravityClient;
@@ -1434,6 +1464,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   Future<void> sendToQueue(String text, bool blockScreen,
       {List<String>? taskIds, bool insertFirst = false, String? targetCriteriaDescription}) async {
+    clearSimulatedActions();
     _lastLoggedStepIndex = -1;
     if (_isDryRunMode) {
       logSimulatedAction('QUEUE', 'Add Prompt to Queue', text);
@@ -3138,6 +3169,11 @@ wshShell.AppActivate $myPid
               final filesWereNotWritten = !notesWritten || !verificationWritten;
               if (filesWereNotWritten) {
                 _isSyncErrorDetected = true;
+                logSimulatedAction(
+                  'STATE',
+                  'AI Sync Error (Out of Sync)',
+                  'Planner response was written, but required files were not updated. Notes written: $notesWritten, Verification written: $verificationWritten. Last step details: ${lastStep?['content'] ?? ""}',
+                );
                 stateMachine.enterError('Sync Error: Response written outside XML tags');
                 SystemLogsService.instance.addLog(
                   '[AI Bridge Sync Error] Planner/conversational response detected as last step, but agent is no longer busy and files were not written. Last step details: ${lastStep['content'] ?? ""}',
@@ -3526,6 +3562,17 @@ wshShell.AppActivate $myPid
               .map((s) => QueuedPrompt.fromJson(jsonDecode(s))));
         } catch (e) {
           debugPrint('Error decoding completed ai queue: $e');
+        }
+      }
+
+      final savedSimulated = prefs.getStringList('ai_bridge_simulated_actions');
+      if (savedSimulated != null && savedSimulated.isNotEmpty) {
+        try {
+          _simulatedActions.clear();
+          _simulatedActions.addAll(
+              savedSimulated.map((s) => SimulatedAction.fromJson(jsonDecode(s))));
+        } catch (e) {
+          debugPrint('Error decoding simulated actions: $e');
         }
       }
 
@@ -4148,6 +4195,11 @@ wshShell.AppActivate $myPid
 
                print('[AiBridge] Missing required files after $content: $missingFiles. Flagging sync error.');
                _isSyncErrorDetected = true;
+               logSimulatedAction(
+                 'STATE',
+                 'AI Sync Error (Missing Files)',
+                 'Agent transitioned to $content, but required files were missing: $missingFiles.',
+               );
                stateMachine.enterError('Required files missing: $missingFiles');
                SystemLogsService.instance.addLog(
                  '[AI Bridge Sync Error] Required files were not written/found after $content: $missingFiles.',

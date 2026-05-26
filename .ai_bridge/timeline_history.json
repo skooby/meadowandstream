@@ -1,5 +1,16 @@
 [
   {
+    "id": "32f9e927436a6e55d54f696bdc0b3c7edebbe02d",
+    "taskIds": [
+      "1779596049582"
+    ],
+    "title": "Task Manager [Resolved UI lockup/hang when clicking 'UNSTICK BRIDGE' and configured automatic queue clearance on reload.]",
+    "summary": "Improvements for Task Manager",
+    "commitHash": "32f9e927436a6e55d54f696bdc0b3c7edebbe02d",
+    "commitDate": "2026-05-26T20:29:54Z",
+    "verifiedNotes": "- add a new button next to the Do Work that is a Star Icon to Add to Active Tasks, What we want is to go through the current worksheet and For each task marked as according to our prompt helper settings > Statuses to Proceed and follow the same rules as the Task Editor Add to Active Tasks.\n- Change the Do Work button to call the same function as Version Control Send to AI Bridge\n- Change the Version Control icon for Send to AI Bridge to be the same lighting icon as the Task Manager\n- Clicking 'UNSTICK BRIDGE' must unstick the AI Bridge connection/state without freezing the application UI.\n- On Reload clear the queue to prevent getting stuck in the queue."
+  },
+  {
     "id": "3317f9e004b217cd654249f811a93dee90cfb92c",
     "taskIds": [
       "1779596049582"
@@ -314,16 +325,5 @@
     "commitHash": "ab4b053d0f80dbf1e02df491c96fb186cc339296",
     "commitDate": "2026-05-21T13:01:38Z",
     "verifiedNotes": "- Have the \"Commit Tasks\" auto populate with the name that we have pre-defined\n- Lets have the Commit Tasks button just allow the automatic version to proceed. No need for a new name, since it should be doing that automatically in the other portion. It will bypass any locks on a task. But it should continue to flag if not all tasks have not been resolved.\n- Show our committed checkmark as green not red\n- Modify the add new task location to be just below the last entry in the checklist.. it is popping to the bottom\n- Next to our top icon area \"Add to active tasks\" lets include a LOCK icon that we can select that when locked it won't commit to github until we are ready."
-  },
-  {
-    "id": "ed2fb94c34ba3f22ebe5c6d7a28b616b3ca0429b",
-    "taskIds": [
-      "1779063155069"
-    ],
-    "title": "Task Editor [ui: Update committed checkmark color to green and checklist layout to shrink-wrap]",
-    "summary": "Improvements and enhancements",
-    "commitHash": "ed2fb94c34ba3f22ebe5c6d7a28b616b3ca0429b",
-    "commitDate": "2026-05-21T12:42:43Z",
-    "verifiedNotes": "- Show our committed checkmark as green not red\n- Modify the add new task location to be just below the last entry in the checklist.. it is popping to the bottom"
   }
 ]
