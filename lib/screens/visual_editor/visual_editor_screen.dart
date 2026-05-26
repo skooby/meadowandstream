@@ -146,6 +146,7 @@ class _VisualEditorScreenState extends State<VisualEditorScreen> {
   }
 
   Future<void> _executeHotReload({bool validateCompilation = false}) async {
+      await AiBridgeService.instance.clearQueue();
       await MacroService.instance.executeTrigger('BeforeReload');
       await AutoBackupService.instance.snapshot(reason: 'pre_reload');
       if (!kIsWeb && Platform.isWindows) {
@@ -264,6 +265,7 @@ if (-not \$activated) {
   }
 
   Future<void> _executeHotRestart({bool validateCompilation = false}) async {
+      await AiBridgeService.instance.clearQueue();
       await MacroService.instance.executeTrigger('BeforeReload');
       await AutoBackupService.instance.snapshot(reason: 'pre_restart');
       if (!kIsWeb && Platform.isWindows) {

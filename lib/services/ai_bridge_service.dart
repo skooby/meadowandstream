@@ -1888,7 +1888,13 @@ wshShell.AppActivate $myPid
           await vbsFile.writeAsString(script);
         }
         logSimulatedAction('VBS_SCRIPT', 'Run paste.vbs script', 'Executing wscript paste.vbs');
-        await Process.run('wscript', [vbsFile.path]);
+        await Process.run('wscript', [vbsFile.path]).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('[AiBridgeService] wscript paste.vbs execution timed out after 5 seconds.');
+            return ProcessResult(0, -1, '', 'wscript execution timeout');
+          },
+        );
       }
     } else if (_bridgeMode == AntigravityBridgeMode.handsfree) {
       logSimulatedAction('STATE', 'Handsfree mode transition', 'Writing task context to current_task.json.');
@@ -2116,6 +2122,12 @@ wshShell.AppActivate $myPid
 
   Future<void> clearQueue() async {
     _writeQueueStatus('IDLE');
+    try {
+      final statusFile = File('$_dirPath/agent_status.txt');
+      if (statusFile.parent.existsSync()) {
+        statusFile.writeAsStringSync('IDLE');
+      }
+    } catch (_) {}
     _errorDebounceTimer?.cancel();
     _dryRunTimer?.cancel();
     _errorBuffer.clear();
@@ -2324,11 +2336,22 @@ wshShell.AppActivate $myPid
       category: LogCategory.SYNC,
     );
     notifyListeners();
-    if (_bridgeMode != AntigravityBridgeMode.sdk) {
-      await _sendToAiAgent(_syncErrorInstructions);
-    } else {
-      await antigravityClient.sendPrompt(_syncErrorInstructions);
-    }
+    
+    // Dispatch prompt asynchronously without blocking the event loop or UI thread
+    Future.microtask(() async {
+      try {
+        if (_bridgeMode != AntigravityBridgeMode.sdk) {
+          await _sendToAiAgent(_syncErrorInstructions).timeout(const Duration(seconds: 10));
+        } else {
+          await antigravityClient.sendPrompt(_syncErrorInstructions).timeout(const Duration(seconds: 10));
+        }
+      } catch (e) {
+        SystemLogsService.instance.addLog(
+          '[AI Bridge Sync] Error dispatching sync recovery prompt: $e',
+          category: LogCategory.ERROR,
+        );
+      }
+    });
   }
 
   @visibleForTesting

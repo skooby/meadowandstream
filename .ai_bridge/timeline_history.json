@@ -1,5 +1,16 @@
 [
   {
+    "id": "3317f9e004b217cd654249f811a93dee90cfb92c",
+    "taskIds": [
+      "1779596049582"
+    ],
+    "title": "Task Manager [Added Star Icon to Add to Active Tasks next to Do Work button]",
+    "summary": "Improvements for Task Manager",
+    "commitHash": "3317f9e004b217cd654249f811a93dee90cfb92c",
+    "commitDate": "2026-05-26T19:48:49Z",
+    "verifiedNotes": "- add a new button next to the Do Work that is a Star Icon to Add to Active Tasks, What we want is to go through the current worksheet and For each task marked as according to our prompt helper settings > Statuses to Proceed and follow the same rules as the Task Editor Add to Active Tasks."
+  },
+  {
     "id": "df60a5621eab1f646f7c2e0d34659f4db57dfed4",
     "taskIds": [
       "1779596049582"
@@ -314,16 +325,5 @@
     "commitHash": "ed2fb94c34ba3f22ebe5c6d7a28b616b3ca0429b",
     "commitDate": "2026-05-21T12:42:43Z",
     "verifiedNotes": "- Show our committed checkmark as green not red\n- Modify the add new task location to be just below the last entry in the checklist.. it is popping to the bottom"
-  },
-  {
-    "id": "d83d757c02b9d44bb864f65053ced9bfa8117833",
-    "taskIds": [
-      "1778869915153"
-    ],
-    "title": "VERSION CONTROL TIMELINE HISTORY [Allow up to three lines in timeline history entries]",
-    "summary": "Version Control System improvements and tasks",
-    "commitHash": "d83d757c02b9d44bb864f65053ced9bfa8117833",
-    "commitDate": "2026-05-21T12:33:37Z",
-    "verifiedNotes": "- What I want is for the timeline history to be the same list as the commit list in GitHub... we should be pulling this from GitHub not managing on our own\n- Lets have entries in the timeline history be limited to two lines. For the status instead of a date when it was committed, show something more like \"committed 6 hours ago\"\n- Lets allow up to three lines two for the name + one for sub title"
   }
 ]

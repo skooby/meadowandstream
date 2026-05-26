@@ -480,7 +480,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                             Tooltip(
                               message: 'Send to AI Bridge',
                               child: IconButton(
-                                icon: const Icon(Icons.flash_on, size: 16),
+                                icon: const Icon(Icons.bolt, size: 16),
                                 color: activeTasks.isNotEmpty ? Colors.amber : AppColors.textMuted,
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(),

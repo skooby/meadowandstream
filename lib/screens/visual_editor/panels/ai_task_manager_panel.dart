@@ -3160,6 +3160,9 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
       final scale = VisualEditorScreen.globalUiScale.value;
       final worksheets = AiBridgeService.instance.worksheets;
       final anyActive = worksheets.any((ws) => ws.isWorksheetVisible);
+      final activeTasks = AiBridgeService.instance.tasks
+          .where((t) => !t.isFolder && SandboxService.instance.sandboxTaskIds.contains(t.id) && t.status != AiTaskStatus.completed)
+          .toList();
       return Container(
         height: 52 * scale, // Adjusted toolbar height
         color: AppColors.toolbarBackground,
@@ -3347,11 +3350,22 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
               ),
               child: IconButton(
                   icon: Icon(Icons.bolt, size: 20 * scale),
-                  tooltip: 'Do Work (Batch Process)',
-                  color: Colors.yellow,
+                  tooltip: 'Send to AI Bridge',
+                  color: activeTasks.isNotEmpty ? Colors.yellow : AppColors.textMuted,
                   padding: EdgeInsets.all(6 * scale),
                   constraints: const BoxConstraints(),
-                  onPressed: _executeBatchWorkPrompt,
+                  onPressed: activeTasks.isNotEmpty
+                      ? () async {
+                          final updatedTask = AiBridgeService.instance.tasks.firstWhere((t) => t.id == activeTasks.first.id, orElse: () => activeTasks.first);
+                          await AiBridgeService.instance.submitTaskChecklist(updatedTask, blockScreen: true);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text('Task "${updatedTask.name}" sent to AI Bridge!'),
+                              duration: const Duration(seconds: 4),
+                            ));
+                          }
+                        }
+                      : null,
               ),
             ),
           ],
