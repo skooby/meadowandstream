@@ -1932,7 +1932,8 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
       final name = json['name'] ?? 'Unnamed Task';
       final status = json['status'] ?? 'unknown';
       return '$name (Status: $status)';
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[AiBridge] Error parsing current_task.json: $e (Content raw: "$raw")');
       return 'Malformed task JSON';
     }
   }
@@ -1944,7 +1945,8 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
       final json = jsonDecode(raw);
       final notes = json['notes'] ?? '';
       return notes.toString();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[AiBridge] Error parsing latest_notes.json: $e (Content raw: "$raw")');
       return 'Malformed notes JSON';
     }
   }
@@ -1959,7 +1961,8 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
         return 'Verified $verifiedCount / ${json.length} criteria';
       }
       return 'Invalid verification schema';
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[AiBridge] Error parsing latest_verification.json: $e (Content raw: "$raw")');
       return 'Malformed verification JSON';
     }
   }

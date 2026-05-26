@@ -1,5 +1,17 @@
 [
   {
+    "id": "e0dd684c75f4beafe172d595eb2c90b8b1f7f1b6",
+    "taskIds": [
+      "1779749735847",
+      "1779757239243"
+    ],
+    "title": "TESTING STATE MACHINE VISUALIZER [Added copy actions to error banners and fixed early release timer to respect full agent execution time.] | Bridge Monitor",
+    "summary": "Improvements",
+    "commitHash": "e0dd684c75f4beafe172d595eb2c90b8b1f7f1b6",
+    "commitDate": "2026-05-26T01:47:37Z",
+    "verifiedNotes": "- Test states, return immediately\n\n- I want a toolbar that only shows the most important indicators at the very top, like a quick access.\n- Lets add a section for finalized review, where it shows the status of the :\n[x] current_task.json\n[x] latest_notes.json\n[x] latest_verification.json\n[x] agent_status.txt\n- Testing states, return immediately\n- Don't trigger a sync error if agent_status is set to busy or agent is thinking"
+  },
+  {
     "id": "ad57e85fec7afad00946c69d07d85311d30e0238",
     "taskIds": [
       "1779724163873",
@@ -312,16 +324,5 @@
     "commitHash": "27ffe5e1595493acefa1851a81c20e5d900feecd",
     "commitDate": "2026-05-21T05:20:08Z",
     "verifiedNotes": ""
-  },
-  {
-    "id": "52a7b679452cbdafa24a352612f9661937cdcf58",
-    "taskIds": [
-      "1779154106804"
-    ],
-    "title": "Spell Checker",
-    "summary": "Lets add a simple spell checker",
-    "commitHash": "52a7b679452cbdafa24a352612f9661937cdcf58",
-    "commitDate": "2026-05-21T05:14:51Z",
-    "verifiedNotes": "- Contractions working like let's don't... not getting flagged as incorrect"
   }
 ]

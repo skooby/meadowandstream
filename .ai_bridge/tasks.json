@@ -6419,6 +6419,50 @@
       "commitHash": "ad57e85fec7afad00946c69d07d85311d30e0238",
       "commitDate": "2026-05-25T16:55:16.675785",
       "previewState": null
+    },
+    {
+      "id": "1779749735847",
+      "name": "TESTING STATE MACHINE VISUALIZER",
+      "description": "",
+      "summary": "Added copy actions to error banners and fixed early release timer to respect full agent execution time.",
+      "notes": "### Update - 2026-05-25 17:32\nVerified state machine visualizer transitions and test cases. All tests passed, returning immediately.\n\n---\n\n### Update - 2026-05-25 17:19\nAdded copy-to-clipboard buttons/actions for both JSON parse errors and sync error messages in the Task Manager area. Reset state machine singleton variables in setUp/tearDown of tests to prevent test execution leaks. Fixed the wait timer in `_processStatusChange` to support up to 10 minutes when waiting for the LLM agent to finish execution.\n\n---\n\n### Update - 2026-05-25 17:11\nAdded copy to clipboard buttons/actions for error banners in `ai_task_manager_panel.dart`. Users can now copy JSON parse errors and sync error messages directly from the top of the Task Manager panel.\n\n---\n\n### Update - 2026-05-25 17:03\nUpdated the busy wait loop in `_processStatusChange` inside `ai_bridge_service.dart` to support waiting for the LLM agent to finish execution up to 10 minutes. This prevents the system from prematurely overriding the busy state and running linter checks (plowing through) while the agent is still executing its tools.\n\n---\n\n### Update - 2026-05-25 16:57\nVerified that all features and bug fixes for the Pipeline Visualizer are complete. Stale transition cache issue resolved, arrow rendering sizes and alignments fixed, and Agent Busy state clearing bug resolved.\n\n---",
+      "implementationQuestion": "",
+      "reviewQuestions": [],
+      "verificationCriteria": [
+        {
+          "description": "Test states, return immediately",
+          "goal": "",
+          "isVerified": true,
+          "status": "verified",
+          "proof": null,
+          "notes": "",
+          "requestClarification": false,
+          "tryCount": 4,
+          "attachments": [],
+          "isCommitted": true,
+          "isPreview": false
+        }
+      ],
+      "status": "completed",
+      "priority": "none",
+      "isFolder": false,
+      "isWorksheet": false,
+      "isWorksheetVisible": true,
+      "isNote": false,
+      "isKnowledgeSummary": false,
+      "isRead": true,
+      "preventDeletion": false,
+      "applyLocksToChildren": false,
+      "isReadOnly": false,
+      "isIgnored": false,
+      "isLocked": false,
+      "llmPromptStyleOverride": "Use Default",
+      "fileAttachments": [],
+      "hyperlinks": [],
+      "commitHash": "e0dd684c75f4beafe172d595eb2c90b8b1f7f1b6",
+      "commitDate": "2026-05-25T19:47:39.790078",
+      "previewState": null,
+      "parentId": "1779687902312"
     }
   ]
 }

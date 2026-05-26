@@ -1747,8 +1747,16 @@ wshShell.AppActivate $myPid
           delaySeconds = delayVal.toDouble().clamp(0.0, 5.0);
         }
         await Future.delayed(Duration(milliseconds: (delaySeconds * 1000).round()));
+        if (_activePrompt == null) {
+          print('[AiBridge] Queue was cleared during initial delay. Aborting.');
+          return;
+        }
 
         await syncDatabaseDump();
+        if (_activePrompt == null) {
+          print('[AiBridge] Queue was cleared during database sync. Aborting.');
+          return;
+        }
 
         String promptText = nextPrompt.text;
         if (nextPrompt.taskIds != null && nextPrompt.taskIds!.isNotEmpty) {
@@ -1819,6 +1827,11 @@ wshShell.AppActivate $myPid
           }
         }
 
+        if (_activePrompt == null) {
+          print('[AiBridge] Queue was cleared during prompt build. Aborting.');
+          return;
+        }
+
         _activePrompt = QueuedPrompt(
           promptText,
           nextPrompt.block,
@@ -1848,6 +1861,7 @@ wshShell.AppActivate $myPid
     _pendingUpdateType = null;
     _isHandlingAgentStatus = false;
     _isProcessingQueue = false;
+    _showUpdateCover = false;
     _updateStateMachineInputs();
 
     for (final connection in _activeAgents.values) {
@@ -1867,6 +1881,31 @@ wshShell.AppActivate $myPid
     _antigravityLastChangeObservedAt = null;
     _isTriggeringUpdate = false;
     setScreenBlockerEnabled(false);
+
+    try {
+      final ctFile = File('$_dirPath/current_task.json');
+      if (ctFile.existsSync()) {
+        ctFile.deleteSync();
+      }
+    } catch (_) {}
+    try {
+      final notesFile = File('$_dirPath/latest_notes.json');
+      if (notesFile.existsSync()) {
+        notesFile.deleteSync();
+      }
+    } catch (_) {}
+    try {
+      final previewFile = File('$_dirPath/latest_preview.json');
+      if (previewFile.existsSync()) {
+        previewFile.deleteSync();
+      }
+    } catch (_) {}
+    try {
+      final verificationFile = File('$_dirPath/latest_verification.json');
+      if (verificationFile.existsSync()) {
+        verificationFile.deleteSync();
+      }
+    } catch (_) {}
 
     bool changed = false;
     for (int i = 0; i < _tasks.length; i++) {
@@ -2518,32 +2557,26 @@ wshShell.AppActivate $myPid
 
         // Unified status check: if daemon is not busy, but active prompt is still active.
         if (!foundBusy) {
-          final isAgentBusy = (_activePrompt != null && _isPromptDispatched) || _activeAgents.isNotEmpty;
-          if (isAgentBusy) {
-            try {
-              final statusFile = File('$_dirPath/agent_status.txt');
-              if (await statusFile.exists()) {
-                final content = (await statusFile.readAsString()).trim();
-                final norm = content.toUpperCase();
-                if (norm.startsWith('ID') || norm.startsWith('PR')) {
-                  if (_bridgeMode == AntigravityBridgeMode.sdk) {
-                    print('[AiBridge] SDK mode detected agent transition to IDLE/PREVIEW (raw: $content). Clearing busy state.');
+          try {
+            final statusFile = File('$_dirPath/agent_status.txt');
+            if (await statusFile.exists()) {
+              final content = (await statusFile.readAsString()).trim();
+              final norm = content.toUpperCase();
+              if (norm.startsWith('ID') || norm.startsWith('PR')) {
+                  if (_bridgeMode == AntigravityBridgeMode.sdk || _bridgeMode == AntigravityBridgeMode.desktop) {
+                    print('[AiBridge] SDK/Desktop mode detected agent transition to IDLE/PREVIEW (raw: $content). Clearing busy state and processing status change.');
                     _activeAgents.clear();
                     _isAntigravityBusy = false;
                     _antigravityLastChangeObservedAt = null;
-                    await triggerPendingUpdate(force: true);
-                  } else {
                     final statusName = norm.startsWith('PR') ? 'PREVIEW' : 'IDLE';
                     if (!_isHandlingAgentStatus) {
-                      print('[AiBridge] Poller detected agent is $statusName (raw: $content) and active state exists. Triggering status processing...');
                       await _processStatusChange(statusName);
                     }
                   }
-                }
               }
-            } catch (e) {
-              print('[AiBridge] Poller unified status check error: $e');
             }
+          } catch (e) {
+            print('[AiBridge] Poller unified status check error: $e');
           }
         }
 

@@ -1649,12 +1649,13 @@ Expanded(
           ListenableBuilder(
             listenable: AiBridgeService.instance,
             builder: (context, _) {
-              if (!AiBridgeService.instance.isThinking) return const SizedBox.shrink();
+              final isSyncing = AiBridgeService.instance.isThinking || AiBridgeService.instance.isAntigravityBusy;
+              if (!isSyncing) return const SizedBox.shrink();
               final activeAgents = AiBridgeService.instance.activeAgents;
               String statusLabel = 'Ai Syncing';
               if (activeAgents.isNotEmpty) {
                 statusLabel = activeAgents.values.map((agent) => agent.currentStatus).join(', ');
-              } else if (AiBridgeService.instance.isThinking) {
+              } else {
                 statusLabel = 'Ai Syncing...';
               }
               return Positioned(
