@@ -1,5 +1,18 @@
 [
   {
+    "id": "ad57e85fec7afad00946c69d07d85311d30e0238",
+    "taskIds": [
+      "1779724163873",
+      "1779596049582",
+      "1779747165050"
+    ],
+    "title": "PIPELINE VISUALIZER | Task Manager [Filtered hidden categories from SystemLogsWindow top bar chips] | Update State Machine: Update based on new functional...",
+    "summary": "Improvements for Task Manager\n\nPlease update the State Machine design as requested by the user:\n\"Update based on new functionality to make sure that this PIPELINE Visualizer is accurate\"\n\nCurrent State Machine Design:\n---\nNODES:\n- Node: idle (Standby (Idle)), actions:\n- Node: dispatching (Dispatching), actions:\n- Node: busy (Agent Busy), actions:\n- Node: previewing (Awaiting Preview), actions:\n- Node: compiling (Compiling Check), actions:\n- Node: synchronizing (Synchronizing), actions:\n- Node: error (System Error), actions:\n\nTRANSITIONS:\n- Transition from idle to dispatching, conditions:\n- Transition from dispatching to busy, conditions:\n- Transition from dispatching to error, conditions:\n- Transition from busy to compiling, conditions:\n- Transition from busy to previewing, conditions:\n- Transition from busy to error, conditions:\n- Transition from compiling to synchronizing, conditions:\n- Transition from compiling to error, conditions:\n- Transition from synchronizing to idle, conditions:\n- Transition from synchronizing to error, conditions:\n- Transition from previewing to idle, conditions:\n- Transition from previewing to dispatching, conditions:\n- Transition from error to idle, conditions:\n\nINPUTS:\n- Input: AgentBusy (boolean), file: none\n- Input: AgentThinking (boolean), file: none\n- Input: BridgeActive (boolean), file: none\n- Input: AgentStatus (boolean), file: agent_status.txt\n---\n\nPlease update the configuration files, SharedPreferences state, or code files accordingly.",
+    "commitHash": "ad57e85fec7afad00946c69d07d85311d30e0238",
+    "commitDate": "2026-05-25T22:55:14Z",
+    "verifiedNotes": "- Remove Text on curved lines\n- Arrows on curved lines are too small and not aligned with the line\n- Rename a Node Name\n\n- Lock a checklist item if it is currently being worked on by the LLM, since we don't want it to be out of sync.\n- Test, return immediately test\n- Is the Pipeline Visualizer connected to the state machine?\n\n- Review and update the Pipeline visualizer"
+  },
+  {
     "id": "bad22888a1823e63ee3dc975a8020c2fe063271c",
     "taskIds": [
       "1779724163873"
@@ -309,17 +322,6 @@
     "summary": "Lets add a simple spell checker",
     "commitHash": "52a7b679452cbdafa24a352612f9661937cdcf58",
     "commitDate": "2026-05-21T05:14:51Z",
-    "verifiedNotes": "- Contractions working like let's don't... not getting flagged as incorrect"
-  },
-  {
-    "id": "ce4f3c76e2d75eaf34d6e385e3e44a2863fbc1f0",
-    "taskIds": [
-      "1779154106804"
-    ],
-    "title": "Spell Checker",
-    "summary": "Lets add a simple spell checker",
-    "commitHash": "ce4f3c76e2d75eaf34d6e385e3e44a2863fbc1f0",
-    "commitDate": "2026-05-21T05:14:08Z",
     "verifiedNotes": "- Contractions working like let's don't... not getting flagged as incorrect"
   }
 ]

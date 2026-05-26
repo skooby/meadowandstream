@@ -244,7 +244,9 @@ class AiBridgePanel extends StatefulWidget {
   State<AiBridgePanel> createState() => _AiBridgePanelState();
 }
 
-class _AiBridgePanelState extends State<AiBridgePanel> {
+class _AiBridgePanelState extends State<AiBridgePanel> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
   // Connectivity
   bool _isOnline = false;
   String _bridgeUrl = '';
@@ -260,6 +262,7 @@ class _AiBridgePanelState extends State<AiBridgePanel> {
 
   // Collapsible Logs
   final List<String> _logFiles = [
+    'current_task.json',
     'bridge_debug.txt',
     'bridge_error.txt',
     'bridge_compile_log.txt',
@@ -282,12 +285,17 @@ class _AiBridgePanelState extends State<AiBridgePanel> {
   void dispose() {
     _statusTimer?.cancel();
     AiBridgeService.instance.removeListener(_onAiBridgeServiceChanged);
+    _tabController.removeListener(_handleTabSelection);
+    _tabController.dispose();
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_handleTabSelection);
+    _loadSelectedTab();
     _checkStatus();
     _loadCollapsedStates().then((_) => _loadAllLogs());
     AiBridgeService.instance.addListener(_onAiBridgeServiceChanged);
@@ -299,6 +307,25 @@ class _AiBridgePanelState extends State<AiBridgePanel> {
         _loadAllLogs();
       }
     });
+  }
+
+  void _handleTabSelection() {
+    if (!_tabController.indexIsChanging) {
+      _saveSelectedTab(_tabController.index);
+    }
+  }
+
+  Future<void> _loadSelectedTab() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedIndex = prefs.getInt('ai_bridge_selected_tab') ?? 0;
+    if (mounted) {
+      _tabController.index = savedIndex.clamp(0, 2);
+    }
+  }
+
+  Future<void> _saveSelectedTab(int index) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('ai_bridge_selected_tab', index);
   }
 
   Future<void> _loadCollapsedStates() async {
@@ -660,17 +687,63 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
 
         final agentStatusText = (_loadedLogs['agent_status.txt'] ?? 'UNKNOWN').trim();
 
-        return DefaultTabController(
-          length: 3,
-          child: Column(
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.panelBackground.withValues(alpha: 0.2),
-                  border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
+        return Column(
+          children: [
+            // Quick Access Indicator Toolbar
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.panelBackground.withValues(alpha: 0.3),
+                border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
+              ),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildQuickIndicator(
+                      label: 'Bridge',
+                      value: _isOnline ? 'Online' : 'Offline',
+                      color: _isOnline ? Colors.greenAccent : Colors.redAccent,
+                      icon: Icons.alt_route_outlined,
+                    ),
+                    const SizedBox(width: 12),
+                    _buildQuickIndicator(
+                      label: 'Daemon',
+                      value: _processRunning ? 'Running' : 'Stopped',
+                      color: _processRunning ? Colors.greenAccent : Colors.orangeAccent,
+                      icon: Icons.settings_system_daydream_outlined,
+                    ),
+                    const SizedBox(width: 12),
+                    _buildQuickIndicator(
+                      label: 'Agent',
+                      value: AiBridgeService.instance.isThinking
+                          ? 'Thinking'
+                          : (AiBridgeService.instance.isAntigravityBusy ? 'Busy' : 'Idle'),
+                      color: AiBridgeService.instance.isThinking
+                          ? Colors.orangeAccent
+                          : (AiBridgeService.instance.isAntigravityBusy ? Colors.amberAccent : Colors.cyanAccent),
+                      icon: Icons.psychology_outlined,
+                    ),
+                    const SizedBox(width: 12),
+                    _buildQuickIndicator(
+                      label: 'Sync',
+                      value: isSyncError ? 'Error' : 'Healthy',
+                      color: isSyncError ? Colors.redAccent : Colors.greenAccent,
+                      icon: isSyncError ? Icons.sync_problem : Icons.sync,
+                    ),
+                  ],
                 ),
-                child: TabBar(
-                  tabs: const [
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.panelBackground.withValues(alpha: 0.2),
+                border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                tabs: const [
                     Tab(
                       icon: Icon(Icons.analytics_outlined, size: 18),
                       text: 'Log Outcomes',
@@ -773,6 +846,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
               ),
               Expanded(
                 child: TabBarView(
+                  controller: _tabController,
                   children: [
                     // Tab 1: Log Outcomes (occupies full space)
                     Padding(
@@ -994,6 +1068,67 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                                   ),
                                 ),
                               ],
+                            ),
+                          ),
+                          // Finalized Ingestion & Review Status Card
+                          Card(
+                            key: const ValueKey('finalized_review_status_card'),
+                            color: AppColors.panelBackground.withValues(alpha: 0.8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
+                              side: BorderSide(color: Colors.greenAccent.withOpacity(0.3), width: 1.0),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.fact_check_outlined, size: 16, color: Colors.greenAccent),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        'Finalized Ingestion & Review Status',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _buildReviewFileRow(
+                                    fileName: 'current_task.json',
+                                    isOk: _loadedLogs['current_task.json'] != null && 
+                                          !_loadedLogs['current_task.json']!.contains('File does not exist'),
+                                    detail: _getTaskDetailSummary(),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  _buildReviewFileRow(
+                                    fileName: 'latest_notes.json',
+                                    isOk: _loadedLogs['latest_notes.json'] != null && 
+                                          !_loadedLogs['latest_notes.json']!.contains('File does not exist') &&
+                                          !_loadedLogs['latest_notes.json']!.contains('(File is empty)'),
+                                    detail: _getNotesDetailSummary(),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  _buildReviewFileRow(
+                                    fileName: 'latest_verification.json',
+                                    isOk: _loadedLogs['latest_verification.json'] != null && 
+                                          !_loadedLogs['latest_verification.json']!.contains('File does not exist') &&
+                                          !_loadedLogs['latest_verification.json']!.contains('(File is empty)'),
+                                    detail: _getVerificationDetailSummary(),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  _buildReviewFileRow(
+                                    fileName: 'agent_status.txt',
+                                    isOk: true,
+                                    detail: 'Current Status: ${agentStatusText}',
+                                    statusColor: agentStatusText == 'IDLE' ? Colors.greenAccent : Colors.orangeAccent,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                           // Dedicated LLM/Agent Health and State Banner
@@ -1706,10 +1841,127 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                 ),
               ),
             ],
-          ),
-        );
+          );
       },
     );
+  }
+
+  Widget _buildQuickIndicator({
+    required String label,
+    required String value,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 6),
+          Text(
+            '$label: ',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReviewFileRow({
+    required String fileName,
+    required bool isOk,
+    required String detail,
+    Color? statusColor,
+  }) {
+    final themeColor = statusColor ?? (isOk ? Colors.greenAccent : Colors.redAccent);
+    return Row(
+      children: [
+        Icon(
+          isOk ? Icons.check_box : Icons.check_box_outline_blank,
+          size: 14,
+          color: themeColor,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          fileName,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'monospace',
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            detail,
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 10,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _getTaskDetailSummary() {
+    final raw = _loadedLogs['current_task.json'];
+    if (raw == null || raw.contains('File does not exist')) return 'No active task file found';
+    try {
+      final json = jsonDecode(raw);
+      final name = json['name'] ?? 'Unnamed Task';
+      final status = json['status'] ?? 'unknown';
+      return '$name (Status: $status)';
+    } catch (_) {
+      return 'Malformed task JSON';
+    }
+  }
+
+  String _getNotesDetailSummary() {
+    final raw = _loadedLogs['latest_notes.json'];
+    if (raw == null || raw.contains('File does not exist') || raw.contains('(File is empty)')) return 'No progress notes recorded';
+    try {
+      final json = jsonDecode(raw);
+      final notes = json['notes'] ?? '';
+      return notes.toString();
+    } catch (_) {
+      return 'Malformed notes JSON';
+    }
+  }
+
+  String _getVerificationDetailSummary() {
+    final raw = _loadedLogs['latest_verification.json'];
+    if (raw == null || raw.contains('File does not exist') || raw.contains('(File is empty)')) return 'No verification proofs recorded';
+    try {
+      final json = jsonDecode(raw);
+      if (json is List) {
+        final verifiedCount = json.where((e) => e['isVerified'] == true).length;
+        return 'Verified $verifiedCount / ${json.length} criteria';
+      }
+      return 'Invalid verification schema';
+    } catch (_) {
+      return 'Malformed verification JSON';
+    }
   }
 
   Widget _buildDetailRow(String label, String value, {bool isHighlighted = false}) {

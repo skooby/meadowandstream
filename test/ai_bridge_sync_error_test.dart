@@ -20,6 +20,8 @@ void main() {
     AiBridgeService.instance.stepIndexAtDispatch = null;
     AiBridgeService.instance.promptDispatchedAt = null;
     AiBridgeService.instance.isPromptDispatched = false;
+    AiBridgeService.instance.isAntigravityBusyForTesting = false;
+    AiBridgeService.instance.isHandlingAgentStatusForTesting = false;
     AntigravityStatusService.instance.statusFilePath = '${tempBridgeDir.path}/agent_status.txt';
     AntigravityStatusService.instance.resetState();
   });
@@ -29,6 +31,8 @@ void main() {
     AiBridgeService.instance.stepIndexAtDispatch = null;
     AiBridgeService.instance.promptDispatchedAt = null;
     AiBridgeService.instance.isPromptDispatched = false;
+    AiBridgeService.instance.isAntigravityBusyForTesting = false;
+    AiBridgeService.instance.isHandlingAgentStatusForTesting = false;
     AntigravityStatusService.instance.statusFilePath = '.ai_bridge/agent_status.txt';
     AntigravityStatusService.instance.resetState();
     if (tempBridgeDir.existsSync()) {

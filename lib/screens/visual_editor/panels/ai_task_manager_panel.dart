@@ -3380,6 +3380,34 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
             children: [
               TextButton(
                 onPressed: () {
+                  final errorText = 'AI BRIDGE SYNC ERROR DETECTED\n'
+                      'The system is waiting to return from the AI Bridge. '
+                      'The AI might be outputting info to the console instead of writing output files, causing it to get stuck.';
+                  Clipboard.setData(ClipboardData(text: errorText));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Sync error details copied to clipboard!'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.panelTextSecondary,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  'COPY DETAILS',
+                  style: TextStyle(
+                    fontSize: AppUIConfig.rootFontSize - 1,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () {
                   AiBridgeService.instance.dismissSyncError();
                 },
                 style: TextButton.styleFrom(
@@ -3549,6 +3577,22 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                   Icon(Icons.warning, color: AppColors.error, size: 16),
                   const SizedBox(width: 8),
                   Expanded(child: Text(err, style: TextStyle(color: AppColors.error, fontSize: 12))),
+                  IconButton(
+                    icon: const Icon(Icons.copy, size: 16, color: Colors.white70),
+                    tooltip: 'Copy error message',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: err));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Error message copied to clipboard!'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
                   IconButton(
                     icon: const Icon(Icons.close, size: 16, color: Colors.white),
                     padding: EdgeInsets.zero,

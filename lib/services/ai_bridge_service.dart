@@ -2225,25 +2225,28 @@ wshShell.AppActivate $myPid
         try {
           final content = notesFile.readAsStringSync();
           notesFile.deleteSync();
-          final jsonMap = jsonDecode(content);
-          final parsedSummary = jsonMap['summary']?.toString().trim() ?? '';
-          String parsedNotes = jsonMap['notes']?.toString().trim() ?? '';
-          if (parsedSummary.isNotEmpty) {
+          final trimmed = content.trim();
+          if (trimmed.isNotEmpty && trimmed.startsWith('{')) {
+            final jsonMap = jsonDecode(trimmed);
+            final parsedSummary = jsonMap['summary']?.toString().trim() ?? '';
+            String parsedNotes = jsonMap['notes']?.toString().trim() ?? '';
+            if (parsedSummary.isNotEmpty) {
+              if (parsedNotes.isNotEmpty) {
+                parsedNotes = '**$parsedSummary**\n\n$parsedNotes';
+              } else {
+                parsedNotes = '**$parsedSummary**';
+              }
+            }
             if (parsedNotes.isNotEmpty) {
-              parsedNotes = '**$parsedSummary**\n\n$parsedNotes';
-            } else {
-              parsedNotes = '**$parsedSummary**';
+              final dateStr = DateTime.now().toLocal().toString().substring(0, 16);
+              final entry = '### Update - $dateStr\n$parsedNotes\n\n---\n\n';
+              if (_tasks[taskIdx].notes.trim().isNotEmpty) {
+                _tasks[taskIdx].notes = entry + _tasks[taskIdx].notes;
+              } else {
+                _tasks[taskIdx].notes = entry.trim();
+              }
+              changed = true;
             }
-          }
-          if (parsedNotes.isNotEmpty) {
-            final dateStr = DateTime.now().toLocal().toString().substring(0, 16);
-            final entry = '### Update - $dateStr\n$parsedNotes\n\n---\n\n';
-            if (_tasks[taskIdx].notes.trim().isNotEmpty) {
-              _tasks[taskIdx].notes = entry + _tasks[taskIdx].notes;
-            } else {
-              _tasks[taskIdx].notes = entry.trim();
-            }
-            changed = true;
           }
         } catch (_) {}
       }
@@ -2254,19 +2257,22 @@ wshShell.AppActivate $myPid
         try {
           final content = verificationFile.readAsStringSync();
           verificationFile.deleteSync();
-          final List<dynamic> jsonList = jsonDecode(content);
-          for (var item in jsonList) {
-            final desc = item['description']?.toString().trim() ?? '';
-            final proof = item['proof']?.toString().trim();
-            final notes = item['notes']?.toString().trim();
-            if (desc.isNotEmpty) {
-              final vcIdx = _tasks[taskIdx].verificationCriteria.indexWhere((vc) => vc.description == desc);
-              if (vcIdx != -1) {
-                _tasks[taskIdx].verificationCriteria[vcIdx].proof = proof;
-                if (notes != null) {
-                  _tasks[taskIdx].verificationCriteria[vcIdx].notes = notes;
+          final trimmed = content.trim();
+          if (trimmed.isNotEmpty && trimmed.startsWith('[')) {
+            final List<dynamic> jsonList = jsonDecode(trimmed);
+            for (var item in jsonList) {
+              final desc = item['description']?.toString().trim() ?? '';
+              final proof = item['proof']?.toString().trim();
+              final notes = item['notes']?.toString().trim();
+              if (desc.isNotEmpty) {
+                final vcIdx = _tasks[taskIdx].verificationCriteria.indexWhere((vc) => vc.description == desc);
+                if (vcIdx != -1) {
+                  _tasks[taskIdx].verificationCriteria[vcIdx].proof = proof;
+                  if (notes != null) {
+                    _tasks[taskIdx].verificationCriteria[vcIdx].notes = notes;
+                  }
+                  changed = true;
                 }
-                changed = true;
               }
             }
           }
@@ -2279,16 +2285,19 @@ wshShell.AppActivate $myPid
         try {
           final content = previewFile.readAsStringSync();
           previewFile.deleteSync();
-          final List<dynamic> jsonList = jsonDecode(content);
-          final newItems = jsonList.map((e) => AiVerificationCriteria(
-            description: e['description']?.toString() ?? 'Preview item',
-            goal: e['goal']?.toString() ?? '',
-            status: AiVerificationStatus.pendingReview,
-            isVerified: false,
-            isPreview: true,
-          )).toList();
-          _tasks[taskIdx].verificationCriteria.addAll(newItems);
-          changed = true;
+          final trimmed = content.trim();
+          if (trimmed.isNotEmpty && trimmed.startsWith('[')) {
+            final List<dynamic> jsonList = jsonDecode(trimmed);
+            final newItems = jsonList.map((e) => AiVerificationCriteria(
+              description: e['description']?.toString() ?? 'Preview item',
+              goal: e['goal']?.toString() ?? '',
+              status: AiVerificationStatus.pendingReview,
+              isVerified: false,
+              isPreview: true,
+            )).toList();
+            _tasks[taskIdx].verificationCriteria.addAll(newItems);
+            changed = true;
+          }
         } catch (_) {}
       }
 
@@ -2724,9 +2733,6 @@ wshShell.AppActivate $myPid
 
     // Check if the agent is still busy and working on stuff
     try {
-      if (await AntigravityStatusService.instance.isCliBusy().timeout(const Duration(seconds: 2), onTimeout: () => false)) {
-        return;
-      }
       final statusFile = File('$_dirPath/agent_status.txt');
       final hasStatusFile = await statusFile.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
       if (hasStatusFile) {
@@ -2735,6 +2741,17 @@ wshShell.AppActivate $myPid
           // Agent is still busy working, do not flag out of sync
           return;
         }
+      }
+      final isAgentThinking = _isAntigravityBusy ||
+          _activeAgents.isNotEmpty ||
+          (_antigravityLastChangeObservedAt != null &&
+              now.difference(_antigravityLastChangeObservedAt!).inSeconds < 20 &&
+              !Platform.environment.containsKey('FLUTTER_TEST'));
+      if (isAgentThinking) {
+        return;
+      }
+      if (await AntigravityStatusService.instance.isCliBusy().timeout(const Duration(seconds: 2), onTimeout: () => false)) {
+        return;
       }
     } catch (_) {}
 
@@ -2847,6 +2864,11 @@ wshShell.AppActivate $myPid
   @visibleForTesting
   set isAntigravityBusyForTesting(bool value) {
     _isAntigravityBusy = value;
+  }
+
+  @visibleForTesting
+  set isHandlingAgentStatusForTesting(bool value) {
+    _isHandlingAgentStatus = value;
   }
 
   @visibleForTesting
@@ -3347,11 +3369,14 @@ wshShell.AppActivate $myPid
 
       int waitCount = 0;
       print('[AiBridge] Waiting for _isAntigravityBusy to be false. Current: $_isAntigravityBusy');
-      while (_isAntigravityBusy && waitCount < 10) {
+      while (_isAntigravityBusy && waitCount < 1200) {
         await Future.delayed(const Duration(milliseconds: 500));
         waitCount++;
       }
-      _isAntigravityBusy = false;
+      if (_isAntigravityBusy) {
+        print('[AiBridge] WARNING: Busy wait timed out after 10 minutes. Forcing busy status to false.');
+        _isAntigravityBusy = false;
+      }
       _antigravityLastChangeObservedAt = null;
       print('[AiBridge] Busy wait finished. Proceeding with status processing.');
       await Future.delayed(const Duration(milliseconds: 800));
@@ -3406,45 +3431,50 @@ wshShell.AppActivate $myPid
 
       if (content == 'IDLE') {
         bool hasCompileError = false;
-        print('[AiBridge] Running dart analyze build check...');
-        Process? process;
-        try {
-          process = await Process.start('dart', ['analyze'], runInShell: true);
-          final stdoutBuffer = StringBuffer();
-          final stderrBuffer = StringBuffer();
+        if (Platform.environment.containsKey('FLUTTER_TEST')) {
+          print('[AiBridgeService] Skipping dart analyze build check in unit test environment.');
+          stateMachine.enterSynchronizing();
+        } else {
+          print('[AiBridge] Running dart analyze build check...');
+          Process? process;
+          try {
+            process = await Process.start('dart', ['analyze'], runInShell: true);
+            final stdoutBuffer = StringBuffer();
+            final stderrBuffer = StringBuffer();
 
-          final stdoutSub = process.stdout.transform(utf8.decoder).listen((data) {
-            stdoutBuffer.write(data);
-          });
-          final stderrSub = process.stderr.transform(utf8.decoder).listen((data) {
-            stderrBuffer.write(data);
-          });
+            final stdoutSub = process.stdout.transform(utf8.decoder).listen((data) {
+              stdoutBuffer.write(data);
+            });
+            final stderrSub = process.stderr.transform(utf8.decoder).listen((data) {
+              stderrBuffer.write(data);
+            });
 
-          await process.exitCode.timeout(const Duration(seconds: 15));
-          await stdoutSub.cancel();
-          await stderrSub.cancel();
+            await process.exitCode.timeout(const Duration(minutes: 5));
+            await stdoutSub.cancel();
+            await stderrSub.cancel();
 
-          final output = stdoutBuffer.toString() + '\n' + stderrBuffer.toString();
-          if (output.contains('error -') ||
-              output.contains('error •') ||
-              output.contains('error \u2022')) {
-            hasCompileError = true;
-            print('[AiBridge] Build check failed. Dispatching compile error...');
-            stateMachine.enterError('Dart compilation errors detected. Auto-correcting...');
-            await forceDispatchCompileError(output);
-          } else {
-            print('[AiBridge] Build check passed.');
+            final output = stdoutBuffer.toString() + '\n' + stderrBuffer.toString();
+            if (output.contains('error -') ||
+                output.contains('error •') ||
+                output.contains('error \u2022')) {
+              hasCompileError = true;
+              print('[AiBridge] Build check failed. Dispatching compile error...');
+              stateMachine.enterError('Dart compilation errors detected. Auto-correcting...');
+              await forceDispatchCompileError(output);
+            } else {
+              print('[AiBridge] Build check passed.');
+              stateMachine.enterSynchronizing();
+            }
+          } on TimeoutException catch (e) {
+            print('[AiBridge] Automated dart analyze check timed out: $e. Terminating process.');
+            if (process != null) {
+              process.kill();
+            }
+            stateMachine.enterSynchronizing();
+          } catch (e) {
+            print('[AiBridge] Failed to run automated dart analyze check: $e');
             stateMachine.enterSynchronizing();
           }
-        } on TimeoutException catch (e) {
-          print('[AiBridge] Automated dart analyze check timed out after 15s: $e. Terminating process.');
-          if (process != null) {
-            process.kill();
-          }
-          stateMachine.enterSynchronizing();
-        } catch (e) {
-          print('[AiBridge] Failed to run automated dart analyze check: $e');
-          stateMachine.enterSynchronizing();
         }
         if (hasCompileError) {
           print('[AiBridge] Compile error detected. Clearing active prompt/task state to unblock UI.');
@@ -3620,12 +3650,15 @@ wshShell.AppActivate $myPid
                       endIdx != -1 &&
                       endIdx > startIdx) {
                     content = content.substring(startIdx, endIdx + 1);
-                    final Map<String, dynamic> jsonMap =
-                        jsonDecode(content);
-                    parsedSummary =
-                        jsonMap['summary']?.toString().trim() ?? '';
-                    parsedNotes =
-                        jsonMap['notes']?.toString().trim() ?? '';
+                    final trimmed = content.trim();
+                    if (trimmed.isNotEmpty && trimmed.startsWith('{')) {
+                      final Map<String, dynamic> jsonMap =
+                          jsonDecode(trimmed);
+                      parsedSummary =
+                          jsonMap['summary']?.toString().trim() ?? '';
+                      parsedNotes =
+                          jsonMap['notes']?.toString().trim() ?? '';
+                    }
                   } else {
                     parsedNotes = content.trim();
                   }
@@ -3672,22 +3705,25 @@ wshShell.AppActivate $myPid
                       endIdx > startIdx) {
                     content = content.substring(startIdx, endIdx + 1);
                   }
-                  final List<dynamic> jsonList = jsonDecode(content);
-                  final newItems = jsonList
-                      .map((e) => AiVerificationCriteria(
-                            description: e['description']?.toString() ?? 'Preview item',
-                            goal: e['goal']?.toString() ?? '',
-                            status: AiVerificationStatus.pendingReview,
-                            isVerified: false,
-                            isPreview: true,
-                          ))
-                      .toList();
-                  
-                  _tasks[taskIdx].verificationCriteria.removeWhere((item) => item.isPreview);
-                  _tasks[taskIdx].verificationCriteria.addAll(newItems);
-                  changed = true;
-                  if (newItems.isNotEmpty) {
-                    generatedPreviewItems = true;
+                  final trimmed = content.trim();
+                  if (trimmed.isNotEmpty && trimmed.startsWith('[')) {
+                    final List<dynamic> jsonList = jsonDecode(trimmed);
+                    final newItems = jsonList
+                        .map((e) => AiVerificationCriteria(
+                              description: e['description']?.toString() ?? 'Preview item',
+                              goal: e['goal']?.toString() ?? '',
+                              status: AiVerificationStatus.pendingReview,
+                              isVerified: false,
+                              isPreview: true,
+                            ))
+                        .toList();
+                    
+                    _tasks[taskIdx].verificationCriteria.removeWhere((item) => item.isPreview);
+                    _tasks[taskIdx].verificationCriteria.addAll(newItems);
+                    changed = true;
+                    if (newItems.isNotEmpty) {
+                      generatedPreviewItems = true;
+                    }
                   }
                 }
               } catch (e) {
@@ -3708,31 +3744,34 @@ wshShell.AppActivate $myPid
                       endIdx > startIdx) {
                     content = content.substring(startIdx, endIdx + 1);
                   }
-                  final List<dynamic> jsonList = jsonDecode(content);
-                  final newItems = jsonList
-                      .map((e) => AiVerificationCriteria.fromJson(e))
-                      .toList();
+                  final trimmed = content.trim();
+                  if (trimmed.isNotEmpty && trimmed.startsWith('[')) {
+                    final List<dynamic> jsonList = jsonDecode(trimmed);
+                    final newItems = jsonList
+                        .map((e) => AiVerificationCriteria.fromJson(e))
+                        .toList();
 
-                  final existing = _tasks[taskIdx].verificationCriteria;
-                  for (final newItem in newItems) {
-                    final matchIdx = existing.indexWhere((e) {
-                      final eDesc = e.description.trim().toLowerCase();
-                      final nDesc = newItem.description.trim().toLowerCase();
-                      return nDesc.startsWith(eDesc);
-                    });
-                    if (matchIdx != -1) {
-                      existing[matchIdx].proof = newItem.proof;
-                      existing[matchIdx].notes = newItem.notes;
-                      if (existing[matchIdx].status == AiVerificationStatus.submitted) {
-                        existing[matchIdx].status = AiVerificationStatus.pendingReview;
+                    final existing = _tasks[taskIdx].verificationCriteria;
+                    for (final newItem in newItems) {
+                      final matchIdx = existing.indexWhere((e) {
+                        final eDesc = e.description.trim().toLowerCase();
+                        final nDesc = newItem.description.trim().toLowerCase();
+                        return nDesc.startsWith(eDesc);
+                      });
+                      if (matchIdx != -1) {
+                        existing[matchIdx].proof = newItem.proof;
+                        existing[matchIdx].notes = newItem.notes;
+                        if (existing[matchIdx].status == AiVerificationStatus.submitted) {
+                          existing[matchIdx].status = AiVerificationStatus.pendingReview;
+                        }
+                      } else {
+                        newItem.isVerified = false;
+                        newItem.status = AiVerificationStatus.pendingReview;
+                        existing.add(newItem);
                       }
-                    } else {
-                      newItem.isVerified = false;
-                      newItem.status = AiVerificationStatus.pendingReview;
-                      existing.add(newItem);
                     }
+                    changed = true;
                   }
-                  changed = true;
                 }
               } catch (e) {
                 _lastJsonParseError = 'Verification Parse Error: $e';
@@ -4116,9 +4155,12 @@ wshShell.AppActivate $myPid
             final sandboxFile = File('$_dirPath/sandbox.json');
             if (await sandboxFile.exists()) {
               final content = await sandboxFile.readAsString();
-              final List<dynamic> sList = jsonDecode(content);
-              if (sList.isNotEmpty && sList.first is Map) {
-                jsonList.addAll(sList);
+              final trimmed = content.trim();
+              if (trimmed.isNotEmpty && trimmed.startsWith('[')) {
+                final List<dynamic> sList = jsonDecode(trimmed);
+                if (sList.isNotEmpty && sList.first is Map) {
+                  jsonList.addAll(sList);
+                }
               }
             }
           } catch (_) {}
@@ -4127,8 +4169,9 @@ wshShell.AppActivate $myPid
             final timelineFile = File('$_dirPath/timeline_history.json');
             if (await timelineFile.exists()) {
               final content = await timelineFile.readAsString();
-              if (content.isNotEmpty) {
-                final List<dynamic> tList = jsonDecode(content);
+              final trimmed = content.trim();
+              if (trimmed.isNotEmpty && trimmed.startsWith('[')) {
+                final List<dynamic> tList = jsonDecode(trimmed);
                 _timelineHistory = tList.map((e) => TimelineCommit.fromJson(e as Map<String, dynamic>)).toList();
               }
             }

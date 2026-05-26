@@ -397,7 +397,7 @@ if (-not \$activated) {
       }
 
       try {
-          final result = await Process.run('dart', ['analyze', '.'], runInShell: true).timeout(const Duration(seconds: 15), onTimeout: () => ProcessResult(0, 0, 'No issues found! (Timeout bypass)', ''));
+          final result = await Process.run('dart', ['analyze', '.'], runInShell: true).timeout(const Duration(minutes: 5), onTimeout: () => ProcessResult(0, 0, 'No issues found! (Timeout bypass)', ''));
           if (result.exitCode != 0) {
               final output = '${result.stdout}\n${result.stderr}';
               if (output.contains('error -') || output.contains('error •')) {
