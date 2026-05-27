@@ -1,5 +1,17 @@
 [
   {
+    "id": "61d145598fd4a133ee4561ee5b3fe5c3954ab43d",
+    "taskIds": [
+      "1779882529474",
+      "1779882820948"
+    ],
+    "title": "ASSIST BY AREA | AI ASSISTANT",
+    "summary": "Want the AI Assistant to be able to help with different areas",
+    "commitHash": "61d145598fd4a133ee4561ee5b3fe5c3954ab43d",
+    "commitDate": "2026-05-27T13:00:22Z",
+    "verifiedNotes": "- Want to have checklist task be reviewed for clarity. Feed the name of the task to the AI Assistant. Where the {PROMPT} is we should replace with the checklist task name. This should only check on hitting return so we aren't doing this too often. We will then want the lightbulb icon to be illuminated which we will want to tie back into the AI Assistant to retool the prompt.\n\n- Add a input field for different areas that we will be using AI ASSISTANT for. First is \"Review this prompt for clarity and return YES or NO as an answer. The prompt is\""
+  },
+  {
     "id": "182a9e17e4b00bea0f94486b6a306948ba060328",
     "taskIds": [
       "1779882820948"
@@ -313,18 +325,5 @@
     "commitHash": "1c95632d641f541992d25f625857b49194b1965d",
     "commitDate": "2026-05-21T16:54:26Z",
     "verifiedNotes": "- At some point we stopped seeing the active task in the AI BRIDGE PIPELINE QUEUE.\n- Lets not create a task for resolving compiler errors... Lets just do that behind the scenes"
-  },
-  {
-    "id": "12726c774266d8f7aa72de2eb9710b078761e0cd",
-    "taskIds": [
-      "1779370649980",
-      "1778722257125",
-      "1778869915153"
-    ],
-    "title": "PROMPT HELPER SETTINGS [refactor: Fix Slider Sluggishness and Limit Dispatch Delay to Max 5s] | CONNECTION [Make AI Bridge dispatch delay configurable in Task Manager Settings] | VERSION CONTROL [style(vc): match checkpoint actions to commits, clean titles, and remove flag icon]",
-    "summary": "Tasks for Prompt Helper\n\nConnection test 2.0 passed.\n\nVersion Control System improvements and tasks",
-    "commitHash": "12726c774266d8f7aa72de2eb9710b078761e0cd",
-    "commitDate": "2026-05-21T13:56:34Z",
-    "verifiedNotes": "- Show the titles for each with standard text sizes and UPPERCASE, use theme colors, move colon at end of each label. Make it not so ugly\n- Lets have the Dispatch Delay be more granular. 0, .5, 1, 1.5, etc\n- Have the Dispatch Delay max out at 5 seconds\n- Slider is very sluggish... why?\n\n- There is a long pause after we hit the \"Send to AI Bridge\" button. Lets have the delay be defined in our Task Manager Settings at the bottom of Workflow\n\n- Checkpoints can now match other commits with a open in GitHub icon, lets match these up\n- We don't need the title of \"Manual Checkpoint\" since these visually stand out... and loose the flag icon"
   }
 ]
