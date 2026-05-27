@@ -299,6 +299,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   String? _antigravityModel;
   String? _antigravityApiKey;
   Future<List<AntigravityModel>>? _modelsFuture;
+  Future<List<String>>? _ollamaModelsFuture;
   int _aiBridgeSubTabIndex = 0;
   String? _antigravityTargetWindowTitle;
   String? _antigravityFocusMacroName;
@@ -311,6 +312,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
 
   bool _isTestingAntigravity = false;
   bool _isTestingCli = false;
+  bool _isTestingOllama = false;
   bool _isSyncing = false;
   int _syncTotal = 0;
   int _syncProgress = 0;
@@ -481,6 +483,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           _applyTheme(AppUIConfig.activeTheme!);
       }
       _modelsFuture = AntigravityClient().models.list();
+      _ollamaModelsFuture = _fetchOllamaModels();
     });
   }
 
@@ -731,6 +734,15 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       final newOllamaBaseUrl = values.containsKey('ollamaBaseUrl') ? values['ollamaBaseUrl'] as String? : _ollamaBaseUrl;
       final newOllamaModel = values.containsKey('ollamaModel') ? values['ollamaModel'] as String? : _ollamaModel;
       final newOllamaTimeoutMs = int.tryParse((values['ollamaTimeoutMs'] ?? _ollamaTimeoutMs).toString()) ?? _ollamaTimeoutMs;
+      final newAgentRules = values.containsKey('agentRules') ? values['agentRules'] as String? : _agentRules;
+      final newAntigravityBaseUrl = values.containsKey('antigravityBaseUrl') ? values['antigravityBaseUrl'] as String? : _antigravityBaseUrl;
+      final newAntigravityInvokeEndpoint = values.containsKey('antigravityInvokeEndpoint') ? values['antigravityInvokeEndpoint'] as String? : _antigravityInvokeEndpoint;
+      final newAntigravityPromptEndpoint = values.containsKey('antigravityPromptEndpoint') ? values['antigravityPromptEndpoint'] as String? : _antigravityPromptEndpoint;
+      final newAntigravityStartupCommand = values.containsKey('antigravityStartupCommand') ? values['antigravityStartupCommand'] as String? : _antigravityStartupCommand;
+      final newAntigravityApiKey = values.containsKey('antigravityApiKey') ? values['antigravityApiKey'] as String? : _antigravityApiKey;
+      final newAntigravityModel = values.containsKey('antigravityModel') ? values['antigravityModel'] as String? : _antigravityModel;
+      final newAntigravityTargetWindowTitle = values.containsKey('antigravityTargetWindowTitle') ? values['antigravityTargetWindowTitle'] as String? : _antigravityTargetWindowTitle;
+      final newAntigravityFocusMacroName = values.containsKey('antigravityFocusMacroName') ? values['antigravityFocusMacroName'] as String? : _antigravityFocusMacroName;
       
       final desktopLight = prefs.getInt('ve_desktop_light');
       final desktopDark = prefs.getInt('ve_desktop_dark');
@@ -777,49 +789,61 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           await dotenv.load(fileName: '.env');
       }
 
-      if (newUrl != null && newUrl.trim().isNotEmpty) {
-         // Standardize by ensuring it ends with a trailing slash
-         String storedUrl = newUrl.trim();
-         if (!storedUrl.endsWith('/')) storedUrl += '/';
-         await prefs.setString('project_primary_storage_url', storedUrl);
-      } else {
-         await prefs.remove('project_primary_storage_url');
+      if (values.containsKey('primaryStorageUrl') && values['primaryStorageUrl'] != null) {
+        if (newUrl != null && newUrl.trim().isNotEmpty) {
+           // Standardize by ensuring it ends with a trailing slash
+           String storedUrl = newUrl.trim();
+           if (!storedUrl.endsWith('/')) storedUrl += '/';
+           await prefs.setString('project_primary_storage_url', storedUrl);
+        } else {
+           await prefs.remove('project_primary_storage_url');
+        }
       }
 
-      if (newLocalRepo != null && newLocalRepo.trim().isNotEmpty) {
-         final cleanNewPath = newLocalRepo.trim();
-         // If path literally changed, migrate files
-         if (oldLocalRepo != cleanNewPath) {
-             if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Migrating repository...')));
-             await _moveLocalRepository(oldLocalRepo, cleanNewPath);
-         }
-         await prefs.setString('project_local_repository_path', cleanNewPath);
-      } else {
-         await prefs.remove('project_local_repository_path');
+      if (values.containsKey('localRepositoryPath') && values['localRepositoryPath'] != null) {
+        if (newLocalRepo != null && newLocalRepo.trim().isNotEmpty) {
+           final cleanNewPath = newLocalRepo.trim();
+           // If path literally changed, migrate files
+           if (oldLocalRepo != cleanNewPath) {
+               if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Migrating repository...')));
+               await _moveLocalRepository(oldLocalRepo, cleanNewPath);
+           }
+           await prefs.setString('project_local_repository_path', cleanNewPath);
+        } else {
+           await prefs.remove('project_local_repository_path');
+        }
       }
 
-      if (newVersionControlRepoUrl != null && newVersionControlRepoUrl.trim().isNotEmpty) {
-         await prefs.setString('project_version_control_repo_url', newVersionControlRepoUrl.trim());
-      } else {
-         await prefs.remove('project_version_control_repo_url');
+      if (values.containsKey('versionControlRepoUrl') && values['versionControlRepoUrl'] != null) {
+        if (newVersionControlRepoUrl != null && newVersionControlRepoUrl.trim().isNotEmpty) {
+           await prefs.setString('project_version_control_repo_url', newVersionControlRepoUrl.trim());
+        } else {
+           await prefs.remove('project_version_control_repo_url');
+        }
       }
 
-      if (newOllamaBaseUrl != null && newOllamaBaseUrl.trim().isNotEmpty) {
-         await prefs.setString('ollamaBaseUrl', newOllamaBaseUrl.trim());
-      } else {
-         await prefs.remove('ollamaBaseUrl');
+      if (values.containsKey('ollamaBaseUrl') && values['ollamaBaseUrl'] != null) {
+        if (newOllamaBaseUrl != null && newOllamaBaseUrl.trim().isNotEmpty) {
+           await prefs.setString('ollamaBaseUrl', newOllamaBaseUrl.trim());
+        } else {
+           await prefs.remove('ollamaBaseUrl');
+        }
       }
-      if (newOllamaModel != null && newOllamaModel.trim().isNotEmpty) {
-         await prefs.setString('ollamaModel', newOllamaModel.trim());
-      } else {
-         await prefs.remove('ollamaModel');
+      if (values.containsKey('ollamaModel') && values['ollamaModel'] != null) {
+        if (newOllamaModel != null && newOllamaModel.trim().isNotEmpty) {
+           await prefs.setString('ollamaModel', newOllamaModel.trim());
+        } else {
+           await prefs.remove('ollamaModel');
+        }
       }
       await prefs.setInt('ollamaTimeoutMs', newOllamaTimeoutMs);
 
-      if (newBackupDir != null && newBackupDir.trim().isNotEmpty) {
-         await prefs.setString('project_backup_directory_path', newBackupDir.trim());
-      } else {
-         await prefs.remove('project_backup_directory_path');
+      if (values.containsKey('backupDirectoryPath') && values['backupDirectoryPath'] != null) {
+        if (newBackupDir != null && newBackupDir.trim().isNotEmpty) {
+           await prefs.setString('project_backup_directory_path', newBackupDir.trim());
+        } else {
+           await prefs.remove('project_backup_directory_path');
+        }
       }
 
       await prefs.setStringList('project_album_folder_ids', _albumFolderIds.map((e) => e.toString()).toList());
@@ -858,11 +882,12 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       await prefs.setString('ve_windowAvailability', jsonEncode(_windowAvailability));
       await prefs.setInt('queueClearCompletedMinutes', newClearCompleted);
 
-      final newAgentRules = values.containsKey('agentRules') ? values['agentRules'] as String? : _agentRules;
-      if (newAgentRules != null && newAgentRules.trim().isNotEmpty) {
-          await prefs.setString('project_agent_rules', newAgentRules.trim());
-      } else {
-          await prefs.remove('project_agent_rules');
+      if (values.containsKey('agentRules') && values['agentRules'] != null) {
+        if (newAgentRules != null && newAgentRules.trim().isNotEmpty) {
+            await prefs.setString('project_agent_rules', newAgentRules.trim());
+        } else {
+            await prefs.remove('project_agent_rules');
+        }
       }
 
       final newAntigravityBridgeMode = _antigravityBridgeMode;
@@ -876,60 +901,68 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           await prefs.remove('antigravity_bridge_mode');
       }
 
-      final newAntigravityBaseUrl = values.containsKey('antigravityBaseUrl') ? values['antigravityBaseUrl'] as String? : _antigravityBaseUrl;
-      if (newAntigravityBaseUrl != null && newAntigravityBaseUrl.trim().isNotEmpty) {
-          await prefs.setString('antigravity_base_url', newAntigravityBaseUrl.trim());
-      } else {
-          await prefs.remove('antigravity_base_url');
+      if (values.containsKey('antigravityBaseUrl') && values['antigravityBaseUrl'] != null) {
+        if (newAntigravityBaseUrl != null && newAntigravityBaseUrl.trim().isNotEmpty) {
+            await prefs.setString('antigravity_base_url', newAntigravityBaseUrl.trim());
+        } else {
+            await prefs.remove('antigravity_base_url');
+        }
       }
 
-      final newAntigravityInvokeEndpoint = values.containsKey('antigravityInvokeEndpoint') ? values['antigravityInvokeEndpoint'] as String? : _antigravityInvokeEndpoint;
-      if (newAntigravityInvokeEndpoint != null && newAntigravityInvokeEndpoint.trim().isNotEmpty) {
-          await prefs.setString('antigravity_invoke_endpoint', newAntigravityInvokeEndpoint.trim());
-      } else {
-          await prefs.remove('antigravity_invoke_endpoint');
+      if (values.containsKey('antigravityInvokeEndpoint') && values['antigravityInvokeEndpoint'] != null) {
+        if (newAntigravityInvokeEndpoint != null && newAntigravityInvokeEndpoint.trim().isNotEmpty) {
+            await prefs.setString('antigravity_invoke_endpoint', newAntigravityInvokeEndpoint.trim());
+        } else {
+            await prefs.remove('antigravity_invoke_endpoint');
+        }
       }
 
-      final newAntigravityPromptEndpoint = values.containsKey('antigravityPromptEndpoint') ? values['antigravityPromptEndpoint'] as String? : _antigravityPromptEndpoint;
-      if (newAntigravityPromptEndpoint != null && newAntigravityPromptEndpoint.trim().isNotEmpty) {
-          await prefs.setString('antigravity_prompt_endpoint', newAntigravityPromptEndpoint.trim());
-      } else {
-          await prefs.remove('antigravity_prompt_endpoint');
+      if (values.containsKey('antigravityPromptEndpoint') && values['antigravityPromptEndpoint'] != null) {
+        if (newAntigravityPromptEndpoint != null && newAntigravityPromptEndpoint.trim().isNotEmpty) {
+            await prefs.setString('antigravity_prompt_endpoint', newAntigravityPromptEndpoint.trim());
+        } else {
+            await prefs.remove('antigravity_prompt_endpoint');
+        }
       }
 
-      final newAntigravityStartupCommand = values.containsKey('antigravityStartupCommand') ? values['antigravityStartupCommand'] as String? : _antigravityStartupCommand;
-      if (newAntigravityStartupCommand != null && newAntigravityStartupCommand.trim().isNotEmpty) {
-          await prefs.setString('antigravity_startup_command', newAntigravityStartupCommand.trim());
-      } else {
-          await prefs.remove('antigravity_startup_command');
+      if (values.containsKey('antigravityStartupCommand') && values['antigravityStartupCommand'] != null) {
+        if (newAntigravityStartupCommand != null && newAntigravityStartupCommand.trim().isNotEmpty) {
+            await prefs.setString('antigravity_startup_command', newAntigravityStartupCommand.trim());
+        } else {
+            await prefs.remove('antigravity_startup_command');
+        }
       }
 
-      final newAntigravityApiKey = values.containsKey('antigravityApiKey') ? values['antigravityApiKey'] as String? : _antigravityApiKey;
-      if (newAntigravityApiKey != null && newAntigravityApiKey.trim().isNotEmpty) {
-          await prefs.setString('antigravity_api_key', newAntigravityApiKey.trim());
-      } else {
-          await prefs.remove('antigravity_api_key');
+      if (values.containsKey('antigravityApiKey') && values['antigravityApiKey'] != null) {
+        if (newAntigravityApiKey != null && newAntigravityApiKey.trim().isNotEmpty) {
+            await prefs.setString('antigravity_api_key', newAntigravityApiKey.trim());
+        } else {
+            await prefs.remove('antigravity_api_key');
+        }
       }
 
-      final newAntigravityModel = values.containsKey('antigravityModel') ? values['antigravityModel'] as String? : _antigravityModel;
-      if (newAntigravityModel != null && newAntigravityModel.trim().isNotEmpty) {
-          await prefs.setString('antigravity_model', newAntigravityModel.trim());
-      } else {
-          await prefs.remove('antigravity_model');
+      if (values.containsKey('antigravityModel') && values['antigravityModel'] != null) {
+        if (newAntigravityModel != null && newAntigravityModel.trim().isNotEmpty) {
+            await prefs.setString('antigravity_model', newAntigravityModel.trim());
+        } else {
+            await prefs.remove('antigravity_model');
+        }
       }
 
-      final newAntigravityTargetWindowTitle = values.containsKey('antigravityTargetWindowTitle') ? values['antigravityTargetWindowTitle'] as String? : _antigravityTargetWindowTitle;
-      if (newAntigravityTargetWindowTitle != null && newAntigravityTargetWindowTitle.trim().isNotEmpty) {
-          await prefs.setString('antigravity_target_window_title', newAntigravityTargetWindowTitle.trim());
-      } else {
-          await prefs.remove('antigravity_target_window_title');
+      if (values.containsKey('antigravityTargetWindowTitle') && values['antigravityTargetWindowTitle'] != null) {
+        if (newAntigravityTargetWindowTitle != null && newAntigravityTargetWindowTitle.trim().isNotEmpty) {
+            await prefs.setString('antigravity_target_window_title', newAntigravityTargetWindowTitle.trim());
+        } else {
+            await prefs.remove('antigravity_target_window_title');
+        }
       }
 
-      final newAntigravityFocusMacroName = values.containsKey('antigravityFocusMacroName') ? values['antigravityFocusMacroName'] as String? : _antigravityFocusMacroName;
-      if (newAntigravityFocusMacroName != null && newAntigravityFocusMacroName.trim().isNotEmpty) {
-          await prefs.setString('antigravity_focus_macro_name', newAntigravityFocusMacroName.trim());
-      } else {
-          await prefs.remove('antigravity_focus_macro_name');
+      if (values.containsKey('antigravityFocusMacroName') && values['antigravityFocusMacroName'] != null) {
+        if (newAntigravityFocusMacroName != null && newAntigravityFocusMacroName.trim().isNotEmpty) {
+            await prefs.setString('antigravity_focus_macro_name', newAntigravityFocusMacroName.trim());
+        } else {
+            await prefs.remove('antigravity_focus_macro_name');
+        }
       }
 
       final newAntigravityHandsfreeAutoExecute = values.containsKey('antigravityHandsfreeAutoExecute') ? values['antigravityHandsfreeAutoExecute'] == true : _antigravityHandsfreeAutoExecute;
@@ -1346,6 +1379,65 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       }
     } finally {
       if (mounted) setState(() => _isTestingAntigravity = false);
+    }
+  }
+
+  Future<List<String>> _fetchOllamaModels() async {
+    _formKey.currentState?.saveAndValidate();
+    final url = _formKey.currentState?.value['ollamaBaseUrl'] ?? _ollamaBaseUrl ?? 'http://localhost:11434';
+    final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 4), receiveTimeout: const Duration(seconds: 4)));
+    try {
+      final response = await dio.get('$url/api/tags');
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data;
+        if (data is Map && data.containsKey('models')) {
+          final List modelsList = data['models'] as List;
+          final List<String> names = modelsList
+              .map((m) => (m['name'] ?? m['model'] ?? '').toString())
+              .where((name) => name.isNotEmpty)
+              .toList();
+          return names;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching Ollama models: $e');
+    }
+    return [_ollamaModel ?? 'qwen2.5:3b'];
+  }
+
+  Future<void> _testOllamaConnection() async {
+    _formKey.currentState?.saveAndValidate();
+    final url = _formKey.currentState?.value['ollamaBaseUrl'] ?? _ollamaBaseUrl ?? 'http://localhost:11434';
+    setState(() => _isTestingOllama = true);
+    final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 5), receiveTimeout: const Duration(seconds: 5)));
+    
+    try {
+      final response = await dio.get(url);
+      if (mounted) {
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Ollama Connection Successful: ${response.statusCode}'), 
+            backgroundColor: Colors.green
+          ));
+          setState(() {
+            _ollamaModelsFuture = _fetchOllamaModels();
+          });
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Ollama returned status ${response.statusCode}: ${response.data}'), 
+            backgroundColor: Colors.orange
+          ));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to connect to Ollama: $e'), 
+          backgroundColor: Colors.red
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isTestingOllama = false);
     }
   }
 
@@ -2905,18 +2997,58 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                             const SizedBox(height: 16),
                             _buildLabeled('Ollama API Base URL (e.g. http://localhost:11434)', Icons.router, FormBuilderTextField(
                               name: 'ollamaBaseUrl',
+                              initialValue: _ollamaBaseUrl ?? 'http://localhost:11434',
                               style: TextStyle(color: AppColors.panelTextPrimary),
                               decoration: _inputDecoration(),
                             )),
                             const SizedBox(height: 16),
-                            _buildLabeled('Model Name (e.g. qwen2.5:3b)', Icons.memory, FormBuilderTextField(
-                              name: 'ollamaModel',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
+                            _buildLabeled('Model Name (e.g. qwen2.5:3b)', Icons.memory, FutureBuilder<List<String>>(
+                              future: _ollamaModelsFuture,
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return Row(
+                                    children: [
+                                      const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text('Loading Ollama models...', style: TextStyle(color: AppColors.panelTextSecondary)),
+                                    ],
+                                  );
+                                }
+
+                                final models = snapshot.data ?? [_ollamaModel ?? 'qwen2.5:3b'];
+                                if (_ollamaModel != null && _ollamaModel!.isNotEmpty && !models.contains(_ollamaModel)) {
+                                  models.insert(0, _ollamaModel!);
+                                }
+                                final initialValue = _ollamaModel ?? (models.isNotEmpty ? models.first : 'qwen2.5:3b');
+
+                                return FormBuilderDropdown<String>(
+                                  name: 'ollamaModel',
+                                  decoration: _inputDecoration(),
+                                  dropdownColor: AppColors.panelBackground,
+                                  initialValue: initialValue,
+                                  onChanged: (val) {
+                                    _ollamaModel = val;
+                                  },
+                                  onSaved: (val) {
+                                    _ollamaModel = val;
+                                  },
+                                  items: models.map((m) {
+                                    return DropdownMenuItem(
+                                      value: m,
+                                      child: Text(m, style: TextStyle(color: AppColors.panelTextPrimary)),
+                                    );
+                                  }).toList(),
+                                );
+                              },
                             )),
                             const SizedBox(height: 16),
                             _buildLabeled('Fallback Timeout (ms)', Icons.timer, FormBuilderTextField(
                               name: 'ollamaTimeoutMs',
+                              initialValue: _ollamaTimeoutMs.toString(),
                               keyboardType: TextInputType.number,
                               style: TextStyle(color: AppColors.panelTextPrimary),
                               decoration: _inputDecoration(),
@@ -2926,6 +3058,21 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                               child: Text(
                                 'Configure connection details for the Local AI Assistant. The LocalAiService binds natively to this Ollama instance.',
                                 style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+                              ),
+                            ),
+                            const SizedBox(height: 32),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: ElevatedButton.icon(
+                                onPressed: _isTestingOllama ? null : _testOllamaConnection,
+                                icon: _isTestingOllama ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
+                                label: Text('Test Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF2A2A2A),
+                                  foregroundColor: AppColors.accent,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                  side: BorderSide(color: AppColors.accent, width: 1)
+                                ),
                               ),
                             ),
                           ],
@@ -3153,28 +3300,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                       ],
                     ),
                   ),
-                const SizedBox(height: 16),
-                Divider(color: AppColors.controlBorder),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () {
-                          _debounceTimer?.cancel();
-                          _saveConfiguration();
-                          widget.onDimensionsChanged?.call(); // Close window manually on explicit save
-                      },
-                      icon: const Icon(Icons.check),
-                      label: Text('Save & Close'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.accent,
-                        foregroundColor: AppColors.panelTextPrimary,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16)
-                      ),
-                    )
-                  ],
-                )
+
               ],
             ),
           ),

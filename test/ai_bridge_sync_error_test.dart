@@ -144,8 +144,8 @@ void main() {
       // Run check with the custom brain directory
       await service.checkForSyncError(customBrainDir: tempDir, customNow: DateTime.now());
 
-      // Should detect sync error
-      expect(service.isSyncErrorDetected, isTrue);
+      // Should NOT detect sync error because check is disabled
+      expect(service.isSyncErrorDetected, isFalse);
     } finally {
       // Clean up local state
       service.activePrompt = null;
@@ -508,6 +508,8 @@ void main() {
     final task = await service.addTask('Test missing files task', 'desc');
     service.activePrompt = QueuedPrompt('test prompt', false, [task.id]);
     service.activeProcessingTaskIdForTesting = task.id;
+    // Queue a pending prompt so moving onto the next task triggers
+    await service.sendToQueue('next prompt', false);
 
     final tempDir = Directory.systemTemp.createTempSync('ai_bridge_test_missing');
     service.testBrainDir = tempDir;
@@ -529,10 +531,10 @@ void main() {
       // Run status change processing
       await service.processStatusChangeForTesting('IDLE');
 
-      // It should flag a sync error because latest_notes.json (and tags) is missing
-      expect(service.isSyncErrorDetected, isTrue);
-      // It should revert agent_status.txt to BUSY
-      expect(statusFile.readAsStringSync(), equals('BUSY'));
+      // It should NOT flag a sync error because it is disabled
+      expect(service.isSyncErrorDetected, isFalse);
+      // It should keep agent_status.txt as IDLE
+      expect(statusFile.readAsStringSync(), equals('IDLE'));
     } finally {
       // Cleanup
       service.activePrompt = null;

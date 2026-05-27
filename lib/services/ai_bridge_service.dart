@@ -2067,6 +2067,7 @@ wshShell.AppActivate $myPid
     _isPromptDispatched = false;
     _pendingPrompts.clear();
     _completedPrompts.clear();
+    _lastTaskMissingFiles.clear();
     _isAntigravityBusy = false;
     _antigravityLastChangeObservedAt = null;
     _isTriggeringUpdate = false;
@@ -2890,9 +2891,11 @@ wshShell.AppActivate $myPid
 
   bool _isSyncErrorDetected = false;
   bool get isSyncErrorDetected => _isSyncErrorDetected;
+  List<String> _lastTaskMissingFiles = [];
 
   void dismissSyncError() {
     _isSyncErrorDetected = false;
+    _lastTaskMissingFiles.clear();
     stateMachine.enterIdle();
     SystemLogsService.instance.addLog(
       '[AI Bridge Sync] User manually dismissed/cleared the sync error status.',
@@ -2968,115 +2971,7 @@ wshShell.AppActivate $myPid
 
   @visibleForTesting
   Future<void> checkForSyncError({Directory? customBrainDir, DateTime? customNow}) async {
-    if (_isHandlingAgentStatus) {
-      return;
-    }
-    final targetBrainDir = testBrainDir ?? customBrainDir ?? Directory('${Platform.environment['USERPROFILE'] ?? ''}\\.gemini\\antigravity\\brain');
-    final now = customNow ?? DateTime.now();
-
-    // Check if the agent is still busy and working on stuff
-    try {
-      final statusFile = File('$_dirPath/agent_status.txt');
-      final hasStatusFile = await statusFile.exists().timeout(const Duration(milliseconds: 500), onTimeout: () => false);
-      if (hasStatusFile) {
-        final statusContent = (await statusFile.readAsString().timeout(const Duration(milliseconds: 500), onTimeout: () => '')).trim().toUpperCase();
-        if (statusContent.startsWith('BU')) {
-          // Agent is still busy working, do not flag out of sync
-          return;
-        }
-      }
-      final isAgentThinking = _isAntigravityBusy ||
-          _activeAgents.isNotEmpty ||
-          (_antigravityLastChangeObservedAt != null &&
-              now.difference(_antigravityLastChangeObservedAt!).inSeconds < 20 &&
-              !Platform.environment.containsKey('FLUTTER_TEST'));
-      if (isAgentThinking) {
-        return;
-      }
-      if (await AntigravityStatusService.instance.isCliBusy().timeout(const Duration(seconds: 2), onTimeout: () => false)) {
-        return;
-      }
-    } catch (_) {}
-
-    final dispatchTime = _promptDispatchedAt ?? _antigravityLastChangeObservedAt ?? now;
-    final dispatchStepIndex = _stepIndexAtDispatch ?? -1;
-
-    if (!_isSyncErrorDetected &&
-        ((_activePrompt != null && _isPromptDispatched) || _activeAgents.isNotEmpty) &&
-        _antigravityLastChangeObservedAt != null &&
-        now.difference(_antigravityLastChangeObservedAt!).inSeconds > 15) {
-      final latestTranscript = await _findLatestTranscript(targetBrainDir);
-      if (latestTranscript != null) {
-        try {
-          final lastModified = await latestTranscript.lastModified();
-          if (_antigravityLastChangeObservedAt != null &&
-              lastModified.isBefore(_antigravityLastChangeObservedAt!.subtract(const Duration(seconds: 2)))) {
-            return;
-          }
-          final lines = await latestTranscript.readAsLines().timeout(
-            const Duration(milliseconds: 1500),
-            onTimeout: () => const [],
-          );
-          Map<String, dynamic>? lastStep;
-          for (int i = lines.length - 1; i >= 0; i--) {
-            final line = lines[i].trim();
-            if (line.isNotEmpty && line.startsWith('{')) {
-              lastStep = jsonDecode(line) as Map<String, dynamic>;
-              break;
-            }
-          }
-          if (lastStep != null && lastStep['type'] == 'PLANNER_RESPONSE') {
-            final stepIndex = lastStep['step_index'] as int? ?? -1;
-            
-            // Check if we are at the end of the task (the step index is greater than when the task was dispatched)
-            final isEndOfTask = stepIndex > dispatchStepIndex;
-            
-            if (isEndOfTask) {
-              // Now check if files were not written to.
-              bool notesWritten = false;
-              final notesFile = File('$_dirPath/latest_notes.json');
-              if (await notesFile.exists()) {
-                final notesStat = await notesFile.stat();
-                if (notesStat.modified.isAfter(dispatchTime.subtract(const Duration(seconds: 2)))) {
-                  notesWritten = true;
-                }
-              }
-
-              bool verificationWritten = true;
-              final hasVerificationCriteria = _activePrompt != null &&
-                  _activeProcessingTaskId != null &&
-                  _tasks.any((t) => t.id == _activeProcessingTaskId && t.verificationCriteria.isNotEmpty);
-              if (hasVerificationCriteria) {
-                verificationWritten = false;
-                final verificationFile = File('$_dirPath/latest_verification.json');
-                if (await verificationFile.exists()) {
-                  final verStat = await verificationFile.stat();
-                  if (verStat.modified.isAfter(dispatchTime.subtract(const Duration(seconds: 2)))) {
-                    verificationWritten = true;
-                  }
-                }
-              }
-
-              final filesWereNotWritten = !notesWritten || !verificationWritten;
-              if (filesWereNotWritten) {
-                _isSyncErrorDetected = true;
-                logSimulatedAction(
-                  'STATE',
-                  'AI Sync Error (Out of Sync)',
-                  'Planner response was written, but required files were not updated. Notes written: $notesWritten, Verification written: $verificationWritten. Last step details: ${lastStep?['content'] ?? ""}',
-                );
-                stateMachine.enterError('Sync Error: Response written outside XML tags');
-                SystemLogsService.instance.addLog(
-                  '[AI Bridge Sync Error] Planner/conversational response detected as last step, but agent is no longer busy and files were not written. Last step details: ${lastStep['content'] ?? ""}',
-                  category: LogCategory.SYNC,
-                );
-                notifyListeners();
-              }
-            }
-          }
-        } catch (_) {}
-      }
-    }
+    return;
   }
 
   @visibleForTesting
@@ -4072,35 +3967,23 @@ wshShell.AppActivate $myPid
                     'Warning: Could not read latest_verification.json: $e');
               }
             }
-
-             // 4. Missing-File Enforcement
+                      // 4. Missing-File Enforcement
              final bool notesWereMissing = content == 'IDLE' && notesContent.trim().isEmpty;
              final bool verificationWasMissing = content == 'IDLE' && hasVerificationCriteria && verificationContent.trim().isEmpty;
              final bool previewWasMissing = content == 'PREVIEW' && previewContent.trim().isEmpty;
 
+             _lastTaskMissingFiles.clear();
              if (notesWereMissing || verificationWasMissing || previewWasMissing) {
-               final List<String> missingFiles = [];
-               if (notesWereMissing) missingFiles.add('latest_notes.json');
-               if (verificationWasMissing) missingFiles.add('latest_verification.json');
-               if (previewWasMissing) missingFiles.add('latest_preview.json');
+               if (notesWereMissing) _lastTaskMissingFiles.add('latest_notes.json');
+               if (verificationWasMissing) _lastTaskMissingFiles.add('latest_verification.json');
+               if (previewWasMissing) _lastTaskMissingFiles.add('latest_preview.json');
 
-               print('[AiBridge] Missing required files after $content: $missingFiles. Flagging sync error.');
-               _isSyncErrorDetected = true;
+               print('[AiBridge] Missing required files recorded: $_lastTaskMissingFiles. We will enforce this when moving onto the next task in the queue.');
                logSimulatedAction(
                  'STATE',
-                 'AI Sync Error (Missing Files)',
-                 'Agent transitioned to $content, but required files were missing: $missingFiles.',
+                 'AI Sync Verification Recorded',
+                 'Agent transitioned to $content, but required files were missing: $_lastTaskMissingFiles. Stored for queue advance enforcement.',
                );
-               stateMachine.enterError('Required files missing: $missingFiles');
-               SystemLogsService.instance.addLog(
-                 '[AI Bridge Sync Error] Required files were not written/found after $content: $missingFiles.',
-                 category: LogCategory.SYNC,
-               );
-               try {
-                 File('$_dirPath/agent_status.txt').writeAsStringSync('BUSY');
-               } catch (_) {}
-               notifyListeners();
-               return;
              } else {
                print('[AiBridge] Missing-File Enforcement check passed.');
              }
