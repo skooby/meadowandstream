@@ -97,4 +97,18 @@ class MockAntigravityClient extends AntigravityClient {
   Future<void> sendPrompt(String text) async {
     sentPrompts.add(text);
   }
+
+  @override
+  Future<SubagentConnection> invokeSubagent(Map<String, dynamic> context) async {
+    final taskId = context['id'] ?? 'unknown_task';
+    sentPrompts.add('Fix git push errors: ${context['name'] ?? ''}');
+    final connection = SubagentConnection(
+      taskId: taskId,
+      agentId: 'mock_agent',
+    );
+    Future.microtask(() {
+      connection.updateStatus('Completed');
+    });
+    return connection;
+  }
 }

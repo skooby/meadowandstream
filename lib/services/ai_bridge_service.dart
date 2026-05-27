@@ -1425,7 +1425,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     return path.join(' > ');
   }
 
-  void _writeCurrentTaskFile(String taskId) {
+  void _writeCurrentTaskFile(String taskId, {String? targetCriteriaDescription}) {
     if (Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests) {
       return;
     }
@@ -1436,17 +1436,25 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       final json = task.toJson();
       json['name'] = _buildTaskPathName(task);
       if (json['verificationCriteria'] != null) {
-        final uncheckedTasks = task.verificationCriteria
-            .where((e) =>
-                e.status != AiVerificationStatus.verified &&
-                e.status != AiVerificationStatus.ignored &&
-                e.status != AiVerificationStatus.pendingReview &&
-                !e.isPreview)
-            .toList();
-        if (uncheckedTasks.isNotEmpty) {
-          json['verificationCriteria'] = [uncheckedTasks.first.toJson()];
+        if (targetCriteriaDescription != null) {
+          final target = task.verificationCriteria.firstWhere(
+            (e) => e.description.trim().toLowerCase() == targetCriteriaDescription.trim().toLowerCase(),
+            orElse: () => task.verificationCriteria.first,
+          );
+          json['verificationCriteria'] = [target.toJson()];
         } else {
-          json['verificationCriteria'] = [];
+          final uncheckedTasks = task.verificationCriteria
+              .where((e) =>
+                  e.status != AiVerificationStatus.verified &&
+                  e.status != AiVerificationStatus.ignored &&
+                  e.status != AiVerificationStatus.pendingReview &&
+                  !e.isPreview)
+              .toList();
+          if (uncheckedTasks.isNotEmpty) {
+            json['verificationCriteria'] = [uncheckedTasks.first.toJson()];
+          } else {
+            json['verificationCriteria'] = [];
+          }
         }
       }
       if (_isDryRunMode) {
@@ -1473,196 +1481,31 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       }
     }
 
-    if (_bridgeMode == AntigravityBridgeMode.sdk) {
-      if (taskIds != null && taskIds.isNotEmpty) {
-        if (_isDryRunMode) {
-          logSimulatedAction('API_CALL', 'Invoke Subagent (SDK Mode)', 'Task ID: ${taskIds.first}');
-          _writeCurrentTaskFile(taskIds.first);
-          _activeProcessingTaskId = taskIds.first;
-          _activeProcessingTaskAssignedAt = DateTime.now();
-          _activePrompt = QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription);
-          _writeQueueStatus('BUSY');
-          notifyListeners();
-          
-          try {
-            final statusFile = File('$_dirPath/agent_status.txt');
-            if (!statusFile.parent.existsSync()) {
-              statusFile.parent.createSync(recursive: true);
-            }
-            statusFile.writeAsStringSync('BUSY');
-          } catch (_) {}
-          _dryRunTimer = Timer(const Duration(seconds: 1), () async {
-            try {
-              final notesFile = File('$_dirPath/latest_notes.json');
-              if (!notesFile.parent.existsSync()) {
-                notesFile.parent.createSync(recursive: true);
-              }
-              final targetDesc = targetCriteriaDescription;
-              final notesJson = jsonEncode({
-                "summary": targetDesc != null ? "Processed: $targetDesc" : "Processed",
-                "notes": targetDesc != null ? "Successfully processed checklist item: $targetDesc" : "Processed"
-              });
-              logSimulatedAction('FILE_WRITE', 'Write latest_notes.json', notesJson);
-              notesFile.writeAsStringSync(notesJson);
-              
-              final List<dynamic> verifList = [];
-              if (taskIds.isNotEmpty) {
-                try {
-                  final task = _tasks.firstWhere((t) => t.id == taskIds.first);
-                  final targetDesc = targetCriteriaDescription;
-                  logSimulatedAction('STATE', 'Simulation verif list build (SDK)', 'targetDesc: $targetDesc, task criteria count: ${task.verificationCriteria.length}');
-                  final targetDescNorm = targetDesc?.trim().toLowerCase();
-                  final hasExactMatch = targetDescNorm != null && task.verificationCriteria.any((vc) => vc.description.trim().toLowerCase() == targetDescNorm);
-                  for (final vc in task.verificationCriteria) {
-                    final vcDescNorm = vc.description.trim().toLowerCase();
-                    final isMatch = targetDescNorm == null ||
-                        (hasExactMatch
-                            ? vcDescNorm == targetDescNorm
-                            : (vcDescNorm == targetDescNorm ||
-                               targetDescNorm.startsWith(vcDescNorm) ||
-                               vcDescNorm.startsWith(targetDescNorm)));
-                    logSimulatedAction('STATE', 'Matching criteria (SDK)', 'vc: $vcDescNorm vs target: $targetDescNorm - Match: $isMatch');
-                    if (isMatch) {
-                      verifList.add({
-                        "description": vc.description,
-                        "proof": "Processed in simulator",
-                        "notes": "All checks completed."
-                      });
-                    }
-                  }
-                } catch (_) {}
-              }
-              if (verifList.isEmpty) {
-                verifList.add({
-                  "description": "Verification Criteria",
-                  "proof": "Processed in simulator",
-                  "notes": "All checks completed."
-                });
-              }
-              
-              final verifFile = File('$_dirPath/latest_verification.json');
-              final verifJson = jsonEncode(verifList);
-              logSimulatedAction('FILE_WRITE', 'Write latest_verification.json', verifJson);
-              verifFile.writeAsStringSync(verifJson);
-            } catch (_) {}
-
-            _isAntigravityBusy = false;
-            _antigravityLastChangeObservedAt = null;
-            _writeQueueStatus('IDLE');
-
-            try {
-              final statusFile = File('$_dirPath/agent_status.txt');
-              if (!statusFile.parent.existsSync()) {
-                statusFile.parent.createSync(recursive: true);
-              }
-              statusFile.writeAsStringSync('IDLE');
-            } catch (_) {}
-
-            await _processStatusChange('IDLE');
-          });
-          return;
-        }
-        await SandboxService.instance.addToSandbox(taskIds);
-        final taskId = taskIds.first;
-        final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
-        if (taskIdx != -1) {
-          await executeTask(_tasks[taskIdx]);
-        }
-      } else {
-        if (_isDryRunMode) {
-          logSimulatedAction('API_CALL', 'Send Prompt (SDK Mode)', text);
-          try {
-            final json = {
-              "id": "free_prompt",
-              "name": "Free-form Request",
-              "description": text,
-              "verificationCriteria": []
-            };
-            File('$_dirPath/current_task.json').writeAsStringSync(jsonEncode(json), flush: true);
-          } catch (_) {}
-          _activePrompt = QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription);
-          _writeQueueStatus('BUSY');
-          notifyListeners();
-          
-          try {
-            final statusFile = File('$_dirPath/agent_status.txt');
-            if (!statusFile.parent.existsSync()) {
-              statusFile.parent.createSync(recursive: true);
-            }
-            statusFile.writeAsStringSync('BUSY');
-          } catch (_) {}
-          _dryRunTimer = Timer(const Duration(seconds: 1), () async {
-            try {
-              final notesFile = File('$_dirPath/latest_notes.json');
-              if (!notesFile.parent.existsSync()) {
-                notesFile.parent.createSync(recursive: true);
-              }
-              final targetDesc = targetCriteriaDescription;
-              final notesJson = jsonEncode({
-                "summary": targetDesc != null ? "Processed: $targetDesc" : "Processed",
-                "notes": targetDesc != null ? "Successfully processed checklist item: $targetDesc" : "Processed"
-              });
-              logSimulatedAction('FILE_WRITE', 'Write latest_notes.json', notesJson);
-              notesFile.writeAsStringSync(notesJson);
-              
-              final verifFile = File('$_dirPath/latest_verification.json');
-              final verifJson = jsonEncode([
-                {
-                  "description": "Verification Criteria",
-                  "proof": "Processed in simulator",
-                  "notes": "All checks completed."
-                }
-              ]);
-              logSimulatedAction('FILE_WRITE', 'Write latest_verification.json', verifJson);
-              verifFile.writeAsStringSync(verifJson);
-            } catch (_) {}
-
-            _isAntigravityBusy = false;
-            _antigravityLastChangeObservedAt = null;
-            _writeQueueStatus('IDLE');
-
-            try {
-              final statusFile = File('$_dirPath/agent_status.txt');
-              if (!statusFile.parent.existsSync()) {
-                statusFile.parent.createSync(recursive: true);
-              }
-              statusFile.writeAsStringSync('IDLE');
-            } catch (_) {}
-
-            await _processStatusChange('IDLE');
-          });
-          return;
-        }
-        await _ensureBackendRunning();
-        await antigravityClient.sendPrompt(text);
-      }
+    if (insertFirst) {
+      _pendingPrompts.insert(0, QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription));
     } else {
-      if (insertFirst) {
-        _pendingPrompts.insert(0, QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription));
-      } else {
-        _pendingPrompts.add(QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription));
-      }
+      _pendingPrompts.add(QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription));
+    }
 
-      if (taskIds != null && taskIds.isNotEmpty) {
-        if (!_isDryRunMode) {
-          await SandboxService.instance.addToSandbox(taskIds);
-          if (!insertFirst) {
-            _writeCurrentTaskFile(taskIds.first);
-          }
-        } else {
-          logSimulatedAction('FILE_WRITE', 'Write current_task.json (Simulated)', 'Writing task ID: ${taskIds.first}');
+    if (taskIds != null && taskIds.isNotEmpty) {
+      if (!_isDryRunMode) {
+        await SandboxService.instance.addToSandbox(taskIds);
+        if (!insertFirst) {
           _writeCurrentTaskFile(taskIds.first);
         }
+      } else {
+        logSimulatedAction('FILE_WRITE', 'Write current_task.json (Simulated)', 'Writing task ID: ${taskIds.first}');
+        _writeCurrentTaskFile(taskIds.first);
       }
+    }
 
-      await _saveQueueState();
-      notifyListeners();
+    await _saveQueueState();
+    notifyListeners();
 
-      _writeQueueStatus('BUSY');
-      if (_activeProcessingTaskId == null && _activePrompt == null) {
-        _pendingUpdateType = null;
-        await _processQueue();
-      }
+    _writeQueueStatus('BUSY');
+    if (_activeProcessingTaskId == null && _activePrompt == null) {
+      _pendingUpdateType = null;
+      await _processQueue();
     }
   }
 
@@ -1688,7 +1531,21 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
         _isAntigravityBusy = false;
         _antigravityLastChangeObservedAt = null;
         _updateStateMachineInputs();
-        await triggerPendingUpdate(force: true);
+        
+        String statusName = 'IDLE';
+        try {
+          final statusFile = File('$_dirPath/agent_status.txt');
+          if (statusFile.existsSync()) {
+            final content = statusFile.readAsStringSync().trim().toUpperCase();
+            if (content.startsWith('PR')) {
+              statusName = 'PREVIEW';
+            }
+          }
+        } catch (_) {}
+
+        if (!_isHandlingAgentStatus) {
+          await _processStatusChange(statusName);
+        }
       }
       notifyListeners();
     });
@@ -2032,6 +1889,9 @@ wshShell.AppActivate $myPid
         _activePrompt = nextPrompt;
         _isPromptDispatched = false;
         _pendingPrompts.removeAt(0);
+        if (_activeProcessingTaskId != null) {
+          _writeCurrentTaskFile(_activeProcessingTaskId!, targetCriteriaDescription: nextPrompt.targetCriteriaDescription);
+        }
         await _saveQueueState();
         notifyListeners();
 
@@ -2135,7 +1995,33 @@ wshShell.AppActivate $myPid
           targetCriteriaDescription: nextPrompt.targetCriteriaDescription,
           completedAt: nextPrompt.completedAt,
         );
-        await _sendToAiAgent(promptText);
+        if (_bridgeMode != AntigravityBridgeMode.sdk) {
+          await _sendToAiAgent(promptText);
+        } else {
+          _isAntigravityBusy = true;
+          stateMachine.enterBusy();
+          _updateStateMachineInputs();
+          notifyListeners();
+
+          try {
+            final statusFile = File('$_dirPath/agent_status.txt');
+            if (!statusFile.parent.existsSync()) {
+              statusFile.parent.createSync(recursive: true);
+            }
+            statusFile.writeAsStringSync('BUSY');
+          } catch (_) {}
+
+          if (nextPrompt.taskIds != null && nextPrompt.taskIds!.isNotEmpty) {
+            final taskId = nextPrompt.taskIds!.first;
+            final taskIdx = _tasks.indexWhere((t) => t.id == taskId);
+            if (taskIdx != -1) {
+              await executeTask(_tasks[taskIdx]);
+            }
+          } else {
+            await _ensureBackendRunning();
+            await antigravityClient.sendPrompt(promptText);
+          }
+        }
         await _saveQueueState();
         setScreenBlockerEnabled(nextPrompt.block);
       }
@@ -2368,21 +2254,26 @@ wshShell.AppActivate $myPid
     );
     notifyListeners();
     
-    // Dispatch prompt asynchronously without blocking the event loop or UI thread
-    Future.microtask(() async {
-      try {
+    try {
+      if (Platform.environment.containsKey('FLUTTER_TEST')) {
+        if (_bridgeMode != AntigravityBridgeMode.sdk) {
+          await _sendToAiAgent(_syncErrorInstructions);
+        } else {
+          await antigravityClient.sendPrompt(_syncErrorInstructions);
+        }
+      } else {
         if (_bridgeMode != AntigravityBridgeMode.sdk) {
           await _sendToAiAgent(_syncErrorInstructions).timeout(const Duration(seconds: 10));
         } else {
           await antigravityClient.sendPrompt(_syncErrorInstructions).timeout(const Duration(seconds: 10));
         }
-      } catch (e) {
-        SystemLogsService.instance.addLog(
-          '[AI Bridge Sync] Error dispatching sync recovery prompt: $e',
-          category: LogCategory.ERROR,
-        );
       }
-    });
+    } catch (e) {
+      SystemLogsService.instance.addLog(
+        '[AI Bridge Sync] Error dispatching sync recovery prompt: $e',
+        category: LogCategory.ERROR,
+      );
+    }
   }
 
   @visibleForTesting

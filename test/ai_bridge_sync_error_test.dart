@@ -13,7 +13,7 @@ void main() {
 
   late Directory tempBridgeDir;
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
     tempBridgeDir = Directory.systemTemp.createTempSync('ai_bridge_test_dir');
     AiBridgeService.instance.testDirPath = tempBridgeDir.path;
@@ -22,6 +22,7 @@ void main() {
     AiBridgeService.instance.isPromptDispatched = false;
     AiBridgeService.instance.isAntigravityBusyForTesting = false;
     AiBridgeService.instance.isHandlingAgentStatusForTesting = false;
+    await AiBridgeService.instance.clearQueue();
     AntigravityStatusService.instance.statusFilePath = '${tempBridgeDir.path}/agent_status.txt';
     AntigravityStatusService.instance.resetState();
   });
@@ -702,5 +703,18 @@ class MockAntigravityClient extends AntigravityClient {
   @override
   Future<void> sendPrompt(String text) async {
     sentPrompts.add(text);
+  }
+
+  @override
+  Future<SubagentConnection> invokeSubagent(Map<String, dynamic> context) async {
+    final taskId = context['id'] ?? 'unknown_task';
+    final connection = SubagentConnection(
+      taskId: taskId,
+      agentId: 'mock_agent',
+    );
+    Future.microtask(() {
+      connection.updateStatus('Completed');
+    });
+    return connection;
   }
 }

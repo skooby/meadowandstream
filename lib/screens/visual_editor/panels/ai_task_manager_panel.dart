@@ -3024,7 +3024,9 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
         if (child.isWorksheet) continue;
         if (!child.isFolder) {
           if (child.status != AiTaskStatus.completed) {
-            if (child.verificationCriteria.any((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored))) {
+            final hasCriteria = child.verificationCriteria.isNotEmpty;
+            final hasPending = child.verificationCriteria.any((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored));
+            if (!hasCriteria || hasPending) {
               focusTasks.add(child);
             }
           }
@@ -3074,7 +3076,9 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
       return;
     }
     
-    if (!task.verificationCriteria.any((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored))) {
+    final hasCriteria = task.verificationCriteria.isNotEmpty;
+    final hasPending = task.verificationCriteria.any((e) => (e.status != AiVerificationStatus.verified && e.status != AiVerificationStatus.ignored));
+    if (hasCriteria && !hasPending) {
       if (mounted && !silent) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Task has no pending checklist items to perform!'),
@@ -3160,8 +3164,13 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
       final scale = VisualEditorScreen.globalUiScale.value;
       final worksheets = AiBridgeService.instance.worksheets;
       final anyActive = worksheets.any((ws) => ws.isWorksheetVisible);
-      final activeTasks = AiBridgeService.instance.tasks
-          .where((t) => !t.isFolder && SandboxService.instance.sandboxTaskIds.contains(t.id) && t.status != AiTaskStatus.completed)
+      final activeTasks = SandboxService.instance.sandboxTaskIds
+          .map((id) {
+            final matches = AiBridgeService.instance.tasks.where((t) => t.id == id);
+            return matches.isNotEmpty ? matches.first : null;
+          })
+          .where((t) => t != null && !t.isFolder && t.status != AiTaskStatus.completed)
+          .cast<AiTask>()
           .toList();
       return Container(
         height: 52 * scale, // Adjusted toolbar height
@@ -3356,11 +3365,13 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                   constraints: const BoxConstraints(),
                   onPressed: activeTasks.isNotEmpty
                       ? () async {
-                          final updatedTask = AiBridgeService.instance.tasks.firstWhere((t) => t.id == activeTasks.first.id, orElse: () => activeTasks.first);
-                          await AiBridgeService.instance.submitTaskChecklist(updatedTask, blockScreen: true);
+                          for (final task in activeTasks) {
+                            final updatedTask = AiBridgeService.instance.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
+                            await AiBridgeService.instance.submitTaskChecklist(updatedTask, blockScreen: true);
+                          }
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text('Task "${updatedTask.name}" sent to AI Bridge!'),
+                              content: Text('Queued ${activeTasks.length} active tasks to AI Bridge!'),
                               duration: const Duration(seconds: 4),
                             ));
                           }
@@ -4199,7 +4210,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                       if (_showAiQueue)
                         Container(
                           constraints: BoxConstraints(
-                            maxHeight: MediaQuery.of(context).size.height * 0.4,
+                            maxHeight: 150 * VisualEditorScreen.globalUiScale.value,
                           ),
                           color: AppColors.windowBackground,
                           child: Scrollbar(

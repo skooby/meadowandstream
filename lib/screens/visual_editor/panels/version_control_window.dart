@@ -69,7 +69,14 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
       if (!_commitNoteFocusNode.hasFocus) {
         final tasks = AiBridgeService.instance.tasks;
         final sandboxTaskIds = SandboxService.instance.sandboxTaskIds;
-        final activeTasks = tasks.where((t) => !t.isFolder && sandboxTaskIds.contains(t.id) && t.status != AiTaskStatus.completed).toList();
+        final activeTasks = sandboxTaskIds
+            .map((id) {
+              final matches = tasks.where((t) => t.id == id);
+              return matches.isNotEmpty ? matches.first : null;
+            })
+            .where((t) => t != null && !t.isFolder && t.status != AiTaskStatus.completed)
+            .cast<AiTask>()
+            .toList();
         if (activeTasks.isNotEmpty) {
           final customNote = _commitNoteController.text.trim();
           final taskId = activeTasks.first.id;
@@ -393,16 +400,17 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
     }
   }
 
-  Future<void> _sendTaskToAiBridge(BuildContext context, AiTask task) async {
+  Future<void> _sendTasksToAiBridge(BuildContext context, List<AiTask> tasksList) async {
     final customNote = _commitNoteController.text.trim();
-    await _prefs?.setString('task_custom_commit_note_${task.id}', customNote);
-    final updatedTask = AiBridgeService.instance.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
-
-    await AiBridgeService.instance.submitTaskChecklist(updatedTask, blockScreen: true);
+    for (final task in tasksList) {
+      await _prefs?.setString('task_custom_commit_note_${task.id}', customNote);
+      final updatedTask = AiBridgeService.instance.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
+      await AiBridgeService.instance.submitTaskChecklist(updatedTask, blockScreen: true);
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Task "${task.name}" sent to AI Bridge!'),
+        content: Text('Queued ${tasksList.length} active tasks to AI Bridge!'),
         duration: const Duration(seconds: 4),
       ));
     }
@@ -420,7 +428,14 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
           return t.status == AiTaskStatus.completed;
         }
 
-        final activeTasks = tasks.where((t) => !t.isFolder && sandboxTaskIds.contains(t.id) && !isTaskCommitted(t)).toList();
+        final activeTasks = sandboxTaskIds
+            .map((id) {
+              final matches = tasks.where((t) => t.id == id);
+              return matches.isNotEmpty ? matches.first : null;
+            })
+            .where((t) => t != null && !t.isFolder && !isTaskCommitted(t))
+            .cast<AiTask>()
+            .toList();
         
         // Sync controller text with custom commit note if the active task changes
         final firstActiveTask = activeTasks.isNotEmpty ? activeTasks.first : null;
@@ -485,7 +500,7 @@ class _VersionControlWindowState extends State<VersionControlWindow> with Single
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(),
                                 onPressed: activeTasks.isNotEmpty
-                                    ? () => _sendTaskToAiBridge(context, activeTasks.first)
+                                    ? () => _sendTasksToAiBridge(context, activeTasks)
                                     : null,
                               ),
                             ),

@@ -57,9 +57,9 @@ class SandboxService extends ChangeNotifier {
 
   Future<void> addToSandbox(List<String> taskIds) async {
     bool changed = false;
-    for (final id in taskIds) {
+    for (final id in taskIds.reversed) {
       if (!_sandboxTaskIds.contains(id)) {
-        _sandboxTaskIds.add(id);
+        _sandboxTaskIds.insert(0, id);
         changed = true;
       }
     }

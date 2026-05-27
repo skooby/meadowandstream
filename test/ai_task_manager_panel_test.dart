@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:antigravity_sdk/antigravity_sdk.dart';
 import 'package:music_app/services/ai_bridge_service.dart';
 import 'package:music_app/screens/visual_editor/panels/ai_task_manager_panel.dart';
 
@@ -8,10 +9,24 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('AiTaskManagerPanel Widget Tests', () {
+    AntigravityClient? originalClient;
+
     setUp(() {
       SharedPreferences.setMockInitialValues({});
       AiBridgeService.instance.isSyncErrorDetected = false;
       AiBridgeService.instance.tasks.clear();
+      try {
+        originalClient = AiBridgeService.instance.antigravityClient;
+      } catch (_) {
+        originalClient = null;
+      }
+      AiBridgeService.instance.antigravityClient = MockAntigravityClient();
+    });
+
+    tearDown(() {
+      if (originalClient != null) {
+        AiBridgeService.instance.antigravityClient = originalClient!;
+      }
     });
 
     testWidgets(
@@ -73,4 +88,28 @@ void main() {
       expect(find.text('AI BRIDGE SYNC ERROR DETECTED'), findsNothing);
     });
   });
+}
+
+class MockAntigravityClient extends AntigravityClient {
+  final List<String> sentPrompts = [];
+
+  MockAntigravityClient() : super.custom();
+
+  @override
+  Future<void> sendPrompt(String text) async {
+    sentPrompts.add(text);
+  }
+
+  @override
+  Future<SubagentConnection> invokeSubagent(Map<String, dynamic> context) async {
+    final taskId = context['id'] ?? 'unknown_task';
+    final connection = SubagentConnection(
+      taskId: taskId,
+      agentId: 'mock_agent',
+    );
+    Future.microtask(() {
+      connection.updateStatus('Completed');
+    });
+    return connection;
+  }
 }
