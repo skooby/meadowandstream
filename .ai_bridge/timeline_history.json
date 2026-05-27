@@ -1,5 +1,16 @@
 [
   {
+    "id": "182a9e17e4b00bea0f94486b6a306948ba060328",
+    "taskIds": [
+      "1779882820948"
+    ],
+    "title": "AI ASSISTANT",
+    "summary": "",
+    "commitHash": "182a9e17e4b00bea0f94486b6a306948ba060328",
+    "commitDate": "2026-05-27T12:32:22Z",
+    "verifiedNotes": "- Need a Test Connection to AI Assistant, make the color more standardized\n- AI Assistant Setting not being shown but able to connect... I need to see the values in the config\n- Can we get a list of ollama models to choose from? Maybe in a dropdown"
+  },
+  {
     "id": "f9783efbe5c2109cdd5e852f7cbf66d4d91dba64",
     "taskIds": [
       "1779596049582"
@@ -315,14 +326,5 @@
     "commitHash": "12726c774266d8f7aa72de2eb9710b078761e0cd",
     "commitDate": "2026-05-21T13:56:34Z",
     "verifiedNotes": "- Show the titles for each with standard text sizes and UPPERCASE, use theme colors, move colon at end of each label. Make it not so ugly\n- Lets have the Dispatch Delay be more granular. 0, .5, 1, 1.5, etc\n- Have the Dispatch Delay max out at 5 seconds\n- Slider is very sluggish... why?\n\n- There is a long pause after we hit the \"Send to AI Bridge\" button. Lets have the delay be defined in our Task Manager Settings at the bottom of Workflow\n\n- Checkpoints can now match other commits with a open in GitHub icon, lets match these up\n- We don't need the title of \"Manual Checkpoint\" since these visually stand out... and loose the flag icon"
-  },
-  {
-    "id": "d5ca4c45ad67312713ad4e54be13e61f6be952e6",
-    "taskIds": [],
-    "title": "Checkpoint",
-    "summary": "Timeline and Version Control",
-    "commitHash": "d5ca4c45ad67312713ad4e54be13e61f6be952e6",
-    "commitDate": "2026-05-21T13:18:25Z",
-    "verifiedNotes": ""
   }
 ]

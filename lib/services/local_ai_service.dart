@@ -17,6 +17,7 @@ class LocalAiService extends ChangeNotifier {
   String baseUrl = 'http://localhost:11434';
   String defaultModel = 'qwen2.5:3b';
   int timeoutMs = 120000;
+  String clarityPrompt = 'Review this prompt for clarity and return YES or NO as an answer. The prompt is';
 
   Future<void> loadConfig() async {
     try {
@@ -24,6 +25,7 @@ class LocalAiService extends ChangeNotifier {
       baseUrl = prefs.getString('ollamaBaseUrl') ?? 'http://localhost:11434';
       defaultModel = prefs.getString('ollamaModel') ?? 'qwen2.5:3b';
       timeoutMs = prefs.getInt('ollamaTimeoutMs') ?? 120000;
+      clarityPrompt = prefs.getString('ollamaClarityPrompt') ?? 'Review this prompt for clarity and return YES or NO as an answer. The prompt is';
       notifyListeners();
     } catch (_) {}
   }
@@ -174,24 +176,7 @@ class LocalAiService extends ChangeNotifier {
   /// Utility 1: Prompt Review
   /// Analyzes a prompt for ambiguity, missing reqs, weak constraints, etc.
   Future<String?> reviewPrompt(String userPrompt) async {
-    final systemPrompt = '''
-You are an expert AI orchestration assistant. Your job is to review the following user prompt for:
-- Ambiguity
-- Missing requirements
-- Weak constraints
-- Verbosity
-- Hallucination risks
-
-Please format your response strictly with the following sections:
-### Identified Problems
-(List any issues found)
-
-### Suggested Improvements
-(List how to fix them)
-
-### Revised Prompt
-(Provide the rewritten, optimized prompt)
-''';
+    final systemPrompt = clarityPrompt;
 
     // We use a low temperature for deterministic orchestration tasks
     return await sendChat(

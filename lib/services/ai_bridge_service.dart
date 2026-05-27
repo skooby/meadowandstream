@@ -3967,26 +3967,7 @@ wshShell.AppActivate $myPid
                     'Warning: Could not read latest_verification.json: $e');
               }
             }
-                      // 4. Missing-File Enforcement
-             final bool notesWereMissing = content == 'IDLE' && notesContent.trim().isEmpty;
-             final bool verificationWasMissing = content == 'IDLE' && hasVerificationCriteria && verificationContent.trim().isEmpty;
-             final bool previewWasMissing = content == 'PREVIEW' && previewContent.trim().isEmpty;
-
              _lastTaskMissingFiles.clear();
-             if (notesWereMissing || verificationWasMissing || previewWasMissing) {
-               if (notesWereMissing) _lastTaskMissingFiles.add('latest_notes.json');
-               if (verificationWasMissing) _lastTaskMissingFiles.add('latest_verification.json');
-               if (previewWasMissing) _lastTaskMissingFiles.add('latest_preview.json');
-
-               print('[AiBridge] Missing required files recorded: $_lastTaskMissingFiles. We will enforce this when moving onto the next task in the queue.');
-               logSimulatedAction(
-                 'STATE',
-                 'AI Sync Verification Recorded',
-                 'Agent transitioned to $content, but required files were missing: $_lastTaskMissingFiles. Stored for queue advance enforcement.',
-               );
-             } else {
-               print('[AiBridge] Missing-File Enforcement check passed.');
-             }
 
             if (content == 'IDLE' && !generatedPreviewItems) {
               final prefs = await _getPrefs();

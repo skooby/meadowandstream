@@ -17,6 +17,7 @@ import 'package:dio/dio.dart';
 import '../../../services/backend_process_manager.dart';
 import '../../../services/ai_bridge_service.dart';
 import '../../../services/antigravity_status_service.dart';
+import '../../../services/local_ai_service.dart';
 import 'package:antigravity_sdk/antigravity_sdk.dart';
 import '../visual_editor_screen.dart';
 import '../../../constants.dart';
@@ -309,6 +310,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   String? _ollamaBaseUrl;
   String? _ollamaModel;
   int _ollamaTimeoutMs = 120000;
+  String? _ollamaClarityPrompt;
 
   bool _isTestingAntigravity = false;
   bool _isTestingCli = false;
@@ -475,6 +477,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _ollamaBaseUrl = prefs.getString('ollamaBaseUrl');
       _ollamaModel = prefs.getString('ollamaModel');
       _ollamaTimeoutMs = prefs.getInt('ollamaTimeoutMs') ?? 120000;
+      _ollamaClarityPrompt = prefs.getString('ollamaClarityPrompt') ?? 'Review this prompt for clarity and return YES or NO as an answer. The prompt is';
 
       _windowAvailability = loadedAvail;
 
@@ -734,6 +737,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       final newOllamaBaseUrl = values.containsKey('ollamaBaseUrl') ? values['ollamaBaseUrl'] as String? : _ollamaBaseUrl;
       final newOllamaModel = values.containsKey('ollamaModel') ? values['ollamaModel'] as String? : _ollamaModel;
       final newOllamaTimeoutMs = int.tryParse((values['ollamaTimeoutMs'] ?? _ollamaTimeoutMs).toString()) ?? _ollamaTimeoutMs;
+      final newOllamaClarityPrompt = values.containsKey('ollamaClarityPrompt') ? values['ollamaClarityPrompt'] as String? : _ollamaClarityPrompt;
       final newAgentRules = values.containsKey('agentRules') ? values['agentRules'] as String? : _agentRules;
       final newAntigravityBaseUrl = values.containsKey('antigravityBaseUrl') ? values['antigravityBaseUrl'] as String? : _antigravityBaseUrl;
       final newAntigravityInvokeEndpoint = values.containsKey('antigravityInvokeEndpoint') ? values['antigravityInvokeEndpoint'] as String? : _antigravityInvokeEndpoint;
@@ -837,6 +841,13 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
         }
       }
       await prefs.setInt('ollamaTimeoutMs', newOllamaTimeoutMs);
+      if (values.containsKey('ollamaClarityPrompt') && values['ollamaClarityPrompt'] != null) {
+        if (newOllamaClarityPrompt != null && newOllamaClarityPrompt.trim().isNotEmpty) {
+           await prefs.setString('ollamaClarityPrompt', newOllamaClarityPrompt.trim());
+        } else {
+           await prefs.remove('ollamaClarityPrompt');
+        }
+      }
 
       if (values.containsKey('backupDirectoryPath') && values['backupDirectoryPath'] != null) {
         if (newBackupDir != null && newBackupDir.trim().isNotEmpty) {
@@ -1033,10 +1044,12 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             _ollamaBaseUrl = newOllamaBaseUrl;
             _ollamaModel = newOllamaModel;
             _ollamaTimeoutMs = newOllamaTimeoutMs;
+            _ollamaClarityPrompt = newOllamaClarityPrompt;
             // _albumFolderIds, _tagsFolderId, _languagesFolderId remain synchronously updated.
          });
          
           await _updateActiveThemeAndSave();
+          await LocalAiService.instance.loadConfig();
           try {
             await AiBridgeService.instance.updateAntigravityConfig();
             if (mounted) {
@@ -3050,6 +3063,13 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                               name: 'ollamaTimeoutMs',
                               initialValue: _ollamaTimeoutMs.toString(),
                               keyboardType: TextInputType.number,
+                              style: TextStyle(color: AppColors.panelTextPrimary),
+                              decoration: _inputDecoration(),
+                            )),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Prompt Clarity Instruction', Icons.description, FormBuilderTextField(
+                              name: 'ollamaClarityPrompt',
+                              initialValue: _ollamaClarityPrompt ?? 'Review this prompt for clarity and return YES or NO as an answer. The prompt is',
                               style: TextStyle(color: AppColors.panelTextPrimary),
                               decoration: _inputDecoration(),
                             )),

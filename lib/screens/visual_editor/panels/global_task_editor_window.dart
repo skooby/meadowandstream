@@ -1575,6 +1575,23 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                       LogicalKeyboardKey.enter &&
                                                   !HardwareKeyboard
                                                       .instance.isShiftPressed) {
+                                                final val = _verificationControllers[i].text.trim();
+                                                if (val.isNotEmpty) {
+                                                  Future.microtask(() async {
+                                                    final template = LocalAiService.instance.clarityPrompt;
+                                                    final promptText = template.contains('{PROMPT}')
+                                                        ? template.replaceAll('{PROMPT}', val)
+                                                        : '$template $val';
+                                                    final result = await LocalAiService.instance.generateText(promptText);
+                                                    if (result != null) {
+                                                      final response = result.trim().toUpperCase();
+                                                      setStateBuilder(() {
+                                                        verificationCriteriaList[i].requestClarification = response.contains('NO');
+                                                      });
+                                                      _executeAutoSave();
+                                                    }
+                                                  });
+                                                }
                                                 FocusScope.of(context).nextFocus();
                                                 return KeyEventResult.handled;
                                               }
@@ -1779,14 +1796,36 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                       tooltip: isItemLocked ? 'Locked' : 'Request AI Clarification',
                                       onPressed: isItemLocked
                                           ? null
-                                          : () {
-                                              setStateBuilder(() {
-                                                verificationCriteriaList[i]
-                                                        .requestClarification =
-                                                    !verificationCriteriaList[i]
-                                                        .requestClarification;
-                                                _executeAutoSave();
-                                              });
+                                          : () async {
+                                              if (verificationCriteriaList[i].requestClarification) {
+                                                final currentPrompt = _verificationControllers[i].text.trim();
+                                                if (currentPrompt.isNotEmpty) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(content: Text('Retooling prompt with AI...')),
+                                                  );
+                                                  final instruction = 'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: $currentPrompt';
+                                                  final retooled = await LocalAiService.instance.generateText(instruction);
+                                                  if (retooled != null && retooled.trim().isNotEmpty && context.mounted) {
+                                                    setStateBuilder(() {
+                                                      _verificationControllers[i].text = retooled.trim();
+                                                      verificationCriteriaList[i].description = retooled.trim();
+                                                      verificationCriteriaList[i].requestClarification = false;
+                                                    });
+                                                    _executeAutoSave();
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      const SnackBar(content: Text('Prompt retooled!')),
+                                                    );
+                                                  }
+                                                }
+                                              } else {
+                                                setStateBuilder(() {
+                                                  verificationCriteriaList[i]
+                                                          .requestClarification =
+                                                      !verificationCriteriaList[i]
+                                                          .requestClarification;
+                                                  _executeAutoSave();
+                                                });
+                                              }
                                             },
                                     ),
                                     const SizedBox(width: 6),
