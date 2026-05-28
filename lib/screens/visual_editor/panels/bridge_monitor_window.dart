@@ -2449,7 +2449,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                     ),
 
                     // ── Tab 4: AI Assistant ── read-only transcript viewer ──────────────
-                    _AiAssistantTab(
+                    AiAssistantTab(
                       lastPrompt: _assistantLastPrompt,
                       lastOutput: _assistantLastOutput,
                       transcriptPath: _assistantTranscriptPath,
@@ -2791,7 +2791,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
 //     every 2 s by the parent's _statusTimer.
 //   • AI Assistant (Ollama): a freeform chat interface backed by LocalAiService
 //     (the same Ollama integration used in the Task Editor).
-class _AiAssistantTab extends StatefulWidget {
+class AiAssistantTab extends StatefulWidget {
   final String lastPrompt;
   final String lastOutput;
   final String transcriptPath;
@@ -2799,7 +2799,8 @@ class _AiAssistantTab extends StatefulWidget {
   final ScrollController promptScrollController;
   final bool isThinking;
 
-  const _AiAssistantTab({
+  const AiAssistantTab({
+    super.key,
     required this.lastPrompt,
     required this.lastOutput,
     required this.transcriptPath,
@@ -2809,28 +2810,70 @@ class _AiAssistantTab extends StatefulWidget {
   });
 
   @override
-  State<_AiAssistantTab> createState() => _AiAssistantTabState();
+  State<AiAssistantTab> createState() => _AiAssistantTabState();
 }
 
-class _AiAssistantTabState extends State<_AiAssistantTab> {
+class _AiAssistantTabState extends State<AiAssistantTab> {
   // ── mode toggle ─────────────────────────────────────────────────────────────
-  // false = Agent/Bridge view, true = AI Assistant (read-only monitor)
   bool _isAiAssistantMode = false;
+
+  // ── AI Assistant polled state ────────────────────────────────────────────
+  // Polled from LocalAiService every 500 ms via _aiPollTimer.
+  // Using a timer (not ListenableBuilder) avoids the _debugDuringDeviceUpdate
+  // crash that occurs when notifyListeners() fires during mouse event dispatch.
+  Timer? _aiPollTimer;
+  String _aiPrompt = '';
+  String _aiResponse = '';
+  bool _aiIsProcessing = false;
+  String _aiModel = '';
 
   late final ScrollController _localAiPromptScrollController;
   late final ScrollController _localAiOutputScrollController;
+  late final TextEditingController _promptController;
 
   @override
   void initState() {
     super.initState();
     _localAiPromptScrollController = ScrollController();
     _localAiOutputScrollController = ScrollController();
+    _promptController = TextEditingController(text: LocalAiService.instance.lastPromptSent);
+    // Seed immediately so the view isn't blank on first frame.
+    _syncAiState();
+    // Poll every 500 ms — safe because Timer callbacks run outside pointer dispatch.
+    _aiPollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) => _syncAiState());
+  }
+
+  /// Reads the latest values from LocalAiService and calls setState only when
+  /// something has actually changed (avoids unnecessary rebuilds).
+  void _syncAiState() {
+    if (!mounted) return;
+    final svc = LocalAiService.instance;
+    final prompt = svc.lastPromptSent;
+    final response = svc.lastResponseReceived;
+    final processing = svc.isProcessing;
+    final model = svc.effectiveModel;
+    if (prompt != _aiPrompt ||
+        response != _aiResponse ||
+        processing != _aiIsProcessing ||
+        model != _aiModel) {
+      setState(() {
+        _aiPrompt = prompt;
+        _aiResponse = response;
+        _aiIsProcessing = processing;
+        _aiModel = model;
+        if (_promptController.text != prompt) {
+          _promptController.text = prompt;
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
+    _aiPollTimer?.cancel();
     _localAiPromptScrollController.dispose();
     _localAiOutputScrollController.dispose();
+    _promptController.dispose();
     super.dispose();
   }
 
@@ -3037,74 +3080,193 @@ class _AiAssistantTabState extends State<_AiAssistantTab> {
   }
 
   // ── AI Assistant (Ollama) read-only monitor ──────────────────────────────
-  // Mirrors the Agent panel layout: PROMPT on top, OUTPUT on bottom.
-  // No send button — this tab is a passive monitor of LocalAiService I/O.
+  // Reads from polled state (_aiPrompt/_aiResponse/_aiIsProcessing/_aiModel).
+  // No ListenableBuilder — polling via _aiPollTimer avoids the
+  // _debugDuringDeviceUpdate assertion caused by notifyListeners() firing
+  // during mouse-event dispatch.
   Widget _buildAiAssistantView(BuildContext context) {
-    return ListenableBuilder(
-      listenable: LocalAiService.instance,
-      builder: (context, _) {
-        final isProcessing = LocalAiService.instance.isProcessing;
-        final model = LocalAiService.instance.defaultModel;
-        final lastPrompt = LocalAiService.instance.lastPromptSent;
-        final lastResponse = LocalAiService.instance.lastResponseReceived;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Model info / status row ─────────────────────────────────────────
+        Row(
           children: [
-            // ── Model info / status row ──────────────────────────────────────
-            Row(
-              children: [
-                const Icon(Icons.smart_toy_outlined, size: 13, color: Colors.purpleAccent),
-                const SizedBox(width: 5),
-                Text('Ollama',
-                    style: const TextStyle(color: Colors.purpleAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.purpleAccent.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.purpleAccent.withOpacity(0.35)),
-                  ),
-                  child: Text(model,
-                      style: const TextStyle(
-                          color: Colors.purpleAccent, fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+            const Icon(Icons.smart_toy_outlined, size: 13, color: Colors.purpleAccent),
+            const SizedBox(width: 5),
+            Text(
+              LocalAiService.instance.customModelName.isNotEmpty
+                  ? LocalAiService.instance.customModelName
+                  : 'AI Assistant',
+              style: const TextStyle(color: Colors.purpleAccent, fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(width: 6),
+            if (LocalAiService.instance.customModelBase.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.purpleAccent.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.purpleAccent.withOpacity(0.25)),
                 ),
-                const Spacer(),
-                if (isProcessing) ...[
-                  const _DiagnosticsPulsingDot(color: Colors.purpleAccent),
-                  const SizedBox(width: 5),
-                  const Text('Processing...', style: TextStyle(color: Colors.purpleAccent, fontSize: 10)),
-                ],
-              ],
-            ),
-            const SizedBox(height: 8),
-            // ── PROMPT panel (top, fixed height) ────────────────────────────
-            _buildReadOnlyPanel(
-              context: context,
-              label: 'PROMPT',
-              icon: Icons.input_outlined,
-              borderColor: Colors.purpleAccent.withOpacity(0.25),
-              textColor: Colors.purpleAccent.shade100,
-              content: lastPrompt,
-              scrollController: _localAiPromptScrollController,
-              emptyMessage: 'No prompt sent yet',
-            ),
-            const SizedBox(height: 6),
-            // ── OUTPUT panel (bottom, fills remaining space) ─────────────────
-            _buildReadOnlyPanel(
-              context: context,
-              label: 'OUTPUT',
-              icon: Icons.output_outlined,
-              borderColor: Colors.purpleAccent.withOpacity(0.25),
-              textColor: Colors.purpleAccent.shade100,
-              content: isProcessing ? '' : lastResponse,
-              scrollController: _localAiOutputScrollController,
-              emptyMessage: isProcessing ? 'Processing...' : 'No response yet',
-              isProcessing: isProcessing,
-            ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.account_tree_outlined, size: 9, color: Colors.purpleAccent.withOpacity(0.6)),
+                    const SizedBox(width: 3),
+                    Text(
+                      LocalAiService.instance.customModelBase,
+                      style: TextStyle(
+                          color: Colors.purpleAccent.withOpacity(0.7),
+                          fontSize: 9,
+                          fontFamily: 'monospace'),
+                    ),
+                  ],
+                ),
+              )
+            else if (_aiModel.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.purpleAccent.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.purpleAccent.withOpacity(0.35)),
+                ),
+                child: Text(_aiModel,
+                    style: const TextStyle(
+                        color: Colors.purpleAccent, fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+              ),
+            const Spacer(),
+            if (_aiIsProcessing) ...[
+              const _DiagnosticsPulsingDot(color: Colors.purpleAccent),
+              const SizedBox(width: 5),
+              const Text('Processing...', style: TextStyle(color: Colors.purpleAccent, fontSize: 10)),
+            ],
           ],
-        );
-      },
+        ),
+        const SizedBox(height: 8),
+        // ── PROMPT panel (top, 1 part, editable) ────────────────────────────
+        Flexible(
+          flex: 1,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.input_outlined, size: 13, color: AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  Text(
+                    'PROMPT',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (_promptController.text.isNotEmpty)
+                    InkWell(
+                      onTap: () => _copyToClipboard(context, _promptController.text, 'PROMPT'),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        child: Row(
+                          children: [
+                            Icon(Icons.copy, size: 11, color: AppColors.textMuted),
+                            const SizedBox(width: 3),
+                            Text('Copy', style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: _aiIsProcessing
+                        ? null
+                        : () async {
+                            final promptText = _promptController.text.trim();
+                            if (promptText.isEmpty) return;
+                            try {
+                              await LocalAiService.instance.generateText(promptText);
+                            } catch (e) {
+                              debugPrint('Failed to send prompt to AI Assistant: $e');
+                            }
+                          },
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      child: Row(
+                        children: [
+                          _aiIsProcessing
+                              ? const SizedBox(
+                                  width: 10,
+                                  height: 10,
+                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.purpleAccent),
+                                )
+                              : const Icon(Icons.send_outlined, size: 11, color: Colors.purpleAccent),
+                          const SizedBox(width: 4),
+                          Text(
+                            _aiIsProcessing ? 'Sending...' : 'Send',
+                            style: TextStyle(
+                              color: _aiIsProcessing ? AppColors.textMuted : Colors.purpleAccent,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: Colors.purpleAccent.withOpacity(0.25),
+                    ),
+                  ),
+                  child: TextField(
+                    controller: _promptController,
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                    style: TextStyle(
+                      color: Colors.purpleAccent.shade100,
+                      fontSize: AppUIConfig.rootFontSize,
+                      fontFamily: 'monospace',
+                    ),
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.all(10),
+                      hintText: 'Type a prompt here to send to the AI Assistant...',
+                      hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 11),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        // ── OUTPUT panel (bottom, 2 parts) ──────────────────────────────────
+        Flexible(
+          flex: 2,
+          child: _buildReadOnlyPanel(
+            context: context,
+            label: 'OUTPUT',
+            icon: Icons.output_outlined,
+            borderColor: Colors.purpleAccent.withOpacity(0.25),
+            textColor: Colors.purpleAccent.shade100,
+            content: _aiIsProcessing ? '' : _aiResponse,
+            scrollController: _localAiOutputScrollController,
+            emptyMessage: _aiIsProcessing ? 'Processing...' : 'No response yet',
+            isProcessing: _aiIsProcessing,
+          ),
+        ),
+      ],
     );
   }
 

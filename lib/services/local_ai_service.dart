@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'system_logs_service.dart';
+import 'ai_bridge_service.dart';
 
 class LocalAiService extends ChangeNotifier {
   // Singleton pattern for easy access
@@ -17,6 +18,10 @@ class LocalAiService extends ChangeNotifier {
 
   String baseUrl = 'http://localhost:11434';
   String defaultModel = 'qwen2.5:3b';
+
+  /// Returns the custom context model when one has been built, otherwise the base model.
+  String get effectiveModel => customModelName.isNotEmpty ? customModelName : defaultModel;
+
   int timeoutMs = 120000;
   String clarityPrompt = 'Determine if the following prompt is clear? "{PROMPT}"';
   String clarityResponseFormat = 'binary'; // 'binary' enforces YES/NO output
@@ -46,10 +51,118 @@ class LocalAiService extends ChangeNotifier {
       }
       rewritePrompt = prefs.getString('ollamaRewritePrompt') ?? 'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: {PROMPT}';
       generateTaskPrompt = prefs.getString('ollamaGenerateTaskPrompt') ?? 'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"';
+      customModelName = prefs.getString('ollamaCustomModelName') ?? '';
+      customModelBase = prefs.getString('ollamaCustomModelBase') ?? '';
       notifyListeners();
     } catch (_) {}
   }
   
+  // --- Project context cache ---
+  String? _cachedProjectSummary;
+
+  /// Reads project_summary.md from the bridge directory once and caches the result.
+  /// Returns an empty string if the file cannot be read.
+  Future<String> _loadProjectSummary() async {
+    if (_cachedProjectSummary != null) return _cachedProjectSummary!;
+    try {
+      final file = File('${AiBridgeService.instance.bridgeDirPath}/project_summary.md');
+      if (await file.exists()) {
+        _cachedProjectSummary = await file.readAsString();
+        SystemLogsService.instance.addLog(
+          '[AI] project_summary.md loaded (${_cachedProjectSummary!.length} chars)',
+          category: LogCategory.AI,
+        );
+      } else {
+        _cachedProjectSummary = '';
+        SystemLogsService.instance.addLog(
+          '[AI] project_summary.md not found — context will be omitted',
+          category: LogCategory.AI,
+        );
+      }
+    } catch (e) {
+      _cachedProjectSummary = '';
+      SystemLogsService.instance.addLog(
+        '[AI] Failed to load project_summary.md: $e',
+        category: LogCategory.AI,
+      );
+    }
+    return _cachedProjectSummary!;
+  }
+
+  /// Clears the cached summary so it will be re-read on next use.
+  void invalidateProjectSummaryCache() {
+    _cachedProjectSummary = null;
+  }
+
+  // --- Custom Modelfile support ---
+
+  /// The name of the custom Ollama model baked with project context (e.g. "gorilla-engine").
+  /// Empty string means no custom model has been built yet.
+  String customModelName = '';
+
+  /// The base model the custom model was derived from (e.g. "qwen2.5:3b").
+  String customModelBase = '';
+
+  /// Generates a Modelfile from the current project_summary.md and runs
+  /// `ollama create <name>` to bake the project context into a persistent model.
+  /// Returns null on success, or an error message string on failure.
+  Future<String?> buildAndInstallModelfile(String modelName, String baseModel) async {
+    final summary = await _loadProjectSummary();
+
+    // Build a concise system prompt — trim to ~800 chars to stay within limits
+    final trimmedSummary = summary.length > 800 ? '${summary.substring(0, 800)}…' : summary;
+    final systemPrompt = trimmedSummary.isNotEmpty
+        ? 'You are a project assistant for the following project. Use this context when evaluating tasks and checklist items:\n\n$trimmedSummary'
+        : 'You are a helpful project assistant specializing in software development task management.';
+
+    final modelfileContent = 'FROM $baseModel\nSYSTEM """\n$systemPrompt\n"""\n';
+    final modelfilePath = '${AiBridgeService.instance.bridgeDirPath}/Modelfile';
+
+    try {
+      // Write the Modelfile to disk
+      await File(modelfilePath).writeAsString(modelfileContent);
+      SystemLogsService.instance.addLog(
+        '[AI] Modelfile written to $modelfilePath',
+        category: LogCategory.AI,
+      );
+
+      // Run: ollama create <modelName> -f <modelfilePath>
+      final result = await Process.run(
+        'ollama',
+        ['create', modelName, '-f', modelfilePath],
+        runInShell: true,
+      );
+
+      if (result.exitCode == 0) {
+        customModelName = modelName;
+        customModelBase = baseModel;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('ollamaCustomModelName', modelName);
+        await prefs.setString('ollamaCustomModelBase', baseModel);
+        // Invalidate the model list so the new model appears in the dropdown
+        notifyListeners();
+        SystemLogsService.instance.addLog(
+          '[AI] ollama create "$modelName" succeeded',
+          category: LogCategory.AI,
+        );
+        return null; // success
+      } else {
+        final err = '${result.stdout}\n${result.stderr}'.trim();
+        SystemLogsService.instance.addLog(
+          '[AI] ollama create "$modelName" failed (exit ${result.exitCode}): $err',
+          category: LogCategory.AI,
+        );
+        return err.isNotEmpty ? err : 'ollama create exited with code ${result.exitCode}';
+      }
+    } catch (e) {
+      SystemLogsService.instance.addLog(
+        '[AI] buildAndInstallModelfile error: $e',
+        category: LogCategory.AI,
+      );
+      return e.toString();
+    }
+  }
+
   bool _isProcessing = false;
   bool get isProcessing => _isProcessing;
 
@@ -104,18 +217,22 @@ class LocalAiService extends ChangeNotifier {
     int? numPredict,
     Map<String, dynamic>? format, // Ollama structured output schema
   }) async {
-    final usedModel = model ?? defaultModel;
+    final summaryContent = prompt.contains('{SUMMARY}') ? await _loadProjectSummary() : '';
+    final processedPrompt = prompt.replaceAll('{SUMMARY}', summaryContent);
+    final usedModel = model ?? effectiveModel;
     SystemLogsService.instance.addLog(
-      '[AI] generateText | prompt: ${prompt.length > 120 ? '${prompt.substring(0, 120)}…' : prompt}',
+      '[AI] generateText | prompt: ${processedPrompt.length > 120 ? '${processedPrompt.substring(0, 120)}…' : processedPrompt}',
       category: LogCategory.AI,
     );
     // Track the outgoing prompt so the Bridge Monitor I/O tab can display it.
-    _lastPromptSent = prompt;
+    // Fields are set BEFORE _setProcessing so the single notifyListeners() it
+    // fires carries the updated prompt values — avoids calling notifyListeners()
+    // synchronously inside a mouse-event callback (_debugDuringDeviceUpdate crash).
+    _lastPromptSent = processedPrompt;
     _lastResponseReceived = '';
-    notifyListeners();
     _setProcessing(true);
     try {
-      final messages = [{'role': 'user', 'content': prompt}];
+      final messages = [{'role': 'user', 'content': processedPrompt}];
       
       await _startOllamaIfNeeded();
 
@@ -128,7 +245,7 @@ class LocalAiService extends ChangeNotifier {
 
           final body = <String, dynamic>{
             'model': usedModel,
-            'prompt': prompt,
+            'prompt': processedPrompt,
             'stream': false,
           };
           if (options.isNotEmpty) body['options'] = options;
@@ -197,12 +314,38 @@ class LocalAiService extends ChangeNotifier {
     int? numPredict,
     Map<String, dynamic>? format, // Ollama structured output schema
   }) async {
-    final usedModel = model ?? defaultModel;
-    final userMsg = messages.lastWhere((m) => m['role'] == 'user', orElse: () => {})['content'] ?? '';
+    final needsSummary = messages.any((m) => (m['content'] ?? '').contains('{SUMMARY}'));
+    final summaryContent = needsSummary ? await _loadProjectSummary() : '';
+    // Build a system context message when summary content is available and not already present
+    final hasSystemMessage = messages.any((m) => m['role'] == 'system');
+    final List<Map<String, String>> processedMessages;
+    if (needsSummary && summaryContent.isNotEmpty && !hasSystemMessage) {
+      // Prepend a system message with the project context
+      processedMessages = [
+        {'role': 'system', 'content': 'You are working on the following project:\n\n$summaryContent'},
+        ...messages.map((m) {
+          final content = m['content'] ?? '';
+          return content.contains('{SUMMARY}')
+              ? {...m, 'content': content.replaceAll('{SUMMARY}', summaryContent)}
+              : m;
+        }),
+      ];
+    } else {
+      processedMessages = messages.map((m) {
+        final content = m['content'] ?? '';
+        return content.contains('{SUMMARY}')
+            ? {...m, 'content': content.replaceAll('{SUMMARY}', summaryContent)}
+            : m;
+      }).toList();
+    }
+    final usedModel = model ?? effectiveModel;
+    final userMsg = processedMessages.lastWhere((m) => m['role'] == 'user', orElse: () => {})['content'] ?? '';
     SystemLogsService.instance.addLog(
       '[AI] sendChat | user: ${userMsg.length > 120 ? '${userMsg.substring(0, 120)}…' : userMsg}',
       category: LogCategory.AI,
     );
+    _lastPromptSent = userMsg;
+    _lastResponseReceived = '';
     _setProcessing(true);
     try {
       await _startOllamaIfNeeded();
@@ -216,7 +359,7 @@ class LocalAiService extends ChangeNotifier {
 
           final body = <String, dynamic>{
             'model': usedModel,
-            'messages': messages,
+            'messages': processedMessages,
             'stream': false,
           };
           if (options.isNotEmpty) body['options'] = options;
@@ -240,6 +383,10 @@ class LocalAiService extends ChangeNotifier {
               '[AI] sendChat success | response: ${result != null && result.length > 120 ? '${result.substring(0, 120)}…' : result}',
               category: LogCategory.AI,
             );
+            if (result != null) {
+              _lastResponseReceived = result;
+              notifyListeners();
+            }
             return result;
           } else {
             _lastError = 'Server returned ${response.statusCode}: ${response.body}';
@@ -261,7 +408,12 @@ class LocalAiService extends ChangeNotifier {
         '[AI] sendChat → falling back to OpenAI',
         category: LogCategory.AI,
       );
-      return await _fallbackToOpenAI(messages, temperature: temperature);
+      final fallback = await _fallbackToOpenAI(processedMessages, temperature: temperature);
+      if (fallback != null) {
+        _lastResponseReceived = fallback;
+        notifyListeners();
+      }
+      return fallback;
     } finally {
       _setProcessing(false);
     }
@@ -276,12 +428,10 @@ class LocalAiService extends ChangeNotifier {
       '[AI] reviewPrompt called | prompt: ${userPrompt.length > 120 ? '${userPrompt.substring(0, 120)}…' : userPrompt}',
       category: LogCategory.AI,
     );
-    final systemPrompt = clarityPrompt;
-
     // We use a low temperature for deterministic orchestration tasks
     final result = await sendChat(
       [
-        {'role': 'system', 'content': systemPrompt},
+        {'role': 'system', 'content': clarityPrompt},
         {'role': 'user', 'content': userPrompt},
       ],
       temperature: 0.2,

@@ -1699,13 +1699,18 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       final task = _tasks[taskIdx];
       final json = task.toJson();
       json['name'] = _buildTaskPathName(task);
+      // targetCriteriaIndex is the canonical index into the FULL verificationCriteria
+      // list that the agent must echo back in latest_verification.json so the bridge
+      // can match the returned proof unambiguously without relying on string matching.
+      int? targetCriteriaIndex;
       if (json['verificationCriteria'] != null) {
         if (targetCriteriaDescription != null) {
-          final target = task.verificationCriteria.firstWhere(
+          final idx = task.verificationCriteria.indexWhere(
             (e) => e.description.trim().toLowerCase() == targetCriteriaDescription.trim().toLowerCase(),
-            orElse: () => task.verificationCriteria.first,
           );
-          json['verificationCriteria'] = [target.toJson()];
+          final resolvedIdx = idx != -1 ? idx : 0;
+          targetCriteriaIndex = resolvedIdx;
+          json['verificationCriteria'] = [task.verificationCriteria[resolvedIdx].toJson()];
         } else {
           final uncheckedTasks = task.verificationCriteria
               .where((e) =>
@@ -1715,11 +1720,18 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
                   !e.isPreview)
               .toList();
           if (uncheckedTasks.isNotEmpty) {
-            json['verificationCriteria'] = [uncheckedTasks.first.toJson()];
+            final firstUnchecked = uncheckedTasks.first;
+            final globalIdx = task.verificationCriteria.indexOf(firstUnchecked);
+            targetCriteriaIndex = globalIdx >= 0 ? globalIdx : 0;
+            json['verificationCriteria'] = [firstUnchecked.toJson()];
           } else {
             json['verificationCriteria'] = [];
           }
         }
+      }
+      // Embed the index so the agent can echo it back verbatim.
+      if (targetCriteriaIndex != null) {
+        json['targetCriteriaIndex'] = targetCriteriaIndex;
       }
       if (_isDryRunMode) {
         logSimulatedAction('FILE_WRITE', 'Write current_task.json', jsonEncode(json));
@@ -2795,19 +2807,34 @@ wshShell.AppActivate $myPid
           final trimmed = content.trim();
           if (trimmed.isNotEmpty && trimmed.startsWith('[')) {
             final List<dynamic> jsonList = jsonDecode(trimmed);
+            final existing = _tasks[taskIdx].verificationCriteria;
             for (var item in jsonList) {
               final desc = item['description']?.toString().trim() ?? '';
               final proof = item['proof']?.toString().trim();
               final notes = item['notes']?.toString().trim();
-              if (desc.isNotEmpty) {
-                final vcIdx = _tasks[taskIdx].verificationCriteria.indexWhere((vc) => vc.description == desc);
-                if (vcIdx != -1) {
-                  _tasks[taskIdx].verificationCriteria[vcIdx].proof = proof;
-                  if (notes != null) {
-                    _tasks[taskIdx].verificationCriteria[vcIdx].notes = notes;
-                  }
-                  changed = true;
+              // Match by criteriaIndex first, then exact description, then prefix.
+              int vcIdx = -1;
+              final criteriaIndexRaw = item['criteriaIndex'];
+              if (criteriaIndexRaw != null) {
+                final idx = (criteriaIndexRaw as num?)?.toInt() ?? -1;
+                if (idx >= 0 && idx < existing.length) {
+                  vcIdx = idx;
                 }
+              }
+              if (vcIdx == -1 && desc.isNotEmpty) {
+                vcIdx = existing.indexWhere((vc) => vc.description.trim().toLowerCase() == desc.toLowerCase());
+              }
+              if (vcIdx == -1 && desc.isNotEmpty) {
+                vcIdx = existing.indexWhere((vc) {
+                  final e = vc.description.trim().toLowerCase();
+                  final n = desc.toLowerCase();
+                  return n.startsWith(e) || e.startsWith(n);
+                });
+              }
+              if (vcIdx != -1) {
+                existing[vcIdx].proof = proof;
+                if (notes != null) existing[vcIdx].notes = notes;
+                changed = true;
               }
             }
           }
@@ -3355,7 +3382,7 @@ wshShell.AppActivate $myPid
       '---\nNATIVE SYSTEM HOOKS (DO NOT IGNORE)\n'
       '1. SAFETY ABORT / CLARIFICATION: If the task is unclear, unsafe, massive, or contains questions, DO NOT execute code. You MUST require clarification by outputting a `<preview>` tag containing a JSON array of questions, and writing `PREVIEW` to `.ai_bridge/agent_status.txt`.\n'
       '2. DATA MUTATION: Your active task context is in `.ai_bridge/current_task.json`. Never edit `.ai_bridge/tasks.json` directly.\n'
-      '3. PROGRESS NOTES: Output a clear summary of your work in the console/chat response, and write progress notes to `.ai_bridge/latest_notes.json` and verification proofs to `.ai_bridge/latest_verification.json` on disk (do NOT output XML tags).\n'
+      '3. PROGRESS NOTES: Write progress notes to `.ai_bridge/latest_notes.json` ({"summary":"...","notes":"..."}) and verification proofs to `.ai_bridge/latest_verification.json` on disk. Do NOT output XML tags. The verification file MUST be a JSON array where each item includes a `criteriaIndex` field copied verbatim from the `[criteriaIndex: N]` annotation in the prompt — this is how the bridge unambiguously matches your proof to the correct checklist item. Format: [{"criteriaIndex": N, "description": "...", "isVerified": true, "proof": "...", "notes": "..."}]\n'
       '4. QUEUE RELEASE: As your FINAL step, overwrite `.ai_bridge/agent_status.txt` with `IDLE` (or `PREVIEW` if requesting clarification or preview review).\n'
       '5. BLOCK SCREEN: At the very end of your response, explicitly request to send the block screen message by outputting: "please send the block screen message once."';
   String get systemHooksInstructions => _systemHooksInstructions;
@@ -3616,11 +3643,16 @@ wshShell.AppActivate $myPid
         .toList();
     final targetItem = targetCriteria ?? (uncheckedTasks.isNotEmpty ? uncheckedTasks.first : null);
     if (targetItem != null) {
+      // Compute the global index of this item in the full criteria list so we
+      // can embed it in the prompt — the agent must echo this number back in
+      // latest_verification.json as `criteriaIndex` for unambiguous matching.
+      final globalCriteriaIndex = task.verificationCriteria.indexOf(targetItem);
       sb.writeln('Verification Criteria:');
       String extraInfo = '';
       if (targetItem.goal.isNotEmpty) extraInfo += ' [Goal: ${targetItem.goal}]';
       if (targetItem.notes.isNotEmpty) extraInfo += ' [Notes: ${targetItem.notes}]';
       if (targetItem.tryCount > 0) extraInfo += ' [TRY #${targetItem.tryCount}]';
+      if (globalCriteriaIndex >= 0) extraInfo += ' [criteriaIndex: $globalCriteriaIndex]';
       if (targetItem.requestClarification) {
         sb.writeln('1. [CLARIFY] ${targetItem.description}$extraInfo');
       } else {
@@ -4655,19 +4687,38 @@ wshShell.AppActivate $myPid
                         .toList();
 
                     final existing = _tasks[taskIdx].verificationCriteria;
-                    for (final newItem in newItems) {
-                      int matchIdx = existing.indexWhere((e) {
-                        final eDesc = e.description.trim().toLowerCase();
-                        final nDesc = newItem.description.trim().toLowerCase();
-                        return nDesc == eDesc;
-                      });
+                    for (int ni = 0; ni < newItems.length; ni++) {
+                      final newItem = newItems[ni];
+                      // Attempt 1: match by criteriaIndex (unambiguous — agent echoes
+                      // the index written into current_task.json / the prompt).
+                      final rawJson = jsonList[ni];
+                      final criteriaIndexRaw = rawJson['criteriaIndex'];
+                      int matchIdx = -1;
+                      if (criteriaIndexRaw != null) {
+                        final idx = (criteriaIndexRaw as num?)?.toInt() ?? -1;
+                        if (idx >= 0 && idx < existing.length) {
+                          matchIdx = idx;
+                          print('[AiBridge] Verification matched by criteriaIndex=$idx → "${existing[idx].description.substring(0, existing[idx].description.length.clamp(0, 60))}"');
+                        }
+                      }
+                      // Attempt 2: exact description match (case-insensitive)
                       if (matchIdx == -1) {
-                        // Fall back to prefix matching if no exact match is found
+                        matchIdx = existing.indexWhere((e) {
+                          final eDesc = e.description.trim().toLowerCase();
+                          final nDesc = newItem.description.trim().toLowerCase();
+                          return nDesc == eDesc;
+                        });
+                      }
+                      // Attempt 3: bidirectional prefix match (last resort)
+                      if (matchIdx == -1) {
                         matchIdx = existing.indexWhere((e) {
                           final eDesc = e.description.trim().toLowerCase();
                           final nDesc = newItem.description.trim().toLowerCase();
                           return nDesc.startsWith(eDesc) || eDesc.startsWith(nDesc);
                         });
+                        if (matchIdx != -1) {
+                          print('[AiBridge] Verification matched by prefix fallback → "${existing[matchIdx].description.substring(0, existing[matchIdx].description.length.clamp(0, 60))}"');
+                        }
                       }
                       if (matchIdx != -1) {
                         existing[matchIdx].proof = newItem.proof;
@@ -4676,11 +4727,9 @@ wshShell.AppActivate $myPid
                           existing[matchIdx].status = AiVerificationStatus.pendingReview;
                         }
                       } else {
-                        // No matching criterion found — this verification item is proof
-                        // detail from the agent that doesn't correspond to a known criterion.
-                        // Do NOT add it as a new task criterion (that would create phantom
-                        // checklist items and cause an infinite re-queue loop on every cycle).
-                        print('[AiBridge] Verification item "${newItem.description.substring(0, newItem.description.length.clamp(0, 80))}" had no matching criterion — skipped (not added as new item).');
+                        // No match via index, exact, or prefix — skip silently to
+                        // avoid phantom checklist items causing infinite re-queue.
+                        print('[AiBridge] Verification item "${newItem.description.substring(0, newItem.description.length.clamp(0, 80))}" had no matching criterion (no criteriaIndex, no exact/prefix match) — skipped.');
                       }
                     }
                     changed = true;

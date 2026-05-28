@@ -321,6 +321,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   bool _isTestingAntigravity = false;
   bool _isTestingCli = false;
   bool _isTestingOllama = false;
+  bool _isBuildingModel = false;
+  String? _buildModelMessage;
+  bool _buildModelSuccess = false;
   bool _isSyncing = false;
   int _syncTotal = 0;
   int _syncProgress = 0;
@@ -1496,9 +1499,10 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
         final data = response.data;
         if (data is Map && data.containsKey('models')) {
           final List modelsList = data['models'] as List;
+          final customAlias = LocalAiService.instance.customModelName.trim().toLowerCase();
           final List<String> names = modelsList
               .map((m) => (m['name'] ?? m['model'] ?? '').toString())
-              .where((name) => name.isNotEmpty)
+              .where((name) => name.isNotEmpty && name.toLowerCase() != customAlias)
               .toList();
           return names;
         }
@@ -1542,6 +1546,36 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       }
     } finally {
       if (mounted) setState(() => _isTestingOllama = false);
+    }
+  }
+
+  Future<void> _buildCustomOllamaModel() async {
+    _formKey.currentState?.saveAndValidate();
+    final values = _formKey.currentState?.value ?? {};
+    final modelName = (values['ollamaCustomModelName'] as String? ?? 'gorilla-engine').trim();
+    final baseModel = (values['ollamaModel'] as String? ?? _ollamaModel ?? 'qwen2.5:3b').trim();
+
+    if (modelName.isEmpty) return;
+
+    setState(() {
+      _isBuildingModel = true;
+      _buildModelMessage = null;
+    });
+
+    final error = await LocalAiService.instance.buildAndInstallModelfile(modelName, baseModel);
+
+    if (mounted) {
+      setState(() {
+        _isBuildingModel = false;
+        _buildModelSuccess = error == null;
+        _buildModelMessage = error == null
+            ? 'Model "$modelName" created successfully. Select it in the Model Name dropdown to use it.'
+            : 'Build failed: $error';
+        if (error == null) {
+          // Refresh the model dropdown so the new model appears
+          _ollamaModelsFuture = _fetchOllamaModels();
+        }
+      });
     }
   }
 
@@ -3230,8 +3264,13 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                   );
                                 }
 
-                                final models = snapshot.data ?? [_ollamaModel ?? 'qwen2.5:3b'];
-                                if (_ollamaModel != null && _ollamaModel!.isNotEmpty && !models.contains(_ollamaModel)) {
+                                final customAlias = LocalAiService.instance.customModelName.trim().toLowerCase();
+                                final models = (snapshot.data ?? [_ollamaModel ?? 'qwen2.5:3b'])
+                                    .where((m) => m.toLowerCase() != customAlias)
+                                    .toList();
+                                if (_ollamaModel != null && _ollamaModel!.isNotEmpty
+                                    && _ollamaModel!.toLowerCase() != customAlias
+                                    && !models.contains(_ollamaModel)) {
                                   models.insert(0, _ollamaModel!);
                                 }
                                 final initialValue = _ollamaModel ?? (models.isNotEmpty ? models.first : 'qwen2.5:3b');
@@ -3313,20 +3352,102 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                               ),
                             ),
                             const SizedBox(height: 32),
+                            Row(
+                              children: [
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: ElevatedButton.icon(
+                                    onPressed: _isTestingOllama ? null : _testOllamaConnection,
+                                    icon: _isTestingOllama ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
+                                    label: Text('Test Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF2A2A2A),
+                                      foregroundColor: AppColors.accent,
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                      side: BorderSide(color: AppColors.accent, width: 1)
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 32),
+                            Divider(color: AppColors.controlBorder),
+                            const SizedBox(height: 16),
+                            Text('CUSTOM CONTEXT MODEL', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            const SizedBox(height: 8),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 16.0),
+                              child: Text(
+                                'Bake your project_summary.md into a custom Ollama model so context is available at zero per-request token cost. Run once whenever your project summary changes.',
+                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.85),
+                              ),
+                            ),
+                            _buildLabeled('Internal Alias', Icons.smart_toy, FormBuilderTextField(
+                              name: 'ollamaCustomModelName',
+                              initialValue: LocalAiService.instance.customModelName.isNotEmpty
+                                  ? LocalAiService.instance.customModelName
+                                  : 'gorilla-engine',
+                              style: TextStyle(color: AppColors.panelTextPrimary),
+                              decoration: _inputDecoration(),
+                            )),
+                            const SizedBox(height: 8),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 12.0, bottom: 16.0),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.account_tree_outlined, size: 13, color: AppColors.panelTextSecondary),
+                                  const SizedBox(width: 6),
+                                  Text('Root model: ', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.85)),
+                                  Text(
+                                    LocalAiService.instance.customModelBase.isNotEmpty
+                                        ? LocalAiService.instance.customModelBase
+                                        : (_ollamaModel ?? 'qwen2.5:3b'),
+                                    style: TextStyle(color: AppColors.accent, fontSize: AppUIConfig.rootFontSize * 0.85, fontFamily: 'monospace'),
+                                  ),
+                                  if (LocalAiService.instance.customModelBase.isEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    Text('(not yet built)', style: TextStyle(color: AppColors.panelTextSecondary.withValues(alpha: 0.5), fontSize: AppUIConfig.rootFontSize * 0.8, fontStyle: FontStyle.italic)),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            if (_buildModelMessage != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12.0),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: _buildModelSuccess ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: _buildModelSuccess ? Colors.green.withValues(alpha: 0.4) : Colors.red.withValues(alpha: 0.4)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(_buildModelSuccess ? Icons.check_circle_outline : Icons.error_outline,
+                                          color: _buildModelSuccess ? Colors.greenAccent : Colors.redAccent, size: 16),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text(_buildModelMessage!, style: TextStyle(color: _buildModelSuccess ? Colors.greenAccent : Colors.redAccent, fontSize: AppUIConfig.rootFontSize * 0.85))),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             Align(
                               alignment: Alignment.centerLeft,
                               child: ElevatedButton.icon(
-                                onPressed: _isTestingOllama ? null : _testOllamaConnection,
-                                icon: _isTestingOllama ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
-                                label: Text('Test Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+                                onPressed: _isBuildingModel ? null : _buildCustomOllamaModel,
+                                icon: _isBuildingModel
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.build_circle_outlined),
+                                label: Text('Build Custom Model', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2A2A2A),
-                                  foregroundColor: AppColors.accent,
+                                  backgroundColor: const Color(0xFF1A2A1A),
+                                  foregroundColor: Colors.greenAccent,
                                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                  side: BorderSide(color: AppColors.accent, width: 1)
+                                  side: const BorderSide(color: Colors.greenAccent, width: 1),
                                 ),
                               ),
                             ),
+
                           ],
                         ),
                         ListView(key: const PageStorageKey('config_tab_11'),

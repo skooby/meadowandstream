@@ -1,5 +1,17 @@
 [
   {
+    "id": "ffa5caa10ea41321ebb11068a52063aba92bb198",
+    "taskIds": [
+      "1779983671271",
+      "1779991051003"
+    ],
+    "title": "PROJECT SUMMARY [Resolved: Support tag {SUMMARY} in sending prompts to send to the AI Assistant.] | ADD AI ASSITANT TAB TO BRIDGE MONITOR [AI Assistant I/O tab converted to read-only PROMPT/OUTPUT monitor matching Agent panel layout]",
+    "summary": "Provide input field to feed to Agent to save a project summary document.",
+    "commitHash": "ffa5caa10ea41321ebb11068a52063aba92bb198",
+    "commitDate": "2026-05-28T20:13:17Z",
+    "verifiedNotes": "- Support tag {SUMMARY} in sending prompts to send to the AI Assistant. Replace with the link to the project_summary.md file in the form it is expecting of \"file:///\". in the project it is located in .ai_bridge/project_summary.md\n\n- Lets add a AI Assistant tab to our Bridge monitor. Want to see two text boxes... Prompts and Output. Both might be in JSON format not sure\n- AI Assistant tab visible in Bridge Monitor with Prompt and Output panels\n- AI Assistant tab added to Bridge Monitor with Prompt and Output panels\n- isThinking correctly stays YES throughout full agent session\n- Stuck pipeline recovery\n- AI Assistant is not the AI Bridge... This should be showing any prompts sent to the ai assistant and the output should be the results. No need for a Send to AI Bridge button\n- AI Assistant tab shows prompts sent to the AI assistant and its output — read-only, no send button\n- AI Assistant is showing AI Bridge communication ... but I do like this as functionality though not what I asked for but I can see that it would be good to keep. Lets Change the tab name to I/O... Lets add a switch between Agent (AI Bridge) and AI Assistant which is Ollama from the config... We are using AI Assistant a lot in the Task Editor stuff so make sure that is hooked up there\n- Tab renamed from 'AI Assistant' to 'I/O'\n- Switch between Agent (AI Bridge transcript viewer) and AI Assistant (Ollama) added\n- Agent mode shows existing live transcript viewer\n- AI Assistant mode is hooked to LocalAiService (Ollama) — same service used in Task Editor\n- dart analyze: 0 errors, 0 warnings\n- REUSABILITY: components extracted per primary directives\n- Bridge Monitor for AI Assistant I/O Tab we want this to monitor the input and output from the Ai Assistant... no need to send from here... should look just like the Agent side with input on top and output on bottom"
+  },
+  {
     "id": "f53eb4cd7447861fd601ef89e150762a8a3121e2",
     "taskIds": [
       "1779983671271"
@@ -320,17 +332,5 @@
     "commitHash": "62730daf0e00d95134df0d7bef76dbdf77699a80",
     "commitDate": "2026-05-22T21:30:39Z",
     "verifiedNotes": "- Log Outcomes Monitor have the area take up the whole space\n- Lets show the log outcomes monitor as a collapsible with text areas that are scrollable and fixed to a certain height, lets have it remember which is collapsed\n- at the top lets have a reset button which tries to put it into a clean state\n- At the top lets link to a markdown document that reviews the code base and determines the design and flow of the ai bridge. A button to view this document in the notes editor and a button to have this rebuilt which copies a prompt to the clipboard that we can put into the LLM manually\n- log outcome monitor adjust each size to the height of the content if it is > 120 pixels then make it scrollable and limited\n- Modify our rebuild prompt to keep it simple, mainly focus on the flow and detection of the AI Bridge. Have it analize if it is correctly doing a list of tasks. Instruct it to only do the areas that I mention and to keep it very brief and to the point. Have it list by number specific areas that we can then pinpoint as not working properly.  Include launching app, after sending to ai bridge, after returning to ai bridge, while processing, include any others that are relevant\n- Split the Bridge Monitor into its own window, I don't like the toggle idea"
-  },
-  {
-    "id": "454ae7ef824a11bddce4c7f5529cedc17d0de5c6",
-    "taskIds": [
-      "1779299719063",
-      "1778722257125"
-    ],
-    "title": "TASK MANAGER [ui: update Task Manager title theme color and Task List toolbar background] | CONNECTION [test: verify busy state detection and task status writing in unit tests [TRY #2]]",
-    "summary": "Connection test 2.0 passed.",
-    "commitHash": "454ae7ef824a11bddce4c7f5529cedc17d0de5c6",
-    "commitDate": "2026-05-22T16:28:31Z",
-    "verifiedNotes": "- Main Task Manager window title isn't using the theme color\n- Task List toolbar should use black for its color\n\n- Test for determining busy state of ai bridge and writing status in tasks\n- Lets create an AI BRIDGE WINDOW that we can use to diagnose problems, send tests and monitor outcomes. Have test state and regular state icon\n- Move the task manager toolbar below our worksheet toolbar"
   }
 ]

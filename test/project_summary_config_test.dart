@@ -2,6 +2,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:music_app/services/ai_bridge_service.dart';
+import 'package:music_app/services/local_ai_service.dart';
+import 'package:flutter/material.dart';
+import 'package:music_app/screens/visual_editor/panels/bridge_monitor_window.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -82,5 +85,85 @@ void main() {
     });
 
     expect(hasQueueAction, isTrue, reason: '{SUMMARY} tag should be replaced with the absolute file URL in the queued prompt');
+  });
+
+  test('LocalAiService.generateText replaces {SUMMARY} tag with absolute file:/// URI path', () async {
+    final service = LocalAiService.instance;
+    try {
+      await service.generateText('Check summary: {SUMMARY}');
+    } catch (_) {
+      // Ignore network errors/timeout
+    }
+
+    final expectedLink = Uri.file(File('${AiBridgeService.instance.bridgeDirPath}/project_summary.md').absolute.path).toString();
+    expect(service.lastPromptSent, contains(expectedLink));
+    expect(service.lastPromptSent, isNot(contains('{SUMMARY}')));
+  });
+
+  test('LocalAiService.sendChat replaces {SUMMARY} tag with absolute file:/// URI path', () async {
+    final service = LocalAiService.instance;
+    try {
+      await service.sendChat([
+        {'role': 'user', 'content': 'Please review: {SUMMARY}'}
+      ]);
+    } catch (_) {
+      // Ignore network errors/timeout
+    }
+
+    final expectedLink = Uri.file(File('${AiBridgeService.instance.bridgeDirPath}/project_summary.md').absolute.path).toString();
+    expect(service.lastPromptSent, contains(expectedLink));
+    expect(service.lastPromptSent, isNot(contains('{SUMMARY}')));
+  });
+
+  testWidgets('AiAssistantTab send prompt works', (WidgetTester tester) async {
+    final promptController = ScrollController();
+    final outputController = ScrollController();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AiAssistantTab(
+            lastPrompt: 'Hello Prompt',
+            lastOutput: 'Hello Output',
+            transcriptPath: '.ai_bridge/transcript.jsonl',
+            promptScrollController: promptController,
+            outputScrollController: outputController,
+            isThinking: false,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Switch to AI Assistant Mode
+    final toggleBtn = find.text('AI Assistant');
+    expect(toggleBtn, findsOneWidget);
+    await tester.tap(toggleBtn);
+    await tester.pumpAndSettle();
+
+    // Verify input fields
+    final textFieldFinder = find.byType(TextField);
+    expect(textFieldFinder, findsOneWidget);
+
+    final sendButtonFinder = find.text('Send');
+    expect(sendButtonFinder, findsOneWidget);
+
+    // Input prompt and send
+    await tester.enterText(textFieldFinder, 'Testing prompt send capability');
+    await tester.pumpAndSettle();
+
+    final TextField textField = tester.widget<TextField>(textFieldFinder);
+    expect(textField.controller?.text, 'Testing prompt send capability');
+
+    await tester.tap(sendButtonFinder);
+    await tester.pumpAndSettle();
+
+    // Verify it updates LocalAiService and retains prompt text in display
+    expect(textField.controller?.text, 'Testing prompt send capability');
+    expect(LocalAiService.instance.lastPromptSent, 'Testing prompt send capability');
+
+    promptController.dispose();
+    outputController.dispose();
   });
 }
