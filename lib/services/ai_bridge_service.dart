@@ -16,6 +16,7 @@ import 'system_logs_service.dart';
 import 'error_scanner.dart';
 import 'antigravity_status_service.dart';
 import 'ai_bridge_state_machine.dart';
+import 'local_ai_service.dart';
 import '../db/app_database.dart';
 
 enum UpdateCoverType { hotReload, hotRestart, rebuild }
@@ -470,6 +471,117 @@ class SimulatedAction {
       detail: json['detail'] ?? '',
       timestamp: json['timestamp'] != null ? DateTime.parse(json['timestamp']) : null,
     );
+  }
+}
+
+/// Represents a document review request written by the AI agent to
+/// `.ai_bridge/pending_review.json`. When this file is present, the bridge
+/// suspends the pipeline and surfaces a review UI for the user.
+///
+/// Agent schema:
+/// ```json
+/// {
+///   "filePath": "/abs/path/to/document.md",
+///   "fileName": "document.md",
+///   "summary": "AI-generated summary of the document contents...",
+///   "reason": "Why this document needs user review before proceeding.",
+///   "createdAt": "2026-05-28T05:00:00.000Z"
+/// }
+/// ```
+class PendingReviewRequest {
+  final String filePath;
+  final String fileName;
+  final String summary;
+  final String reason;
+  final DateTime createdAt;
+
+  const PendingReviewRequest({
+    required this.filePath,
+    required this.fileName,
+    required this.summary,
+    required this.reason,
+    required this.createdAt,
+  });
+
+  factory PendingReviewRequest.fromJson(Map<String, dynamic> json) {
+    return PendingReviewRequest(
+      filePath: json['filePath'] as String? ?? '',
+      fileName: json['fileName'] as String? ?? json['filePath']?.split('/').last ?? 'document',
+      summary: json['summary'] as String? ?? '',
+      reason: json['reason'] as String? ?? 'Document requires your review.',
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
+          : DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'filePath': filePath,
+    'fileName': fileName,
+    'summary': summary,
+    'reason': reason,
+    'createdAt': createdAt.toIso8601String(),
+  };
+
+  PendingReviewRequest copyWith({String? summary}) {
+    return PendingReviewRequest(
+      filePath: filePath,
+      fileName: fileName,
+      summary: summary ?? this.summary,
+      reason: reason,
+      createdAt: createdAt,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Document Summary Service
+// Delegates to LocalAiService — the same AI assistant used by the Task Editor.
+// Tries Ollama first (with auto-start), falls back to OpenAI if unavailable.
+// ---------------------------------------------------------------------------
+
+class OllamaDocumentSummaryService {
+  static const int _maxDocumentChars = 8000; // Truncation limit
+
+  /// Reads [filePath], truncates if needed, and asks the AI assistant to
+  /// summarize it. Returns an empty string on any failure.
+  static Future<String> generateSummary(String filePath) async {
+    // 1. Read file content
+    String content;
+    try {
+      final file = File(filePath);
+      if (!file.existsSync()) {
+        debugPrint('[DocSummary] File not found: $filePath');
+        return '';
+      }
+      content = file.readAsStringSync();
+      if (content.length > _maxDocumentChars) {
+        content = '${content.substring(0, _maxDocumentChars)}\n...[truncated]';
+      }
+    } catch (e) {
+      debugPrint('[DocSummary] File read error: $e');
+      return '';
+    }
+
+    // 2. Delegate to LocalAiService — same assistant as the Task Editor.
+    //    It uses the user's configured model, auto-starts Ollama if needed,
+    //    and falls back to OpenAI (gpt-4o-mini) if Ollama is unavailable.
+    try {
+      final prompt =
+          'You are a technical document summarizer. Please provide a concise '
+          '2-4 sentence summary of the following document. Focus on the key '
+          'purpose, main changes or findings, and any action required by the '
+          'reader. Do not use bullet points — respond with plain prose only.\n\n'
+          'Document:\n$content';
+
+      final result = await LocalAiService.instance.generateText(prompt);
+      final summary = (result ?? '').trim();
+      debugPrint('[DocSummary] Summary generated (${summary.length} chars)');
+      return summary;
+    } catch (e) {
+      debugPrint('[DocSummary] Generate error: $e');
+      return '';
+    }
   }
 }
 
@@ -1474,6 +1586,8 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   int _compileErrorLoopCount = 0;
   bool _isHandlingAgentStatus = false;
   DateTime? _statusHandlingLockAcquiredAt;
+  bool get isHandlingAgentStatus => _isHandlingAgentStatus;
+  DateTime? get statusHandlingLockAcquiredAt => _statusHandlingLockAcquiredAt;
   // Incremented by clearQueue() / forceResetIdle() so that in-flight async
   // methods can detect they've been superseded and abort gracefully.
   int _interruptionToken = 0;
@@ -1484,6 +1598,54 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   List<String> get activeTaskIds => _activeAgents.keys.toList();
   List<String> get pipelineTaskIds => [];
   List<String> get completedTaskIds => [];
+
+  // --- Pending Document Review ---
+  PendingReviewRequest? _pendingReview;
+  PendingReviewRequest? get pendingReview => _pendingReview;
+  bool get hasPendingDocumentReview => _pendingReview != null;
+
+  bool _isSummarizingReview = false;
+  bool get isSummarizingReview => _isSummarizingReview;
+
+  /// Accept the pending document review. Writes a `review_result.json` signal
+  /// file and deletes `pending_review.json` so the agent can continue.
+  Future<void> acceptPendingReview() async {
+    try {
+      final signalFile = File('$_dirPath/review_result.json');
+      signalFile.writeAsStringSync(jsonEncode({
+        'result': 'accepted',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      final reviewFile = File('$_dirPath/pending_review.json');
+      if (reviewFile.existsSync()) reviewFile.deleteSync();
+    } catch (e) {
+      debugPrint('[AiBridge] acceptPendingReview error: $e');
+    }
+    _pendingReview = null;
+    _isSummarizingReview = false; // Cancel any in-progress summarization
+    notifyListeners();
+    print('[AiBridge] User ACCEPTED pending document review.');
+  }
+
+  /// Reject the pending document review with optional feedback text.
+  Future<void> rejectPendingReview({String feedback = ''}) async {
+    try {
+      final signalFile = File('$_dirPath/review_result.json');
+      signalFile.writeAsStringSync(jsonEncode({
+        'result': 'rejected',
+        'feedback': feedback,
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      final reviewFile = File('$_dirPath/pending_review.json');
+      if (reviewFile.existsSync()) reviewFile.deleteSync();
+    } catch (e) {
+      debugPrint('[AiBridge] rejectPendingReview error: $e');
+    }
+    _pendingReview = null;
+    _isSummarizingReview = false; // Cancel any in-progress summarization
+    notifyListeners();
+    print('[AiBridge] User REJECTED pending document review. Feedback: ${feedback.isEmpty ? "(none)" : feedback}');
+  }
 
   String _buildTaskPathName(AiTask task) {
     final path = <String>[];
@@ -2827,8 +2989,12 @@ wshShell.AppActivate $myPid
                         final String statusName = modelContent.contains('<preview>') ? 'PREVIEW' : 'IDLE';
 
                         final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
-                        if (isAgentBusy && !_isHandlingAgentStatus && !_isAntigravityBusy && !_isDryRunMode) {
-                          print('[AiBridge] Poller detected completed PLANNER_RESPONSE (with tool_calls) in transcript.jsonl. Triggering status processing: $statusName');
+                        // Transcript is ground truth — do NOT gate on !_isAntigravityBusy.
+                        // The CLI process may still report busy momentarily after completion.
+                        if (isAgentBusy && !_isHandlingAgentStatus && !_isDryRunMode) {
+                          print('[AiBridge] Poller: transcript PLANNER_RESPONSE DONE → triggering $statusName (bypassing CLI busy state)');
+                          _isAntigravityBusy = false; // Clear the stale busy flag immediately
+                          _antigravityLastChangeObservedAt = null;
                           await _processStatusChange(statusName);
                         }
                       }
@@ -2868,13 +3034,24 @@ wshShell.AppActivate $myPid
         }
 
         // Unified status check: if daemon is not busy, but active prompt is still active.
-        if (!foundBusy && !_isDryRunMode) {
+        // Always check agent_status.txt regardless of CLI process state.
+        // The agent's own IDLE/PREVIEW signal is authoritative even if the daemon
+        // process still reports busy (race condition on process exit).
+        if (!_isDryRunMode) {
           try {
             final statusFile = File('$_dirPath/agent_status.txt');
             if (await statusFile.exists()) {
               final content = (await statusFile.readAsString()).trim();
               final norm = content.toUpperCase();
               if (norm.startsWith('ID') || norm.startsWith('PR')) {
+                // agent_status.txt = IDLE is the authoritative signal that the agent
+                // has finished. Immediately clear the 20-second last-change window so
+                // isThinking (and the AI BUSY indicator) drops right away — regardless
+                // of whether an active prompt is still in memory.
+                if (norm.startsWith('ID') && _antigravityLastChangeObservedAt != null) {
+                  _antigravityLastChangeObservedAt = null;
+                  notifyListeners();
+                }
                 final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
                 if (isAgentBusy) {
                   if (_bridgeMode == AntigravityBridgeMode.sdk || _bridgeMode == AntigravityBridgeMode.desktop || _bridgeMode == AntigravityBridgeMode.cli || _bridgeMode == AntigravityBridgeMode.handsfree) {
@@ -2898,6 +3075,61 @@ wshShell.AppActivate $myPid
         _updateStateMachineInputs();
         // Detect AI Bridge Sync Error
         await checkForSyncError();
+
+        // Detect pending document review written by the agent
+        try {
+          final reviewFile = File('$_dirPath/pending_review.json');
+          if (reviewFile.existsSync()) {
+            final raw = reviewFile.readAsStringSync().trim();
+            if (raw.isNotEmpty) {
+              final map = jsonDecode(raw) as Map<String, dynamic>;
+              final incoming = PendingReviewRequest.fromJson(map);
+              // Only update if the filePath changed (avoid spurious repaints)
+              if (_pendingReview?.filePath != incoming.filePath) {
+                _pendingReview = incoming;
+                print('[AiBridge] Pending document review detected: ${incoming.fileName}');
+                notifyListeners();
+
+                // Trigger Ollama summarization if the agent didn't supply one
+                if (incoming.summary.isEmpty && !_isSummarizingReview) {
+                  _isSummarizingReview = true;
+                  notifyListeners();
+                  // Fire-and-forget: runs async without blocking poller
+                  Future.microtask(() async {
+                    try {
+                      print('[AiBridge] Requesting Ollama summary for: ${incoming.fileName}');
+                      final generatedSummary = await OllamaDocumentSummaryService
+                          .generateSummary(incoming.filePath);
+                      // Only apply if this review is still the active one
+                      if (_pendingReview?.filePath == incoming.filePath) {
+                        _pendingReview = _pendingReview!.copyWith(
+                          summary: generatedSummary.isEmpty
+                              ? 'AI assistant could not generate a summary. Check that your AI service is configured and running.'
+                              : generatedSummary,
+                        );
+                        print('[AiBridge] AI summary applied (${generatedSummary.length} chars)');
+                      }
+                    } catch (e) {
+                      debugPrint('[AiBridge] AI summary error: $e');
+
+                    } finally {
+                      _isSummarizingReview = false;
+                      notifyListeners();
+                    }
+                  });
+                }
+              }
+            }
+          } else if (_pendingReview != null) {
+            // File was deleted externally (e.g. agent cancelled)
+            _pendingReview = null;
+            _isSummarizingReview = false;
+            notifyListeners();
+          }
+        } catch (e) {
+          debugPrint('[AiBridge] Pending review detection error: $e');
+        }
+
       } catch (_) {
       } finally {
         _isWatchingPoll = false;

@@ -4178,6 +4178,9 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
           }
         ),
 
+        // Pending Document Review Banner — shown when agent writes pending_review.json
+        const PendingDocumentReviewBanner(),
+
         // List View
         Expanded(
           child: ListenableBuilder(
@@ -4820,6 +4823,419 @@ class AiTaskManagerToolbarButtons extends StatelessWidget {
           constraints: const BoxConstraints(),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pending Document Review Banner
+// ---------------------------------------------------------------------------
+
+/// Surfaces when `AiBridgeService.instance.hasPendingDocumentReview` is true.
+/// The AI agent writes `.ai_bridge/pending_review.json` to request user review
+/// of a document before the pipeline can continue.
+class PendingDocumentReviewBanner extends StatefulWidget {
+  const PendingDocumentReviewBanner({super.key});
+
+  @override
+  State<PendingDocumentReviewBanner> createState() => _PendingDocumentReviewBannerState();
+}
+
+class _PendingDocumentReviewBannerState extends State<PendingDocumentReviewBanner>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnim;
+
+  bool _showRejectFeedback = false;
+  final TextEditingController _feedbackController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _feedbackController.dispose();
+    super.dispose();
+  }
+
+  // --- Stateless sub-widgets ---
+
+  Widget _buildHeaderRow(PendingReviewRequest review) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedBuilder(
+          animation: _pulseAnim,
+          builder: (_, __) => Opacity(
+            opacity: _pulseAnim.value,
+            child: Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(top: 5, right: 10),
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.amberAccent,
+              ),
+            ),
+          ),
+        ),
+        const Icon(Icons.rate_review_outlined, size: 16, color: Colors.amberAccent),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Document Review Required',
+                style: TextStyle(
+                  color: Colors.amberAccent,
+                  fontSize: AppUIConfig.rootFontSize,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                review.fileName,
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: AppUIConfig.smallFontSize,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReasonChip(String reason) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.amberAccent.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: Colors.amberAccent.withOpacity(0.3), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.info_outline, size: 11, color: Colors.amberAccent),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              reason,
+              style: TextStyle(color: Colors.amberAccent.withOpacity(0.85), fontSize: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummarySection(String summary) {
+    if (summary.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white12, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, size: 12, color: Colors.purpleAccent),
+              const SizedBox(width: 6),
+              Text(
+                'AI Summary',
+                style: TextStyle(
+                  color: Colors.purpleAccent.withOpacity(0.9),
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            summary,
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: AppUIConfig.smallFontSize,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildViewDocumentButton(String filePath) {
+    return _ReviewActionButton(
+      label: 'View Document',
+      icon: Icons.open_in_new,
+      color: Colors.blueAccent,
+      onTap: () async {
+        try {
+          // Normalize to Windows backslash paths for explorer.exe
+          final windowsPath = filePath.replaceAll('/', '\\');
+          final file = File(windowsPath);
+          if (file.existsSync()) {
+            await Process.run('explorer', [windowsPath], runInShell: true);
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('File not found: $windowsPath'),
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
+          }
+        } catch (e) {
+          debugPrint('[ReviewBanner] Open file error: $e');
+        }
+      },
+    );
+  }
+
+  Widget _buildAcceptButton() {
+    return _ReviewActionButton(
+      label: 'Accept',
+      icon: Icons.check_circle_outline,
+      color: Colors.greenAccent,
+      onTap: () async {
+        await AiBridgeService.instance.acceptPendingReview();
+        if (mounted) setState(() { _showRejectFeedback = false; });
+      },
+    );
+  }
+
+  Widget _buildRejectButton() {
+    return _ReviewActionButton(
+      label: 'Reject',
+      icon: Icons.cancel_outlined,
+      color: Colors.redAccent,
+      onTap: () {
+        setState(() { _showRejectFeedback = !_showRejectFeedback; });
+      },
+    );
+  }
+
+  Widget _buildFeedbackRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _feedbackController,
+            autofocus: true,
+            style: TextStyle(color: Colors.white, fontSize: AppUIConfig.smallFontSize),
+            decoration: InputDecoration(
+              hintText: 'Optional: explain what to change...',
+              hintStyle: TextStyle(color: Colors.white38, fontSize: AppUIConfig.smallFontSize),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.05),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: BorderSide(color: Colors.redAccent.withOpacity(0.4), width: 0.8),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: BorderSide(color: Colors.redAccent.withOpacity(0.3), width: 0.8),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: Colors.redAccent, width: 1),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        TextButton(
+          onPressed: () => setState(() { _showRejectFeedback = false; }),
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+          child: Text('Cancel', style: TextStyle(color: Colors.white54, fontSize: AppUIConfig.smallFontSize)),
+        ),
+        const SizedBox(width: 4),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.redAccent.withOpacity(0.2),
+            foregroundColor: Colors.redAccent,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            side: const BorderSide(color: Colors.redAccent, width: 0.8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          ),
+          onPressed: () async {
+            final feedback = _feedbackController.text.trim();
+            _feedbackController.clear();
+            await AiBridgeService.instance.rejectPendingReview(feedback: feedback);
+            if (mounted) setState(() { _showRejectFeedback = false; });
+          },
+          child: Text('Confirm Reject', style: TextStyle(fontSize: AppUIConfig.smallFontSize)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryLoadingState() {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white12, width: 0.5),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.5,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Colors.purpleAccent.withOpacity(0.7),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Generating AI summary...',
+            style: TextStyle(
+              color: Colors.white38,
+              fontSize: AppUIConfig.smallFontSize,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: AiBridgeService.instance,
+      builder: (context, _) {
+        final review = AiBridgeService.instance.pendingReview;
+        if (review == null) return const SizedBox.shrink();
+
+        final isSummarizing = AiBridgeService.instance.isSummarizingReview;
+
+        return AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.amberAccent.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.amberAccent.withOpacity(0.35), width: 1),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeaderRow(review),
+                  const SizedBox(height: 8),
+                  if (review.reason.isNotEmpty) ...[
+                    _buildReasonChip(review.reason),
+                    const SizedBox(height: 8),
+                  ],
+                  // Summary: show loading state or actual summary
+                  if (isSummarizing && review.summary.isEmpty) ...[
+                    _buildSummaryLoadingState(),
+                    const SizedBox(height: 10),
+                  ] else if (review.summary.isNotEmpty) ...[
+                    _buildSummarySection(review.summary),
+                    const SizedBox(height: 10),
+                  ],
+                  // Action buttons row
+                  Row(
+                    children: [
+                      _buildViewDocumentButton(review.filePath),
+                      const SizedBox(width: 8),
+                      const Spacer(),
+                      _buildRejectButton(),
+                      const SizedBox(width: 8),
+                      _buildAcceptButton(),
+                    ],
+                  ),
+                  // Reject feedback (shown on demand)
+                  if (_showRejectFeedback) ...[
+                    const SizedBox(height: 8),
+                    _buildFeedbackRow(),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Stateless action button helper used within [PendingDocumentReviewBanner].
+class _ReviewActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ReviewActionButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withOpacity(0.4), width: 0.8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: AppUIConfig.smallFontSize,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

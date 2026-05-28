@@ -539,9 +539,25 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
       output.writeln('Sync Error Detected: ${AiBridgeService.instance.isSyncErrorDetected ? "YES" : "NO"}');
       output.writeln('Antigravity Last Change Observed: $formattedLastObserved');
       output.writeln('Active Subagents count: ${AiBridgeService.instance.activeAgents.length}');
+      // Pipeline lock diagnostics
+      final isLocked = AiBridgeService.instance.isHandlingAgentStatus;
+      final lockAcquiredAt = AiBridgeService.instance.statusHandlingLockAcquiredAt;
+      final lockAge = lockAcquiredAt != null ? DateTime.now().difference(lockAcquiredAt) : null;
+      output.writeln('Pipeline Status Lock: ${isLocked ? "LOCKED" : "FREE"}');
+      if (lockAge != null) {
+        output.writeln('  Lock held for: ${lockAge.inSeconds}s (watchdog fires at 180s)');
+      }
+      output.writeln('Timeout Guards: SharedPreferences=8s, disk save=15s');
 
       for (final entry in AiBridgeService.instance.activeAgents.entries) {
         output.writeln('  - Agent ${entry.key}: Status: ${entry.value.currentStatus}');
+      }
+
+      final pendingReview = AiBridgeService.instance.pendingReview;
+      output.writeln('Pending Document Review: ${pendingReview != null ? "YES — ${pendingReview.fileName}" : "NO"}');
+      if (pendingReview != null) {
+        output.writeln('  File: ${pendingReview.filePath}');
+        output.writeln('  Reason: ${pendingReview.reason}');
       }
 
       final statusFile = File('${AiBridgeService.instance.bridgeDirPath}/agent_status.txt');
@@ -552,6 +568,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
       }
 
       output.writeln('\nDiagnostics complete successfully.');
+
 
       if (mounted) {
         setState(() {
@@ -1462,6 +1479,106 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                             ),
                           ],
                           const SizedBox(height: 12),
+                          // Pipeline Lock Status Card
+                          Builder(builder: (context) {
+                            final isLocked = AiBridgeService.instance.isHandlingAgentStatus;
+                            final lockAcquiredAt = AiBridgeService.instance.statusHandlingLockAcquiredAt;
+                            final lockAge = lockAcquiredAt != null
+                                ? DateTime.now().difference(lockAcquiredAt)
+                                : null;
+                            final lockAgeSeconds = lockAge?.inSeconds ?? 0;
+                            // Color coding: green=free, amber=locked<60s, red=locked>60s
+                            final lockColor = !isLocked
+                                ? Colors.greenAccent
+                                : (lockAgeSeconds > 60 ? Colors.redAccent : Colors.amberAccent);
+                            final lockIcon = !isLocked
+                                ? Icons.lock_open_outlined
+                                : (lockAgeSeconds > 60 ? Icons.lock : Icons.lock_clock);
+                            return Card(
+                              color: AppColors.panelBackground,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: BorderSide(
+                                  color: isLocked
+                                      ? lockColor.withOpacity(0.5)
+                                      : AppColors.border,
+                                ),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(lockIcon, color: lockColor, size: 16),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          isLocked ? 'Pipeline Lock: HELD' : 'Pipeline Lock: FREE',
+                                          style: TextStyle(
+                                            color: AppColors.textPrimary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        if (isLocked && lockAge != null) ...[
+                                          const Spacer(),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: lockColor.withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                              '${lockAgeSeconds}s / 180s',
+                                              style: TextStyle(color: lockColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    if (!isLocked)
+                                      Text(
+                                        'No active status-change processing. Pipeline is ready to accept IDLE/PREVIEW signals.',
+                                        style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                                      )
+                                    else ...[
+                                      Text(
+                                        '_processStatusChange is running. Lock acquired at ${lockAcquiredAt!.toLocal().toString().split(".").first}.',
+                                        style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      if (lockAgeSeconds > 60)
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.redAccent.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text(
+                                            '⚠ Lock held >60 seconds — may be stuck. Use Clear Queue or Force Reset to recover. '
+                                            'Watchdog will auto-release at 180 seconds.',
+                                            style: TextStyle(color: Colors.redAccent, fontSize: 11),
+                                          ),
+                                        ),
+                                    ],
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 4,
+                                      children: [
+                                        _buildTimeoutBadge('Watchdog', '3 min', Colors.purpleAccent),
+                                        _buildTimeoutBadge('SharedPrefs', '8 s', Colors.cyanAccent),
+                                        _buildTimeoutBadge('Disk Save', '15 s', Colors.tealAccent),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                          const SizedBox(height: 12),
                           // Active Subagents Card
                           Card(
                             color: AppColors.panelBackground,
@@ -1906,6 +2023,33 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
               fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Small pill badge showing a named timeout guard and its limit.
+  Widget _buildTimeoutBadge(String label, String limit, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.3), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.timer_outlined, size: 11, color: color.withOpacity(0.8)),
+          const SizedBox(width: 4),
+          Text(
+            '$label: ',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 10),
+          ),
+          Text(
+            limit,
+            style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
           ),
         ],
       ),

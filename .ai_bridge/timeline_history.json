@@ -1,5 +1,17 @@
 [
   {
+    "id": "3dcc9e2b4461c97c85ac4271fc289232c0f74def",
+    "taskIds": [
+      "1779299719063",
+      "1779882529474"
+    ],
+    "title": "TASK MANAGER [Fixed: folders with no matching search results no longer appear in task list] | ASSIST BY AREA",
+    "summary": "Add search capability to our Task manager, search needs to include Task names, description, summary, checklist items to search against in the results.\n\nWant the AI Assistant to be able to help with different areas",
+    "commitHash": "3dcc9e2b4461c97c85ac4271fc289232c0f74def",
+    "commitDate": "2026-05-28T04:19:24Z",
+    "verifiedNotes": "- Create a searchable field for task names.\n- Integrate search functionality for task descriptions and summaries.\n- Add feature to search through checklist items linked to specific tasks.\n- Design intuitive UI elements for easy access to the new search functionality.\n- Test the search functionality across all relevant data types in the Task Manager.\n- Include only the current worksheet in the filtered response\n- Search is returning/showing folders that don't match the search criteria and don't have children that match the search critera\n- Search is returning/showing folders that don't match the search criteria and don't have children that match the search criteria"
+  },
+  {
     "id": "2edb1891a36f5fea9a855922a4818d0251e953f2",
     "taskIds": [
       "1779887389293"
@@ -315,15 +327,6 @@
     "summary": "",
     "commitHash": "a0f95ec3556772e9d478e583893911ee31ee4152",
     "commitDate": "2026-05-21T17:42:26Z",
-    "verifiedNotes": ""
-  },
-  {
-    "id": "c01d2fcb2ccd0a98e774c1ee85c3432811904506",
-    "taskIds": [],
-    "title": "Checkpoint",
-    "summary": "Before Log Scraping",
-    "commitHash": "c01d2fcb2ccd0a98e774c1ee85c3432811904506",
-    "commitDate": "2026-05-21T16:55:17Z",
     "verifiedNotes": ""
   }
 ]
