@@ -1,5 +1,17 @@
 [
   {
+    "id": "2702de7b948bea42ee4ee6e634ecb5bea5c19000",
+    "taskIds": [
+      "1779063155069",
+      "1779887389293"
+    ],
+    "title": "Task Editor [Resolved: Disable ai bridge processing on a task, folder, worksheet that is set to Don't Process (Ignore)] | Bridge Monitor SIMPLE [Verified: Testing, return immediately [TRY #3]]",
+    "summary": "Improvements and enhancements\n\nImprovements",
+    "commitHash": "2702de7b948bea42ee4ee6e634ecb5bea5c19000",
+    "commitDate": "2026-05-28T13:30:24Z",
+    "verifiedNotes": "- Disable ai bridge processing on a task, folder, worksheet that is set to Don't Process (Ignore)\n\n- Testing, return immediately"
+  },
+  {
     "id": "002f9d0541b32f5325e184a6d4d48792deb0f266",
     "taskIds": [
       "1779757239243"
@@ -320,16 +332,5 @@
     "commitHash": "ec466315cef8f94e9de7211eee3e5974f76aba15",
     "commitDate": "2026-05-22T13:28:39Z",
     "verifiedNotes": "- Lets add a manual copy prompt to clipboard button in our Active Tasks area. Idea is to be able to manually paste this into a prompt instead of using the AI Bridge\n- Lets change the design up a bit, move the version control top toolbar inside of the different tabs, and we will assign different buttons according to the tab.\n- Move the copy prompt to clipboard icon/button to the toolbar, Left side\n- Move the refresh icon/button to the Version Control title bar on the right side\n- add a send to ai bridge in the active tasks toolbar on the far left, should be a yellow lighting bolt"
-  },
-  {
-    "id": "d3ea8a347ed011ec3dd124873f73ce2fc8405cd3",
-    "taskIds": [
-      "1779394771459"
-    ],
-    "title": "TEST [fix: resolve AI Bridge sync error and update status to IDLE]",
-    "summary": "",
-    "commitHash": "d3ea8a347ed011ec3dd124873f73ce2fc8405cd3",
-    "commitDate": "2026-05-22T05:17:30Z",
-    "verifiedNotes": "- Resolved ai bridge sync, stopped repeated reloading, http connection to CLI\n- Lets have a debug setting in our config file and hook this to the log [AntigravityStatusService] HTTP bridge check: state=IDLE, activeJobs=0, isBusy=false... Also if we could make that a bit more intelligent to only output if the value changes... that would be great\n- testing busy"
   }
 ]

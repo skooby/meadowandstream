@@ -290,6 +290,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   Map<String, List<String>> _windowAvailability = {};
   int _queueClearCompletedMinutes = -1;
   String? _agentRules;
+  String? _projectSummary;
   String? _antigravityBaseUrl;
   String? _antigravityBridgeMode;
   bool _antigravityStatusDebug = false;
@@ -447,6 +448,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _customActiveTaskHighlightColor = prefs.getInt('ve_activeTaskHighlightColor');
       _queueClearCompletedMinutes = prefs.getInt('queueClearCompletedMinutes') ?? -1;
       _agentRules = prefs.getString('project_agent_rules');
+      _projectSummary = prefs.getString('project_summary');
       _antigravityBaseUrl = prefs.getString('antigravity_base_url');
       _antigravityBridgeMode = prefs.getString('antigravity_bridge_mode') ?? 'sdk';
       _antigravityInvokeEndpoint = prefs.getString('antigravity_invoke_endpoint');
@@ -752,6 +754,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       final newOllamaGenerateTaskPrompt = values.containsKey('ollamaGenerateTaskPrompt') ? values['ollamaGenerateTaskPrompt'] as String? : _ollamaGenerateTaskPrompt;
 
       final newAgentRules = values.containsKey('agentRules') ? values['agentRules'] as String? : _agentRules;
+      final newProjectSummary = values.containsKey('projectSummary') ? values['projectSummary'] as String? : _projectSummary;
       final newAntigravityBaseUrl = values.containsKey('antigravityBaseUrl') ? values['antigravityBaseUrl'] as String? : _antigravityBaseUrl;
       final newAntigravityInvokeEndpoint = values.containsKey('antigravityInvokeEndpoint') ? values['antigravityInvokeEndpoint'] as String? : _antigravityInvokeEndpoint;
       final newAntigravityPromptEndpoint = values.containsKey('antigravityPromptEndpoint') ? values['antigravityPromptEndpoint'] as String? : _antigravityPromptEndpoint;
@@ -944,6 +947,14 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
         }
       }
 
+      if (values.containsKey('projectSummary') && values['projectSummary'] != null) {
+        if (newProjectSummary != null && newProjectSummary.trim().isNotEmpty) {
+            await prefs.setString('project_summary', newProjectSummary.trim());
+        } else {
+            await prefs.remove('project_summary');
+        }
+      }
+
       final newAntigravityBridgeMode = _antigravityBridgeMode;
       if (newAntigravityBridgeMode != null && newAntigravityBridgeMode.trim().isNotEmpty) {
           await prefs.setString('antigravity_bridge_mode', newAntigravityBridgeMode.trim());
@@ -1100,6 +1111,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             AppUIConfig.windowBorderWidth = newBorderWidth;
             _queueClearCompletedMinutes = newClearCompleted;
             _agentRules = newAgentRules;
+            _projectSummary = newProjectSummary;
             _antigravityBaseUrl = newAntigravityBaseUrl;
             _antigravityBridgeMode = newAntigravityBridgeMode;
             _antigravityInvokeEndpoint = newAntigravityInvokeEndpoint;
@@ -1533,6 +1545,40 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
     }
   }
 
+  Future<void> _buildProjectSummary() async {
+    _formKey.currentState?.save();
+    final values = _formKey.currentState?.value;
+    final summaryText = values?['projectSummary'] as String? ?? _projectSummary ?? '';
+    
+    try {
+      final file = File('PROJECT_SUMMARY.md');
+      await file.writeAsString(summaryText);
+      
+      // Send the content to the AI Bridge queue
+      final promptText = 'Please save the following project summary document into PROJECT_SUMMARY.md:\n\n$summaryText';
+      await AiBridgeService.instance.sendToQueue(promptText, true);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Project summary built, saved, and sent to AI Bridge!'),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving PROJECT_SUMMARY.md: $e'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _testCliConnection() async {
     setState(() => _isTestingCli = true);
     try {
@@ -1934,6 +1980,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                 'textOutlineWidth': _textOutlineWidth.toString(),
                 'queueClearCompletedMinutes': _queueClearCompletedMinutes.toString(),
                 'agentRules': _agentRules ?? 'Role: Senior Systems Architect.\nCommunication Style: Minimalist. No greetings, no "I hope this helps," no conversational filler. Output only technical plans, code, or critical status alerts.\nOperational Protocol:\nAlways prioritize Planning Mode before Acting.\nUse the /terminal to verify assumptions; do not guess file structures.\nIf a task is ambiguous, list 3 specific questions and stop.\n\nThe "Focus & Drift" Monitor:\nBefore every task, state the current objective in one sentence.\nIf the current task deviates from the PROJECT_SUMMARY.md goals, flag a "Context Drift Alert" and request realignment.\nError Reduction: Run a "Red Team" check on every code block for null pointers and race conditions before presenting.\n\nThe "State Persistence" Workflow:\nCreate a workflow /sync that:\nScans the last 10 interactions.\nUpdates PROJECT_SUMMARY.md with:\n[Current Architecture]\n[Resolved Blockers]\n[Pending Critical Tasks].\nUpdates BRIDGE_LOGS.md with any API or connectivity changes.\nDeletes outdated \'TODO\' comments in the codebase.\n\nThe "New Chat" Handover:\nGenerate a Handover Manifest. Summarize the current technical state, the specific logic of the AI Bridge we just built, and the exact next step. Format this so I can paste it into a fresh chat to give the new agent 100% context instantly.\n\nAutomated Summary Maintenance:\nUpon completion of any file write or terminal command, automatically append a 1-sentence summary of the change to the CHANGELOG.md and verify it against the PROJECT_SUMMARY.md for consistency.',
+                'projectSummary': _projectSummary ?? '',
                 'antigravityBridgeMode': _antigravityBridgeMode ?? 'sdk',
                 'antigravityBaseUrl': _antigravityBaseUrl ?? 'http://localhost:8080',
                 'antigravityInvokeEndpoint': _antigravityInvokeEndpoint ?? '/api/v1/agents/invoke',
@@ -3285,6 +3332,33 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                         ListView(key: const PageStorageKey('config_tab_11'),
                           padding: const EdgeInsets.only(right: 16),
                           children: [
+                            const SizedBox(height: 16),
+                            Text('PROJECT SUMMARY DOCUMENT', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Project Summary (saves as markdown rules for the Agent)', Icons.summarize, FormBuilderTextField(
+                              name: 'projectSummary',
+                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, height: 1.5),
+                              maxLines: 15,
+                              minLines: 5,
+                              decoration: _inputDecoration(),
+                            )),
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: ElevatedButton.icon(
+                                onPressed: _buildProjectSummary,
+                                icon: const Icon(Icons.build),
+                                label: Text('Build Project Summary', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF2A2A2A),
+                                  foregroundColor: AppColors.accent,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                  side: BorderSide(color: AppColors.accent, width: 1)
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            const Divider(color: Color(0xFF2A2A2A)),
                             const SizedBox(height: 16),
                             Text('AI BRIDGE', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
                             const SizedBox(height: 16),
