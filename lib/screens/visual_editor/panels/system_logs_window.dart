@@ -364,11 +364,81 @@ class _SystemLogsWindowState extends State<SystemLogsWindow> {
                           else if (log.category == LogCategory.SYNC)
                             tagColor = Colors.orangeAccent;
 
+                          final timestamp = '[${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}:${log.timestamp.second.toString().padLeft(2, '0')}] [${log.category.name}]';
+                          final isMultiline = log.message.contains('\n');
+                          final firstLine = isMultiline ? log.message.split('\n').first : log.message;
+
+                          if (isMultiline) {
+                            // Full prompt / multiline entries — collapsible
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                              child: Theme(
+                                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                                child: ExpansionTile(
+                                  dense: true,
+                                  tilePadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                                  childrenPadding: EdgeInsets.zero,
+                                  iconColor: tagColor.withOpacity(0.7),
+                                  collapsedIconColor: tagColor.withOpacity(0.5),
+                                  title: SelectableText(
+                                    '$timestamp $firstLine',
+                                    style: TextStyle(
+                                      color: tagColor,
+                                      fontSize: AppUIConfig.rootFontSize,
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  children: [
+                                    Container(
+                                      width: double.infinity,
+                                      margin: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.35),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: tagColor.withOpacity(0.25)),
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: SelectableText(
+                                              log.message.split('\n').skip(1).join('\n'),
+                                              style: TextStyle(
+                                                color: tagColor.withOpacity(0.9),
+                                                fontSize: AppUIConfig.rootFontSize,
+                                                fontFamily: 'monospace',
+                                              ),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.copy, size: 12),
+                                            color: Colors.white38,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                            tooltip: 'Copy full text',
+                                            onPressed: () {
+                                              Clipboard.setData(ClipboardData(text: log.message));
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('Copied to clipboard'), duration: Duration(seconds: 1)),
+                                              );
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+
                           return Padding(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12.0, vertical: 2.0),
                             child: SelectableText(
-                              '[${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}:${log.timestamp.second.toString().padLeft(2, '0')}] [${log.category.name}] ${log.message}',
+                              '$timestamp ${log.message}',
                               style: TextStyle(
                                   color: tagColor,
                                   fontSize: AppUIConfig.rootFontSize,

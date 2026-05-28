@@ -1,5 +1,16 @@
 [
   {
+    "id": "f53eb4cd7447861fd601ef89e150762a8a3121e2",
+    "taskIds": [
+      "1779983671271"
+    ],
+    "title": "PROJECT SUMMARY [Resolved: Connect the button to send the contents of the input field to the AI Bridge]",
+    "summary": "Provide input field to feed to Agent to save a project summary document.",
+    "commitHash": "f53eb4cd7447861fd601ef89e150762a8a3121e2",
+    "commitDate": "2026-05-28T16:24:54Z",
+    "verifiedNotes": "- Add a text input field in the AI Assistant tab within Project Configuration\n- Design a button below the text input field, ensuring it is clearly visible and accessible. Button is titled Build Project Summary.\n- Connect the button to send the contents of the input field to the AI Bridge"
+  },
+  {
     "id": "2702de7b948bea42ee4ee6e634ecb5bea5c19000",
     "taskIds": [
       "1779063155069",
@@ -321,16 +332,5 @@
     "commitHash": "454ae7ef824a11bddce4c7f5529cedc17d0de5c6",
     "commitDate": "2026-05-22T16:28:31Z",
     "verifiedNotes": "- Main Task Manager window title isn't using the theme color\n- Task List toolbar should use black for its color\n\n- Test for determining busy state of ai bridge and writing status in tasks\n- Lets create an AI BRIDGE WINDOW that we can use to diagnose problems, send tests and monitor outcomes. Have test state and regular state icon\n- Move the task manager toolbar below our worksheet toolbar"
-  },
-  {
-    "id": "ec466315cef8f94e9de7211eee3e5974f76aba15",
-    "taskIds": [
-      "1778869915153"
-    ],
-    "title": "VERSION CONTROL [feat: Add manual copy prompt to clipboard button in active tasks]",
-    "summary": "Version Control System improvements and tasks",
-    "commitHash": "ec466315cef8f94e9de7211eee3e5974f76aba15",
-    "commitDate": "2026-05-22T13:28:39Z",
-    "verifiedNotes": "- Lets add a manual copy prompt to clipboard button in our Active Tasks area. Idea is to be able to manually paste this into a prompt instead of using the AI Bridge\n- Lets change the design up a bit, move the version control top toolbar inside of the different tabs, and we will assign different buttons according to the tab.\n- Move the copy prompt to clipboard icon/button to the toolbar, Left side\n- Move the refresh icon/button to the Version Control title bar on the right side\n- add a send to ai bridge in the active tasks toolbar on the far left, should be a yellow lighting bolt"
   }
 ]

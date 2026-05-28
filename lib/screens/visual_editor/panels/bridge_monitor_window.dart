@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../visual_editor_screen.dart';
 import '../../../constants.dart';
 import '../../../services/ai_bridge_service.dart';
+import '../../../services/local_ai_service.dart';
 import '../../../services/antigravity_status_service.dart';
 import '../../../state/global_picker_state.dart';
 import 'global_notes_editor_window.dart';
@@ -260,6 +261,61 @@ class _AiBridgePanelState extends State<AiBridgePanel> with SingleTickerProvider
   String _diagnosticOutput = '';
   final ScrollController _diagnosticScrollController = ScrollController();
 
+  // AI Assistant tab — read-only transcript viewer
+  String _assistantLastPrompt = '';
+  String _assistantLastOutput = '';
+  String _assistantTranscriptPath = '';
+  final ScrollController _assistantOutputScrollController = ScrollController();
+  final ScrollController _assistantPromptScrollController = ScrollController();
+
+  Future<void> _loadAssistantTranscript() async {
+    try {
+      final userProfile = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
+      final brainDir = Directory('$userProfile\\.gemini\\antigravity\\brain');
+      if (!await brainDir.exists()) return;
+      // Find latest transcript
+      final List<FileSystemEntity> all = await brainDir.list(recursive: true, followLinks: false).toList();
+      final transcripts = all
+          .whereType<File>()
+          .where((f) => f.path.endsWith('transcript.jsonl'))
+          .toList();
+      if (transcripts.isEmpty) return;
+      final times = <File, DateTime>{};
+      for (final t in transcripts) {
+        try { times[t] = await t.lastModified(); } catch (_) {}
+      }
+      transcripts.sort((a, b) =>
+          (times[b] ?? DateTime(0)).compareTo(times[a] ?? DateTime(0)));
+      final latest = transcripts.first;
+      final path = latest.path;
+      // Parse JSONL — grab the most recent USER_INPUT and PLANNER_RESPONSE
+      final lines = await latest.readAsLines();
+      String lastPrompt = '';
+      String lastOutput = '';
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || !trimmed.startsWith('{')) continue;
+        try {
+          final map = jsonDecode(trimmed) as Map<String, dynamic>;
+          final type = (map['type'] as String? ?? '').toUpperCase();
+          final content = (map['content'] as String? ?? '').trim();
+          if (type == 'USER_INPUT' && content.isNotEmpty) lastPrompt = content;
+          if (type == 'PLANNER_RESPONSE' && content.isNotEmpty) lastOutput = content;
+        } catch (_) {}
+      }
+      if (mounted &&
+          (lastPrompt != _assistantLastPrompt ||
+           lastOutput != _assistantLastOutput ||
+           path != _assistantTranscriptPath)) {
+        setState(() {
+          _assistantLastPrompt = lastPrompt;
+          _assistantLastOutput = lastOutput;
+          _assistantTranscriptPath = path;
+        });
+      }
+    } catch (_) {}
+  }
+
   // Collapsible Logs
   final List<String> _logFiles = [
     'current_task.json',
@@ -289,13 +345,15 @@ class _AiBridgePanelState extends State<AiBridgePanel> with SingleTickerProvider
     AiBridgeService.instance.removeListener(_onAiBridgeServiceChanged);
     _tabController.removeListener(_handleTabSelection);
     _tabController.dispose();
+    _assistantOutputScrollController.dispose();
+    _assistantPromptScrollController.dispose();
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_handleTabSelection);
     _loadSelectedTab();
     _checkStatus();
@@ -307,6 +365,7 @@ class _AiBridgePanelState extends State<AiBridgePanel> with SingleTickerProvider
       if (mounted) {
         _checkStatus();
         _loadAllLogs();
+        _loadAssistantTranscript();
       }
     });
   }
@@ -545,7 +604,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
       final lockAge = lockAcquiredAt != null ? DateTime.now().difference(lockAcquiredAt) : null;
       output.writeln('Pipeline Status Lock: ${isLocked ? "LOCKED" : "FREE"}');
       if (lockAge != null) {
-        output.writeln('  Lock held for: ${lockAge.inSeconds}s (watchdog fires at 180s)');
+        output.writeln('  Lock held for: ${lockAge.inSeconds}s (watchdog fires at 720s / 12 min)');
       }
       output.writeln('Timeout Guards: SharedPreferences=8s, disk save=15s');
 
@@ -677,6 +736,20 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
 
         final isLlmBusy = AiBridgeService.instance.isThinking || AiBridgeService.instance.isAntigravityBusy;
         final isRunning = AiBridgeService.instance.isDaemonRunning;
+        final isPromptDispatched = AiBridgeService.instance.isPromptDispatched;
+        final lastObservedSecs = AiBridgeService.instance.antigravityLastChangeObservedAt != null
+            ? DateTime.now().difference(AiBridgeService.instance.antigravityLastChangeObservedAt!).inSeconds
+            : null;
+        final isLastChangeBusy = lastObservedSecs != null && lastObservedSecs < 90;
+
+        // Build a human-readable list of which conditions are driving isThinking
+        final List<String> thinkingReasons = [];
+        if (AiBridgeService.instance.activeAgents.isNotEmpty) thinkingReasons.add('active subagents');
+        if (AiBridgeService.instance.isAntigravityBusy) thinkingReasons.add('isAntigravityBusy');
+        if (AiBridgeService.instance.activePrompt != null) thinkingReasons.add('activePrompt set');
+        if (isPromptDispatched) thinkingReasons.add('promptDispatched');
+        if (AiBridgeService.instance.isTranscriptActive) thinkingReasons.add('transcript active <60s');
+        if (isLastChangeBusy) thinkingReasons.add('lastChange ${lastObservedSecs}s ago (<90s)');
 
         final Color llmColor;
         final String llmStateText;
@@ -745,10 +818,14 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                       label: 'Agent',
                       value: AiBridgeService.instance.isThinking
                           ? 'Thinking'
-                          : (AiBridgeService.instance.isAntigravityBusy ? 'Busy' : 'Idle'),
+                          : (AiBridgeService.instance.isAntigravityBusy
+                              ? 'Busy'
+                              : (isPromptDispatched ? 'Dispatched' : 'Idle')),
                       color: AiBridgeService.instance.isThinking
                           ? Colors.orangeAccent
-                          : (AiBridgeService.instance.isAntigravityBusy ? Colors.amberAccent : Colors.cyanAccent),
+                          : (AiBridgeService.instance.isAntigravityBusy
+                              ? Colors.amberAccent
+                              : (isPromptDispatched ? Colors.yellowAccent : Colors.cyanAccent)),
                       icon: Icons.psychology_outlined,
                     ),
                     const SizedBox(width: 12),
@@ -781,6 +858,10 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                     Tab(
                       icon: Icon(Icons.alt_route_outlined, size: 18),
                       text: 'Dry Run Simulation',
+                    ),
+                    Tab(
+                      icon: Icon(Icons.swap_horiz_outlined, size: 18),
+                      text: 'I/O',
                     ),
                   ],
                   labelColor: AppColors.accent,
@@ -1225,7 +1306,65 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                                   _buildDetailRow('Active Subagents Running', activeSubagentsText, isHighlighted: subagents.isNotEmpty),
                                   _buildDetailRow('Status File (agent_status.txt)', agentStatusText, isHighlighted: agentStatusText == 'BUSY'),
                                   _buildDetailRow('Last Activity Observed', formattedLastObserved),
+                                  const SizedBox(height: 8),
+                                  const Divider(height: 1, color: Colors.white10),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'isThinking Conditions',
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  _buildThinkingConditionRow('Active Subagents', AiBridgeService.instance.activeAgents.isNotEmpty),
+                                  _buildThinkingConditionRow('isAntigravityBusy', AiBridgeService.instance.isAntigravityBusy),
+                                  _buildThinkingConditionRow('activePrompt set', AiBridgeService.instance.activePrompt != null),
+                                  _buildThinkingConditionRow('promptDispatched', isPromptDispatched),
+                                  _buildThinkingConditionRow('transcriptActive (<60s)', AiBridgeService.instance.isTranscriptActive),
+                                  _buildThinkingConditionRow(
+                                    'lastChange window (<90s)${lastObservedSecs != null ? " — ${lastObservedSecs}s ago" : ""}',
+                                    isLastChangeBusy,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  if (isLlmBusy && thinkingReasons.isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orangeAccent.withOpacity(0.08),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: Colors.orangeAccent.withOpacity(0.3)),
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text('Why: ', style: TextStyle(color: Colors.orangeAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                          Expanded(
+                                            child: Text(
+                                              thinkingReasons.join(' · '),
+                                              style: const TextStyle(color: Colors.orangeAccent, fontSize: 10),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  else
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        color: Colors.greenAccent.withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: Colors.greenAccent.withOpacity(0.2)),
+                                      ),
+                                      child: const Text(
+                                        'No active conditions — agent is idle.',
+                                        style: TextStyle(color: Colors.greenAccent, fontSize: 10),
+                                      ),
+                                    ),
                                 ],
+
                               ),
                             ),
                           ),
@@ -1530,7 +1669,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                                               borderRadius: BorderRadius.circular(12),
                                             ),
                                             child: Text(
-                                              '${lockAgeSeconds}s / 180s',
+                                              '${lockAgeSeconds}s / 720s',
                                               style: TextStyle(color: lockColor, fontSize: 10, fontWeight: FontWeight.bold),
                                             ),
                                           ),
@@ -1558,7 +1697,7 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                                           ),
                                           child: const Text(
                                             '⚠ Lock held >60 seconds — may be stuck. Use Clear Queue or Force Reset to recover. '
-                                            'Watchdog will auto-release at 180 seconds.',
+                                            'Watchdog will auto-release at 720 seconds.',
                                             style: TextStyle(color: Colors.redAccent, fontSize: 11),
                                           ),
                                         ),
@@ -1568,11 +1707,136 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                                       spacing: 8,
                                       runSpacing: 4,
                                       children: [
-                                        _buildTimeoutBadge('Watchdog', '3 min', Colors.purpleAccent),
+                                        _buildTimeoutBadge('Watchdog', '12 min', Colors.purpleAccent),
                                         _buildTimeoutBadge('SharedPrefs', '8 s', Colors.cyanAccent),
                                         _buildTimeoutBadge('Disk Save', '15 s', Colors.tealAccent),
+                                        _buildTimeoutBadge('Bounce Wait', '5 min', Colors.orangeAccent),
                                       ],
                                     ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                          const SizedBox(height: 12),
+                          // Pipeline Phase Log Card
+                          Builder(builder: (context) {
+                            final phaseLog = AiBridgeService.instance.pipelinePhaseLog;
+                            return Card(
+                              color: AppColors.panelBackground,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: BorderSide(
+                                  color: phaseLog.isNotEmpty
+                                      ? Colors.cyanAccent.withOpacity(0.3)
+                                      : AppColors.border,
+                                ),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(Icons.timeline, size: 16, color: Colors.cyanAccent),
+                                        const SizedBox(width: 8),
+                                        const Text(
+                                          'Pipeline Phase Log',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        Text(
+                                          '${phaseLog.length} event${phaseLog.length == 1 ? '' : 's'}',
+                                          style: const TextStyle(color: Colors.white54, fontSize: 10),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        InkWell(
+                                          onTap: () async {
+                                            final text = phaseLog.join('\n');
+                                            await Clipboard.setData(ClipboardData(text: text));
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('Pipeline phase log copied to clipboard')),
+                                              );
+                                            }
+                                          },
+                                          child: const Icon(Icons.copy_all, size: 13, color: Colors.white38),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Divider(height: 1, color: Colors.white10),
+                                    const SizedBox(height: 8),
+                                    if (phaseLog.isEmpty)
+                                      const Text(
+                                        'No pipeline phase events yet. Events appear here when the AI bridge triggers completion.',
+                                        style: TextStyle(
+                                          color: Colors.white38,
+                                          fontSize: 11,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      )
+                                    else
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxHeight: 200),
+                                        child: Scrollbar(
+                                          child: ListView.builder(
+                                            shrinkWrap: true,
+                                            itemCount: phaseLog.length,
+                                            itemBuilder: (context, idx) {
+                                              final msg = phaseLog[idx];
+                                              // Color-code by phase type
+                                              final Color lineColor;
+                                              if (msg.contains('ABORTED')) {
+                                                lineColor = Colors.redAccent;
+                                              } else if (msg.contains('MISSING FILES') || msg.contains('REMINDER')) {
+                                                lineColor = Colors.orangeAccent;
+                                              } else if (msg.contains('BOUNCE PHASE 1: BUSY')) {
+                                                lineColor = Colors.amberAccent;
+                                              } else if (msg.contains('TRIGGER')) {
+                                                lineColor = Colors.cyanAccent;
+                                              } else if (msg.contains('LOCK ACQUIRED')) {
+                                                lineColor = Colors.blueAccent;
+                                              } else if (msg.contains('RECOVERY')) {
+                                                lineColor = Colors.greenAccent;
+                                              } else {
+                                                lineColor = Colors.white60;
+                                              }
+                                              return Padding(
+                                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                                child: Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      idx == 0 ? '● ' : '◦ ',
+                                                      style: TextStyle(
+                                                        color: lineColor,
+                                                        fontSize: 10,
+                                                      ),
+                                                    ),
+                                                    Expanded(
+                                                      child: Text(
+                                                        msg,
+                                                        style: TextStyle(
+                                                          color: idx == 0 ? lineColor : lineColor.withOpacity(0.75),
+                                                          fontSize: 10,
+                                                          fontFamily: 'monospace',
+                                                          fontWeight: idx == 0 ? FontWeight.bold : FontWeight.normal,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -1733,254 +1997,468 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
                     ),
                     Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Card(
-                        color: AppColors.panelBackground,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(color: AppColors.border),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    'Simulated Dry Run Mode',
-                                    style: TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Switch(
-                                    value: AiBridgeService.instance.isDryRunMode,
-                                    onChanged: (val) {
-                                      AiBridgeService.instance.setDryRunMode(val);
-                                    },
-                                    activeColor: AppColors.accent,
-                                  ),
-                                  const Spacer(),
-                                  if (AiBridgeService.instance.isDryRunMode) ...[
-                                    IconButton(
-                                      icon: const Icon(Icons.delete_sweep_outlined, size: 16),
-                                      color: Colors.redAccent,
-                                      onPressed: () {
-                                        AiBridgeService.instance.clearSimulatedActions();
-                                      },
-                                      tooltip: 'Clear Simulation Log',
-                                    ),
-                                    const SizedBox(width: 8),
-                                  ],
-                                ],
+                      child: Builder(builder: (context) {
+                        final isDry = AiBridgeService.instance.isDryRunMode;
+                        final actions = AiBridgeService.instance.simulatedActions;
+                        final modeColor = isDry ? Colors.amberAccent : Colors.greenAccent;
+                        final modeLabel = isDry ? 'DRY RUN' : 'LIVE SESSION';
+                        final modeIcon = isDry ? Icons.alt_route_outlined : Icons.cable_outlined;
+
+                        // Build per-type counts
+                        final Map<String, int> typeCounts = {};
+                        for (final a in actions) {
+                          typeCounts[a.type] = (typeCounts[a.type] ?? 0) + 1;
+                        }
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // ── Session Banner ──────────────────────────────────
+                            Card(
+                              color: AppColors.panelBackground,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: BorderSide(color: modeColor.withOpacity(0.4), width: 1.5),
                               ),
-                              const Divider(color: Colors.white12, height: 16),
-                              Row(
-                                children: [
-                                  if (AiBridgeService.instance.isDryRunMode) ...[
-                                    ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppColors.accent.withOpacity(0.1),
-                                        foregroundColor: AppColors.accent,
-                                        side: BorderSide(color: AppColors.accent.withOpacity(0.5)),
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      ),
-                                      icon: const Icon(Icons.send_and_archive_outlined, size: 14),
-                                      label: const Text('Simulate Send Prompt', style: TextStyle(fontSize: 11)),
-                                      onPressed: () async {
-                                        await AiBridgeService.instance.sendToQueue(
-                                          'SIMULATED DRY RUN PROMPT TEXT: Verify system state and print status.',
-                                          false,
-                                        );
-                                      },
-                                    ),
-                                    const SizedBox(width: 8),
-                                    ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.amber.withOpacity(0.1),
-                                        foregroundColor: Colors.amber,
-                                        side: BorderSide(color: Colors.amber.withOpacity(0.5)),
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      ),
-                                      icon: const Icon(Icons.play_circle_outline, size: 14),
-                                      label: const Text('Simulate Bridge Connect', style: TextStyle(fontSize: 11)),
-                                      onPressed: () {
-                                        AiBridgeService.instance.logSimulatedAction(
-                                          'MACRO',
-                                          'Manual Trigger ConnectBridge',
-                                          'Executing ConnectBridge macro containing SetWindowAntigravity.',
-                                        );
-                                      },
-                                    ),
-                                    const SizedBox(width: 8),
-                                  ],
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.cyan.withOpacity(0.1),
-                                      foregroundColor: Colors.cyan,
-                                      side: BorderSide(color: Colors.cyan.withOpacity(0.5)),
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    ),
-                                    icon: const Icon(Icons.copy_all_outlined, size: 14),
-                                    label: Text(
-                                      AiBridgeService.instance.isDryRunMode
-                                          ? 'Copy Dry Run Info'
-                                          : 'Copy Bridge Info',
-                                      style: const TextStyle(fontSize: 11),
-                                    ),
-                                    onPressed: () async {
-                                      final buffer = StringBuffer();
-                                      buffer.writeln(AiBridgeService.instance.isDryRunMode
-                                          ? '=== DRY RUN INFO ==='
-                                          : '=== LIVE RUN INFO ===');
-                                      buffer.writeln('Bridge Mode: ${AiBridgeService.instance.bridgeMode}');
-                                      buffer.writeln('Is Dry Run Mode: ${AiBridgeService.instance.isDryRunMode}');
-                                      buffer.writeln('Active Processing Task ID: ${AiBridgeService.instance.activeProcessingTaskId}');
-                                      buffer.writeln('Active Prompt: ${AiBridgeService.instance.activePrompt?.text}');
-                                      buffer.writeln(AiBridgeService.instance.isDryRunMode
-                                          ? '\n=== SIMULATED ACTIONS ==='
-                                          : '\n=== BRIDGE ACTIONS ===');
-                                      for (final act in AiBridgeService.instance.simulatedActions) {
-                                        buffer.writeln('[${act.timestamp.toLocal().toString().split(' ').last.split('.').first}] [${act.type}] ${act.title}: ${act.detail}');
-                                      }
-                                      await Clipboard.setData(ClipboardData(text: buffer.toString()));
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(AiBridgeService.instance.isDryRunMode
-                                                ? 'Dry run info copied to clipboard!'
-                                                : 'Bridge log info copied to clipboard!'),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Expanded(
-                                child: AiBridgeService.instance.simulatedActions.isEmpty
-                                    ? Center(
-                                        child: Text(
-                                          AiBridgeService.instance.isDryRunMode
-                                              ? 'No simulated transmissions captured yet.'
-                                              : 'No bridge transmissions captured yet.',
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Header row
+                                    Row(
+                                      children: [
+                                        Icon(modeIcon, size: 16, color: modeColor),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Simulated Dry Run Mode',
                                           style: TextStyle(
-                                            color: AppColors.textMuted,
-                                            fontSize: 11,
-                                            fontStyle: FontStyle.italic,
+                                            color: AppColors.textPrimary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
                                           ),
                                         ),
-                                      )
-                                    : ListView.builder(
-                                        itemCount: AiBridgeService.instance.simulatedActions.length,
-                                        itemBuilder: (context, idx) {
-                                          final act = AiBridgeService.instance.simulatedActions[idx];
-                                          Color chipColor = Colors.grey;
-                                          switch (act.type) {
-                                            case 'PROMPT':
-                                              chipColor = Colors.greenAccent;
-                                              break;
-                                            case 'VBS_SCRIPT':
-                                              chipColor = Colors.blueAccent;
-                                              break;
-                                            case 'MACRO':
-                                              chipColor = Colors.orangeAccent;
-                                              break;
-                                            case 'QUEUE':
-                                              chipColor = Colors.cyanAccent;
-                                              break;
-                                            case 'API_CALL':
-                                              chipColor = Colors.purpleAccent;
-                                              break;
-                                            case 'FILE_WRITE':
-                                              chipColor = Colors.amberAccent;
-                                              break;
-                                            case 'STATE':
-                                              chipColor = Colors.pinkAccent;
-                                              break;
-                                            case 'STATUS_WRITE':
-                                              chipColor = Colors.tealAccent;
-                                              break;
-                                          }
-
-                                          return Card(
-                                            margin: const EdgeInsets.only(bottom: 8),
-                                            color: Colors.black.withOpacity(0.2),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(4),
-                                              side: const BorderSide(color: Colors.white10, width: 0.5),
-                                            ),
-                                            child: ExpansionTile(
-                                              dense: true,
-                                              iconColor: AppColors.textSecondary,
-                                              collapsedIconColor: AppColors.textSecondary,
-                                              title: Row(
-                                                children: [
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: chipColor.withOpacity(0.15),
-                                                      borderRadius: BorderRadius.circular(4),
-                                                      border: Border.all(color: chipColor.withOpacity(0.5)),
-                                                    ),
-                                                    child: Text(
-                                                      act.type,
-                                                      style: TextStyle(
-                                                        color: chipColor,
-                                                        fontSize: 9,
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                    child: Text(
-                                                      act.title,
-                                                      style: TextStyle(
-                                                        color: AppColors.textPrimary,
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              subtitle: Text(
-                                                '${act.timestamp.toLocal().toString().split(' ').last.split('.').first}',
+                                        const SizedBox(width: 8),
+                                        Switch(
+                                          value: isDry,
+                                          onChanged: (val) {
+                                            AiBridgeService.instance.setDryRunMode(val);
+                                          },
+                                          activeColor: AppColors.accent,
+                                        ),
+                                        const Spacer(),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: modeColor.withOpacity(0.15),
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(color: modeColor.withOpacity(0.5)),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(modeIcon, size: 11, color: modeColor),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                modeLabel,
                                                 style: TextStyle(
-                                                  color: AppColors.textMuted,
-                                                  fontSize: 9,
+                                                  color: modeColor,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  letterSpacing: 0.8,
                                                 ),
                                               ),
-                                              children: [
-                                                Container(
-                                                  width: double.infinity,
-                                                  padding: const EdgeInsets.all(8),
-                                                  color: Colors.black38,
-                                                  child: Text(
-                                                    act.detail,
-                                                    style: const TextStyle(
-                                                      color: Colors.lightGreenAccent,
-                                                      fontFamily: 'monospace',
-                                                      fontSize: 10,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        },
+                                            ],
+                                          ),
+                                        ),
+                                        if (isDry) ...[
+                                          const SizedBox(width: 8),
+                                          IconButton(
+                                            icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                                            color: Colors.redAccent,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                            onPressed: () {
+                                              AiBridgeService.instance.clearSimulatedActions();
+                                            },
+                                            tooltip: 'Clear Log',
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    const Divider(color: Colors.white12, height: 16),
+                                    // ── Active Session State ─────────────────────
+                                    Text(
+                                      isDry ? 'Dry Run Session State' : 'Live Session State',
+                                      style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.8,
                                       ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _buildDryRunDetailRow('Bridge Mode', AiBridgeService.instance.bridgeMode.toString().split('.').last, modeColor),
+                                    _buildDryRunDetailRow('Queue Status', AiBridgeService.instance.queueStatus,
+                                        AiBridgeService.instance.queueStatus == 'BUSY' ? Colors.orangeAccent : Colors.greenAccent),
+                                    _buildDryRunDetailRow('Agent Status (file)', (_loadedLogs['agent_status.txt'] ?? 'UNKNOWN').trim(),
+                                        (_loadedLogs['agent_status.txt'] ?? '').trim() == 'BUSY' ? Colors.orangeAccent : Colors.greenAccent),
+                                    _buildDryRunDetailRow('Prompt Dispatched', AiBridgeService.instance.isPromptDispatched ? 'YES' : 'NO',
+                                        AiBridgeService.instance.isPromptDispatched ? Colors.amberAccent : Colors.white38),
+                                    _buildDryRunDetailRow('isThinking', AiBridgeService.instance.isThinking ? 'YES' : 'NO',
+                                        AiBridgeService.instance.isThinking ? Colors.orangeAccent : Colors.white38),
+                                    _buildDryRunDetailRow('isAntigravityBusy', AiBridgeService.instance.isAntigravityBusy ? 'YES' : 'NO',
+                                        AiBridgeService.instance.isAntigravityBusy ? Colors.amberAccent : Colors.white38),
+                                    _buildDryRunDetailRow(
+                                      'Active Task ID',
+                                      AiBridgeService.instance.activeProcessingTaskId ?? 'None',
+                                      AiBridgeService.instance.activeProcessingTaskId != null ? Colors.cyanAccent : Colors.white38,
+                                    ),
+                                    _buildDryRunDetailRow(
+                                      'Active Prompt',
+                                      AiBridgeService.instance.activePrompt != null
+                                          ? (AiBridgeService.instance.activePrompt!.text.length > 60
+                                              ? '${AiBridgeService.instance.activePrompt!.text.substring(0, 60)}…'
+                                              : AiBridgeService.instance.activePrompt!.text)
+                                          : 'None',
+                                      AiBridgeService.instance.activePrompt != null ? Colors.cyanAccent : Colors.white38,
+                                    ),
+                                    _buildDryRunDetailRow('Pipeline Lock Held', AiBridgeService.instance.isHandlingAgentStatus ? 'YES' : 'NO',
+                                        AiBridgeService.instance.isHandlingAgentStatus ? Colors.redAccent : Colors.white38),
+                                    _buildDryRunDetailRow('Dry Run Mode', isDry ? 'ENABLED — actions logged only' : 'DISABLED — live execution', modeColor),
+                                  ],
+                                ),
                               ),
+                            ),
+                            const SizedBox(height: 12),
+                            // ── Event Log Stats ──────────────────────────────────
+                            if (actions.isNotEmpty) ...[
+                              Card(
+                                color: AppColors.panelBackground,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(color: AppColors.border),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(Icons.bar_chart, size: 14, color: AppColors.accent),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '${isDry ? "Dry Run" : "Live Session"} Event Summary — ${actions.length} total event${actions.length == 1 ? "" : "s"}',
+                                            style: TextStyle(
+                                              color: AppColors.textPrimary,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 6,
+                                        children: [
+                                          for (final entry in typeCounts.entries)
+                                            _buildEventTypeBadge(entry.key, entry.value),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
                             ],
-                          ),
-                        ),
-                      ),
+                            // ── Action Buttons ───────────────────────────────────
+                            Row(
+                              children: [
+                                if (isDry) ...[
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.accent.withOpacity(0.1),
+                                      foregroundColor: AppColors.accent,
+                                      side: BorderSide(color: AppColors.accent.withOpacity(0.5)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    ),
+                                    icon: const Icon(Icons.send_and_archive_outlined, size: 14),
+                                    label: const Text('Simulate Send Prompt', style: TextStyle(fontSize: 11)),
+                                    onPressed: () async {
+                                      await AiBridgeService.instance.sendToQueue(
+                                        'SIMULATED DRY RUN PROMPT TEXT: Verify system state and print status.',
+                                        false,
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.amber.withOpacity(0.1),
+                                      foregroundColor: Colors.amber,
+                                      side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    ),
+                                    icon: const Icon(Icons.play_circle_outline, size: 14),
+                                    label: const Text('Simulate Bridge Connect', style: TextStyle(fontSize: 11)),
+                                    onPressed: () {
+                                      AiBridgeService.instance.logSimulatedAction(
+                                        'MACRO',
+                                        'Manual Trigger ConnectBridge',
+                                        'Executing ConnectBridge macro containing SetWindowAntigravity.',
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.cyan.withOpacity(0.1),
+                                    foregroundColor: Colors.cyan,
+                                    side: BorderSide(color: Colors.cyan.withOpacity(0.5)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  ),
+                                  icon: const Icon(Icons.copy_all_outlined, size: 14),
+                                  label: Text(
+                                    isDry ? 'Copy Dry Run Log' : 'Copy Live Session Log',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  onPressed: () async {
+                                    final buffer = StringBuffer();
+                                    buffer.writeln(isDry ? '=== DRY RUN SESSION LOG ===' : '=== LIVE SESSION LOG ===');
+                                    buffer.writeln('Mode: $modeLabel');
+                                    buffer.writeln('Bridge Mode: ${AiBridgeService.instance.bridgeMode}');
+                                    buffer.writeln('Queue Status: ${AiBridgeService.instance.queueStatus}');
+                                    buffer.writeln('Agent Status: ${(_loadedLogs['agent_status.txt'] ?? 'UNKNOWN').trim()}');
+                                    buffer.writeln('Prompt Dispatched: ${AiBridgeService.instance.isPromptDispatched}');
+                                    buffer.writeln('isThinking: ${AiBridgeService.instance.isThinking}');
+                                    buffer.writeln('isAntigravityBusy: ${AiBridgeService.instance.isAntigravityBusy}');
+                                    buffer.writeln('Active Task ID: ${AiBridgeService.instance.activeProcessingTaskId ?? "None"}');
+                                    buffer.writeln('Active Prompt: ${AiBridgeService.instance.activePrompt?.text ?? "None"}');
+                                    buffer.writeln('Pipeline Lock: ${AiBridgeService.instance.isHandlingAgentStatus ? "HELD" : "FREE"}');
+                                    buffer.writeln('\nEvent totals: ${typeCounts.entries.map((e) => "${e.key}=${e.value}").join(", ")}');
+                                    buffer.writeln('\n=== EVENT LOG (${actions.length} events) ===');
+                                    for (int i = 0; i < actions.length; i++) {
+                                      final act = actions[i];
+                                      buffer.writeln('[${i + 1}] [${act.timestamp.toLocal().toString().split(' ').last.split('.').first}] [${act.type}] ${act.title}: ${act.detail}');
+                                    }
+                                    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(isDry ? 'Dry run log copied!' : 'Live session log copied!')),
+                                      );
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            // ── Event Log ────────────────────────────────────────
+                            Expanded(
+                              child: Card(
+                                color: AppColors.panelBackground,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(color: AppColors.border),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.list_alt, size: 13, color: AppColors.textSecondary),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              isDry ? 'Simulated Action Log' : 'Live Bridge Event Log',
+                                              style: TextStyle(
+                                                color: AppColors.textSecondary,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const Spacer(),
+                                            Text(
+                                              '${actions.length} event${actions.length == 1 ? "" : "s"} (newest at top)',
+                                              style: const TextStyle(color: Colors.white38, fontSize: 10),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const Divider(height: 1, color: Colors.white10),
+                                      Expanded(
+                                        child: actions.isEmpty
+                                            ? Center(
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      isDry ? Icons.science_outlined : Icons.cable_outlined,
+                                                      size: 32,
+                                                      color: Colors.white12,
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    Text(
+                                                      isDry
+                                                          ? 'No simulated events captured yet.\nUse the buttons above to simulate actions.'
+                                                          : 'No live bridge events captured yet.\nEvents appear here when the pipeline runs.',
+                                                      textAlign: TextAlign.center,
+                                                      style: TextStyle(
+                                                        color: AppColors.textMuted,
+                                                        fontSize: 11,
+                                                        fontStyle: FontStyle.italic,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              )
+                                            : ListView.builder(
+                                                itemCount: actions.length,
+                                                itemBuilder: (context, idx) {
+                                                  final act = actions[idx];
+                                                  Color chipColor = Colors.grey;
+                                                  switch (act.type) {
+                                                    case 'PROMPT':
+                                                      chipColor = Colors.greenAccent;
+                                                      break;
+                                                    case 'VBS_SCRIPT':
+                                                      chipColor = Colors.blueAccent;
+                                                      break;
+                                                    case 'MACRO':
+                                                      chipColor = Colors.orangeAccent;
+                                                      break;
+                                                    case 'QUEUE':
+                                                      chipColor = Colors.cyanAccent;
+                                                      break;
+                                                    case 'API_CALL':
+                                                      chipColor = Colors.purpleAccent;
+                                                      break;
+                                                    case 'FILE_WRITE':
+                                                      chipColor = Colors.amberAccent;
+                                                      break;
+                                                    case 'FILE_READ':
+                                                      chipColor = Colors.tealAccent;
+                                                      break;
+                                                    case 'STATE':
+                                                      chipColor = Colors.pinkAccent;
+                                                      break;
+                                                    case 'STATUS_WRITE':
+                                                      chipColor = Colors.tealAccent;
+                                                      break;
+                                                    default:
+                                                      chipColor = Colors.grey;
+                                                  }
+
+                                                  return Card(
+                                                    margin: const EdgeInsets.only(bottom: 6),
+                                                    color: Colors.black.withOpacity(0.2),
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      side: const BorderSide(color: Colors.white10, width: 0.5),
+                                                    ),
+                                                    child: ExpansionTile(
+                                                      dense: true,
+                                                      iconColor: AppColors.textSecondary,
+                                                      collapsedIconColor: AppColors.textSecondary,
+                                                      title: Row(
+                                                        children: [
+                                                          // Index badge
+                                                          Text(
+                                                            '#${actions.length - idx}',
+                                                            style: const TextStyle(
+                                                              color: Colors.white24,
+                                                              fontSize: 9,
+                                                              fontFamily: 'monospace',
+                                                            ),
+                                                          ),
+                                                          const SizedBox(width: 6),
+                                                          // Type chip
+                                                          Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                            decoration: BoxDecoration(
+                                                              color: chipColor.withOpacity(0.15),
+                                                              borderRadius: BorderRadius.circular(4),
+                                                              border: Border.all(color: chipColor.withOpacity(0.5)),
+                                                            ),
+                                                            child: Text(
+                                                              act.type,
+                                                              style: TextStyle(
+                                                                color: chipColor,
+                                                                fontSize: 9,
+                                                                fontWeight: FontWeight.bold,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(width: 8),
+                                                          Expanded(
+                                                            child: Text(
+                                                              act.title,
+                                                              style: TextStyle(
+                                                                color: AppColors.textPrimary,
+                                                                fontSize: 11,
+                                                                fontWeight: FontWeight.bold,
+                                                              ),
+                                                              overflow: TextOverflow.ellipsis,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      subtitle: Text(
+                                                        act.timestamp.toLocal().toString().split(' ').last.split('.').first,
+                                                        style: TextStyle(
+                                                          color: AppColors.textMuted,
+                                                          fontSize: 9,
+                                                        ),
+                                                      ),
+                                                      children: [
+                                                        Container(
+                                                          width: double.infinity,
+                                                          padding: const EdgeInsets.all(10),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.black38,
+                                                            border: Border(top: BorderSide(color: chipColor.withOpacity(0.2))),
+                                                          ),
+                                                          child: SelectableText(
+                                                            act.detail,
+                                                            style: const TextStyle(
+                                                              color: Colors.lightGreenAccent,
+                                                              fontFamily: 'monospace',
+                                                              fontSize: 10,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }),
                     ),
+
+                    // ── Tab 4: AI Assistant ── read-only transcript viewer ──────────────
+                    _AiAssistantTab(
+                      lastPrompt: _assistantLastPrompt,
+                      lastOutput: _assistantLastOutput,
+                      transcriptPath: _assistantTranscriptPath,
+                      outputScrollController: _assistantOutputScrollController,
+                      promptScrollController: _assistantPromptScrollController,
+                      isThinking: AiBridgeService.instance.isThinking,
+                    ),
+
+
                   ],
                 ),
               ),
@@ -2165,6 +2643,552 @@ Write the findings back to `.ai_bridge/bridge_design_and_flow.md` as a numbered 
             ),
           ),
         ],
+      ),
+    );
+  }
+
+
+  Widget _buildDryRunDetailRow(String label, String value, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 160,
+            child: Text(
+              label,
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 10),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: valueColor,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEventTypeBadge(String type, int count) {
+    Color chipColor;
+    switch (type) {
+      case 'PROMPT':
+        chipColor = Colors.greenAccent;
+        break;
+      case 'VBS_SCRIPT':
+        chipColor = Colors.blueAccent;
+        break;
+      case 'MACRO':
+        chipColor = Colors.orangeAccent;
+        break;
+      case 'QUEUE':
+        chipColor = Colors.cyanAccent;
+        break;
+      case 'API_CALL':
+        chipColor = Colors.purpleAccent;
+        break;
+      case 'FILE_WRITE':
+        chipColor = Colors.amberAccent;
+        break;
+      case 'FILE_READ':
+        chipColor = Colors.tealAccent;
+        break;
+      case 'STATE':
+        chipColor = Colors.pinkAccent;
+        break;
+      case 'STATUS_WRITE':
+        chipColor = Colors.tealAccent;
+        break;
+      default:
+        chipColor = Colors.grey;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: chipColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: chipColor.withOpacity(0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            type,
+            style: TextStyle(color: chipColor, fontSize: 9, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 5),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: chipColor.withOpacity(0.25),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(color: chipColor, fontSize: 9, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThinkingConditionRow(String label, bool isActive) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            isActive ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 12,
+            color: isActive ? Colors.greenAccent : Colors.white24,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isActive ? Colors.greenAccent : Colors.white38,
+                fontSize: 10,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: isActive ? Colors.greenAccent.withOpacity(0.15) : Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Text(
+              isActive ? 'YES' : 'NO',
+              style: TextStyle(
+                color: isActive ? Colors.greenAccent : Colors.white24,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── I/O Tab ──────────────────────────────────────────────────────────────────
+// Two-mode panel toggled by a header switch:
+//   • Agent (AI Bridge): read-only live transcript viewer — shows USER_INPUT
+//     and PLANNER_RESPONSE from the active brain transcript.jsonl, refreshed
+//     every 2 s by the parent's _statusTimer.
+//   • AI Assistant (Ollama): a freeform chat interface backed by LocalAiService
+//     (the same Ollama integration used in the Task Editor).
+class _AiAssistantTab extends StatefulWidget {
+  final String lastPrompt;
+  final String lastOutput;
+  final String transcriptPath;
+  final ScrollController outputScrollController;
+  final ScrollController promptScrollController;
+  final bool isThinking;
+
+  const _AiAssistantTab({
+    required this.lastPrompt,
+    required this.lastOutput,
+    required this.transcriptPath,
+    required this.outputScrollController,
+    required this.promptScrollController,
+    required this.isThinking,
+  });
+
+  @override
+  State<_AiAssistantTab> createState() => _AiAssistantTabState();
+}
+
+class _AiAssistantTabState extends State<_AiAssistantTab> {
+  // ── mode toggle ─────────────────────────────────────────────────────────────
+  // false = Agent/Bridge view, true = AI Assistant (read-only monitor)
+  bool _isAiAssistantMode = false;
+
+  late final ScrollController _localAiPromptScrollController;
+  late final ScrollController _localAiOutputScrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _localAiPromptScrollController = ScrollController();
+    _localAiOutputScrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _localAiPromptScrollController.dispose();
+    _localAiOutputScrollController.dispose();
+    super.dispose();
+  }
+
+  void _copyToClipboard(BuildContext context, String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label copied to clipboard'), duration: const Duration(seconds: 1)),
+    );
+  }
+
+  // ── Shared read-only content panel (used in Agent mode) ──────────────────
+  Widget _buildReadOnlyPanel({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required Color borderColor,
+    required Color textColor,
+    required String content,
+    required ScrollController scrollController,
+    required String emptyMessage,
+    bool isProcessing = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 13, color: AppColors.textSecondary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const Spacer(),
+            if (content.isNotEmpty)
+              InkWell(
+                onTap: () => _copyToClipboard(context, content, label),
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  child: Row(
+                    children: [
+                      Icon(Icons.copy, size: 11, color: AppColors.textMuted),
+                      const SizedBox(width: 3),
+                      Text('Copy', style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: content.isNotEmpty ? borderColor : AppColors.border,
+              ),
+            ),
+            child: content.isEmpty
+                ? Center(
+                    child: isProcessing
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const _DiagnosticsPulsingDot(color: Colors.purpleAccent),
+                              const SizedBox(width: 8),
+                              Text(emptyMessage,
+                                  style: const TextStyle(color: Colors.purpleAccent, fontSize: 11)),
+                            ],
+                          )
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.swap_horiz_outlined, size: 28, color: Colors.white12),
+                              const SizedBox(height: 6),
+                              Text(
+                                emptyMessage,
+                                style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                  )
+                : Scrollbar(
+                    controller: scrollController,
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.all(10),
+                      child: SelectableText(
+                        content,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: AppUIConfig.rootFontSize,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Mode toggle header ───────────────────────────────────────────────────
+  Widget _buildModeToggle() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.panelBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ModeToggleButton(
+            label: 'Agent',
+            icon: Icons.psychology_outlined,
+            isSelected: !_isAiAssistantMode,
+            selectedColor: Colors.cyanAccent,
+            onTap: () => setState(() => _isAiAssistantMode = false),
+          ),
+          const SizedBox(width: 4),
+          _ModeToggleButton(
+            label: 'AI Assistant',
+            icon: Icons.smart_toy_outlined,
+            isSelected: _isAiAssistantMode,
+            selectedColor: Colors.purpleAccent,
+            onTap: () => setState(() => _isAiAssistantMode = true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Agent (Bridge) view ──────────────────────────────────────────────────
+  Widget _buildAgentView(BuildContext context) {
+    final shortPath = widget.transcriptPath.isNotEmpty
+        ? widget.transcriptPath.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).take(2).join('/')
+        : '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // status row
+        Row(
+          children: [
+            Icon(Icons.psychology_outlined, size: 13, color: Colors.cyanAccent),
+            const SizedBox(width: 5),
+            Text('AI Bridge — Live Transcript',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.bold)),
+            const SizedBox(width: 8),
+            if (widget.isThinking) ...[
+              const _DiagnosticsPulsingDot(color: Colors.amberAccent),
+              const SizedBox(width: 4),
+              const Text('Thinking...', style: TextStyle(color: Colors.amberAccent, fontSize: 10)),
+            ] else if (shortPath.isNotEmpty)
+              Expanded(
+                child: Text('.../$shortPath',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 10),
+                    overflow: TextOverflow.ellipsis),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // PROMPT panel
+        Expanded(
+          flex: 2,
+          child: _buildReadOnlyPanel(
+            context: context,
+            label: 'PROMPT',
+            icon: Icons.person_outline,
+            borderColor: Colors.cyanAccent.withOpacity(0.35),
+            textColor: Colors.cyanAccent.shade100,
+            content: widget.lastPrompt,
+            scrollController: widget.promptScrollController,
+            emptyMessage: 'No prompt received yet',
+          ),
+        ),
+        const SizedBox(height: 8),
+        // OUTPUT panel
+        Expanded(
+          flex: 3,
+          child: _buildReadOnlyPanel(
+            context: context,
+            label: 'OUTPUT',
+            icon: Icons.output,
+            borderColor: Colors.cyanAccent.withOpacity(0.25),
+            textColor: Colors.cyanAccent.shade200,
+            content: widget.lastOutput,
+            scrollController: widget.outputScrollController,
+            emptyMessage: 'No response yet',
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── AI Assistant (Ollama) read-only monitor ──────────────────────────────
+  // Mirrors the Agent panel layout: PROMPT on top, OUTPUT on bottom.
+  // No send button — this tab is a passive monitor of LocalAiService I/O.
+  Widget _buildAiAssistantView(BuildContext context) {
+    return ListenableBuilder(
+      listenable: LocalAiService.instance,
+      builder: (context, _) {
+        final isProcessing = LocalAiService.instance.isProcessing;
+        final model = LocalAiService.instance.defaultModel;
+        final lastPrompt = LocalAiService.instance.lastPromptSent;
+        final lastResponse = LocalAiService.instance.lastResponseReceived;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Model info / status row ──────────────────────────────────────
+            Row(
+              children: [
+                const Icon(Icons.smart_toy_outlined, size: 13, color: Colors.purpleAccent),
+                const SizedBox(width: 5),
+                Text('Ollama',
+                    style: const TextStyle(color: Colors.purpleAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.purpleAccent.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.purpleAccent.withOpacity(0.35)),
+                  ),
+                  child: Text(model,
+                      style: const TextStyle(
+                          color: Colors.purpleAccent, fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                ),
+                const Spacer(),
+                if (isProcessing) ...[
+                  const _DiagnosticsPulsingDot(color: Colors.purpleAccent),
+                  const SizedBox(width: 5),
+                  const Text('Processing...', style: TextStyle(color: Colors.purpleAccent, fontSize: 10)),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            // ── PROMPT panel (top, fixed height) ────────────────────────────
+            _buildReadOnlyPanel(
+              context: context,
+              label: 'PROMPT',
+              icon: Icons.input_outlined,
+              borderColor: Colors.purpleAccent.withOpacity(0.25),
+              textColor: Colors.purpleAccent.shade100,
+              content: lastPrompt,
+              scrollController: _localAiPromptScrollController,
+              emptyMessage: 'No prompt sent yet',
+            ),
+            const SizedBox(height: 6),
+            // ── OUTPUT panel (bottom, fills remaining space) ─────────────────
+            _buildReadOnlyPanel(
+              context: context,
+              label: 'OUTPUT',
+              icon: Icons.output_outlined,
+              borderColor: Colors.purpleAccent.withOpacity(0.25),
+              textColor: Colors.purpleAccent.shade100,
+              content: isProcessing ? '' : lastResponse,
+              scrollController: _localAiOutputScrollController,
+              emptyMessage: isProcessing ? 'Processing...' : 'No response yet',
+              isProcessing: isProcessing,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header: title + mode toggle ──────────────────────────────────
+          Row(
+            children: [
+              Icon(Icons.swap_horiz_outlined, size: 15, color: AppColors.accent),
+              const SizedBox(width: 6),
+              Text(
+                'I/O',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              _buildModeToggle(),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // ── Tab body ─────────────────────────────────────────────────────
+          Expanded(
+            child: _isAiAssistantMode
+                ? _buildAiAssistantView(context)
+                : _buildAgentView(context),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── _ModeToggleButton ─────────────────────────────────────────────────────────
+// Pill-shaped toggle used inside the I/O tab mode selector.
+class _ModeToggleButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final Color selectedColor;
+  final VoidCallback onTap;
+
+  const _ModeToggleButton({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.selectedColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? selectedColor.withOpacity(0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: isSelected ? Border.all(color: selectedColor.withOpacity(0.5)) : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: isSelected ? selectedColor : AppColors.textSecondary),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? selectedColor : AppColors.textSecondary,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

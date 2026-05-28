@@ -52,7 +52,15 @@ class LocalAiService extends ChangeNotifier {
   
   bool _isProcessing = false;
   bool get isProcessing => _isProcessing;
-  
+
+  /// Last prompt that was sent to the AI Assistant (any call path).
+  String _lastPromptSent = '';
+  String get lastPromptSent => _lastPromptSent;
+
+  /// Last response received from the AI Assistant (any call path).
+  String _lastResponseReceived = '';
+  String get lastResponseReceived => _lastResponseReceived;
+
   String? _lastError;
   String? get lastError => _lastError;
 
@@ -101,6 +109,10 @@ class LocalAiService extends ChangeNotifier {
       '[AI] generateText | prompt: ${prompt.length > 120 ? '${prompt.substring(0, 120)}…' : prompt}',
       category: LogCategory.AI,
     );
+    // Track the outgoing prompt so the Bridge Monitor I/O tab can display it.
+    _lastPromptSent = prompt;
+    _lastResponseReceived = '';
+    notifyListeners();
     _setProcessing(true);
     try {
       final messages = [{'role': 'user', 'content': prompt}];
@@ -140,6 +152,10 @@ class LocalAiService extends ChangeNotifier {
               '[AI] generateText success | response: ${result != null && result.length > 120 ? '${result.substring(0, 120)}…' : result}',
               category: LogCategory.AI,
             );
+            if (result != null) {
+              _lastResponseReceived = result;
+              notifyListeners();
+            }
             return result;
           } else {
             _lastError = 'Server returned ${response.statusCode}: ${response.body}';
@@ -161,7 +177,12 @@ class LocalAiService extends ChangeNotifier {
         '[AI] generateText → falling back to OpenAI',
         category: LogCategory.AI,
       );
-      return await _fallbackToOpenAI(messages, temperature: temperature);
+      final fallback = await _fallbackToOpenAI(messages, temperature: temperature);
+      if (fallback != null) {
+        _lastResponseReceived = fallback;
+        notifyListeners();
+      }
+      return fallback;
     } finally {
       _setProcessing(false);
     }

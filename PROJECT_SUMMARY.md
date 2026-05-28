@@ -1,7 +1,7 @@
 # Project Summary
 
-* **Overview**: The `music_app` project is a Flutter desktop application designed for music collection management, audio playback, and a rich developer-focused visual workspace/task management interface.
-* **Primary Purpose**: It serves as an integrated media library controller and visual task manager that synchronizes development progress directly with AI coding assistants (e.g., Antigravity).
+* **Overview**: The overall system is called **Gorilla Engine**, which acts as a platform enabling the creation and management of localized projects. The active project, `music_app`, is built within Gorilla Engine as a dedicated media library manager and visual task management suite.
+* **Primary Purpose**: It serves as an integrated media library controller and visual workspace task manager that synchronizes development progress directly with AI coding assistants (e.g., Antigravity).
 * **Core Problem Solved**: It bridges the gap between IDE code-editing sessions and visual task management, coordinating state files seamlessly so that autonomous AI agents and developers stay aligned on task progress, verification criteria, and workspace context in real-time.
 
 # Project Scope
@@ -65,6 +65,7 @@
 
 # Key Terms and Concepts
 
+* **Gorilla Engine**: The parent platform architecture enabling modular projects and workspaces.
 * **AI Bridge**: The file-based interface and protocol situated in the `.ai_bridge/` folder.
 * **Worksheet**: A high-level category or list grouping multiple tasks/folders together.
 * **Verification Criteria**: Specific checklist items bound to a task that the AI agent must verify and provide evidence/proof for.

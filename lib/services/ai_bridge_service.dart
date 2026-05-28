@@ -905,11 +905,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
                 prefix = '[Handsfree]';
                 break;
             }
-
             if (source == 'USER_EXPLICIT' || type == 'USER_INPUT') {
               final cleanContent = content.trim().replaceAll('\n', ' ');
-              final disp = cleanContent.length > 120 ? '${cleanContent.substring(0, 120)}...' : cleanContent;
-              SystemLogsService.instance.addLog('$prefix USER: "$disp"', category: LogCategory.CLI);
+              SystemLogsService.instance.addLog('$prefix USER: "$cleanContent"', category: LogCategory.CLI);
             } else if (source == 'MODEL' && type == 'PLANNER_RESPONSE') {
               if (content.isNotEmpty) {
                 // Strip XML tags and markdown blocks, extract first line or short summary of thoughts
@@ -1556,6 +1554,24 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   String _queueStatus = 'IDLE';
   String get queueStatus => _queueStatus;
 
+  // Rolling log of recent pipeline phase messages (newest first).
+  // Used by the Bridge Monitor to explain why the pipeline completed early
+  // or what internal state transitions occurred during processing.
+  final List<String> _pipelinePhaseLog = [];
+  List<String> get pipelinePhaseLog => List.unmodifiable(_pipelinePhaseLog);
+
+  void _logPhase(String message) {
+    final ts = DateTime.now().toLocal().toString().split('.').first;
+    final entry = '[$ts] $message';
+    _pipelinePhaseLog.insert(0, entry);
+    if (_pipelinePhaseLog.length > 50) {
+      _pipelinePhaseLog.removeLast();
+    }
+    print('[AiBridge][Phase] $message');
+    notifyListeners();
+  }
+
+
   void _writeQueueStatus(String status) {
     if (_queueStatus == status) return;
     _queueStatus = status;
@@ -1720,13 +1736,16 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
   Future<void> sendToQueue(String text, bool blockScreen,
       {List<String>? taskIds, bool insertFirst = false, String? targetCriteriaDescription}) async {
+    final summaryLink = Uri.file(File('$_dirPath/project_summary.md').absolute.path).toString();
+    final processedText = text.replaceAll('{SUMMARY}', summaryLink);
+
     clearSimulatedActions();
     _lastLoggedStepIndex = -1;
 
     // Check for custom macro rules (Slash Command Override)
     final rules = await loadCustomRules(_rulesDirPath);
     CustomRule? triggeredRule;
-    final trimmedText = text.trim();
+    final trimmedText = processedText.trim();
     for (final rule in rules) {
       if (trimmedText == rule.trigger) {
         triggeredRule = rule;
@@ -1756,16 +1775,16 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     }
 
     if (_isDryRunMode) {
-      logSimulatedAction('QUEUE', 'Add Prompt to Queue', text);
+      logSimulatedAction('QUEUE', 'Add Prompt to Queue', processedText);
       if (taskIds != null && taskIds.isNotEmpty) {
         logSimulatedAction('METADATA', 'Associated Task IDs', taskIds.join(', '));
       }
     }
 
     if (insertFirst) {
-      _pendingPrompts.insert(0, QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription));
+      _pendingPrompts.insert(0, QueuedPrompt(processedText, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription));
     } else {
-      _pendingPrompts.add(QueuedPrompt(text, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription));
+      _pendingPrompts.add(QueuedPrompt(processedText, blockScreen, taskIds, targetCriteriaDescription: targetCriteriaDescription));
     }
 
     if (taskIds != null && taskIds.isNotEmpty) {
@@ -1840,6 +1859,12 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     // 1. Log Dispatch
     logSimulatedAction('STATE', 'Dispatch Prompt', 'Dispatching prompt to agent.');
     logSimulatedAction('PROMPT', 'Prompt Text', text);
+
+    // Log the full prompt to System Logs so the user can see exactly what was sent
+    SystemLogsService.instance.addLog(
+      '[PROMPT SENT — ${text.length} chars]\n$text',
+      category: LogCategory.AI,
+    );
 
     // 2. Write current_task.json
     if (_activeProcessingTaskId != null) {
@@ -2395,6 +2420,8 @@ wshShell.AppActivate $myPid
     _dryRunTimer?.cancel();
     _isAntigravityBusy = false;
     _antigravityLastChangeObservedAt = null;
+    _isTranscriptActive = false;   // Clear universal busy signal immediately
+    _isProcessingQueue = false;     // Release queue lock in case it's stuck
     _isTriggeringUpdate = false;
     _isHandlingAgentStatus = false;
     _statusHandlingLockAcquiredAt = null;
@@ -2907,6 +2934,13 @@ wshShell.AppActivate $myPid
   bool get isDaemonRunning => _isDaemonRunning;
   DateTime? get antigravityLastChangeObservedAt => _antigravityLastChangeObservedAt;
 
+  // Tracks the last time the brain-dir transcript file was written to on disk.
+  // Updated every poller tick by directly stat-ing the file — this works for
+  // BOTH AI Bridge prompts AND prompts typed directly into the CLI/Desktop.
+  DateTime? _transcriptLastModifiedAt;
+  bool _isTranscriptActive = false;
+  bool get isTranscriptActive => _isTranscriptActive;
+
   @visibleForTesting
   set antigravityLastChangeObservedAtForTesting(DateTime? value) {
     _antigravityLastChangeObservedAt = value;
@@ -2916,8 +2950,10 @@ wshShell.AppActivate $myPid
       _activeAgents.isNotEmpty ||
       _isAntigravityBusy ||
       _activePrompt != null ||
+      _isPromptDispatched ||
+      _isTranscriptActive ||
       (_antigravityLastChangeObservedAt != null &&
-          DateTime.now().difference(_antigravityLastChangeObservedAt!).inSeconds < 20);
+          DateTime.now().difference(_antigravityLastChangeObservedAt!).inSeconds < 90);
 
   bool _isTesting = false;
   bool get isTesting => _isTesting || _tasks.any((t) => t.status == AiTaskStatus.inTesting);
@@ -2991,19 +3027,61 @@ wshShell.AppActivate $myPid
                         print('[AiBridge] Poller: skipping PLANNER_RESPONSE with no tool_calls — likely an extended-thinking block, not a completed turn.');
                       } else {
                         final String modelContent = lastStep['content'] ?? '';
-                        final String statusName = modelContent.contains('<preview>') ? 'PREVIEW' : 'IDLE';
 
-                        final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
-                        // Transcript is ground truth — do NOT gate on !_isAntigravityBusy.
-                        // The CLI process may still report busy momentarily after completion.
-                        if (isAgentBusy && !_isHandlingAgentStatus && !_isDryRunMode) {
-                          print('[AiBridge] Poller: transcript PLANNER_RESPONSE DONE → triggering $statusName (bypassing CLI busy state)');
-                          _isAntigravityBusy = false; // Clear the stale busy flag immediately
-                          _antigravityLastChangeObservedAt = null;
-                          await _processStatusChange(statusName);
+                        // CRITICAL: Only treat this as a completion trigger if the agent
+                        // has included a bridge completion marker in this response.
+                        // Without this guard, EVERY intermediate agent step (view_file,
+                        // grep_search, etc.) fires the completion pipeline because they
+                        // all produce PLANNER_RESPONSE DONE with tool_calls — causing
+                        // isThinking to flash briefly then reset mid-session.
+                        final bool hasCompletionMarker =
+                            modelContent.contains('<bridge_notes>') ||
+                            modelContent.contains('<verification>') ||
+                            modelContent.contains('<preview>') ||
+                            modelContent.contains('please send the block screen message') ||
+                            modelContent.toLowerCase().contains('agent_status.txt') && (
+                              modelContent.contains('IDLE') || modelContent.contains('PREVIEW')
+                            );
+
+                        // Also check whether the tool_calls include a write of IDLE/PREVIEW
+                        // to agent_status.txt — that is the authoritative completion signal.
+                        bool hasStatusWrite = false;
+                        for (final call in toolCalls as List) {
+                            if (call is Map) {
+                              final name = call['name'] ?? '';
+                              final args = call['args'] ?? call['arguments'] ?? {};
+                              if ((name == 'write_to_file' || name == 'replace_file_content') &&
+                                  args is Map) {
+                                final targetFile = (args['TargetFile'] ?? args['AbsolutePath'] ?? '').toString();
+                                final content = (args['CodeContent'] ?? args['ReplacementContent'] ?? '').toString().trim().toUpperCase();
+                                if (targetFile.contains('agent_status') &&
+                                    (content == 'IDLE' || content == 'PREVIEW')) {
+                                  hasStatusWrite = true;
+                                  break;
+                                }
+                              }
+                            }
+                          }
+
+                        if (!hasCompletionMarker && !hasStatusWrite) {
+                          print('[AiBridge] Poller: skipping PLANNER_RESPONSE DONE — no completion marker or status write detected. Intermediate agent step.');
+                        } else {
+                          final String statusName = modelContent.contains('<preview>') ? 'PREVIEW' : 'IDLE';
+
+                          final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
+                          // Transcript is ground truth — do NOT gate on !_isAntigravityBusy.
+                          // The CLI process may still report busy momentarily after completion.
+                          if (isAgentBusy && !_isHandlingAgentStatus && !_isDryRunMode) {
+                            print('[AiBridge] Poller: transcript PLANNER_RESPONSE DONE → triggering $statusName (bypassing CLI busy state)');
+                            _logPhase('TRIGGER: Transcript PLANNER_RESPONSE DONE detected with completion marker → signalling $statusName. (CLI busy state bypassed — transcript is ground truth)');
+                            _isAntigravityBusy = false; // Clear the stale busy flag immediately
+                            _antigravityLastChangeObservedAt = null;
+                            await _processStatusChange(statusName);
+                          }
                         }
                       }
                     }
+
                   }
                 } catch (e) {
                   final errStr = e.toString();
@@ -3030,18 +3108,66 @@ wshShell.AppActivate $myPid
           _antigravityLastChangeObservedAt = DateTime.now();
         }
 
+        // ── Transcript-based busy detection ─────────────────────────────────
+        // Detect agent activity regardless of whether the prompt came from AI
+        // Bridge or was typed directly into the CLI/Desktop. The transcript file
+        // is always written to while the agent is working, so its mod-time is
+        // the universal busy signal for BOTH external and bridged prompts.
+        try {
+          final userProfile = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
+          final brainDir = Directory('$userProfile\\.gemini\\antigravity\\brain');
+          if (await brainDir.exists()) {
+            final transcriptFile = await _findLatestTranscript(brainDir);
+            if (transcriptFile != null) {
+              final mod = await transcriptFile.lastModified();
+              _transcriptLastModifiedAt = mod;
+              final transcriptAge = DateTime.now().difference(mod).inSeconds;
+              // Check agent_status.txt — if it already says IDLE, the agent is done
+              // even if the transcript is recent (race condition on final write).
+              bool agentStatusIsIdle = false;
+              try {
+                final sf = File('$_dirPath/agent_status.txt');
+                if (sf.existsSync()) {
+                  final s = sf.readAsStringSync().trim().toUpperCase();
+                  agentStatusIsIdle = s.startsWith('ID');
+                }
+              } catch (_) {}
+
+              final newTranscriptActive = transcriptAge < 60 && !agentStatusIsIdle;
+              if (_isTranscriptActive != newTranscriptActive) {
+                _isTranscriptActive = newTranscriptActive;
+                notifyListeners();
+              }
+            } else {
+              if (_isTranscriptActive) {
+                _isTranscriptActive = false;
+                notifyListeners();
+              }
+            }
+          }
+        } catch (_) {}
+        // ────────────────────────────────────────────────────────────────────
+
+
         if (_isAntigravityBusy != foundBusy) {
-          _isAntigravityBusy = foundBusy;
-          notifyListeners();
-          if (!foundBusy && _pendingUpdateType != null) {
-            await triggerPendingUpdate();
+          // Only allow clearing to false when there is no active prompt.
+          // If an active prompt exists, the agent is still working — the
+          // process check can lag or transiently return false during
+          // extended-thinking pauses and must not override the prompt state.
+          final canClear = foundBusy || _activePrompt == null;
+          if (canClear) {
+            _isAntigravityBusy = foundBusy;
+            notifyListeners();
+            if (!foundBusy && _pendingUpdateType != null) {
+              await triggerPendingUpdate();
+            }
           }
         }
 
-        // Unified status check: if daemon is not busy, but active prompt is still active.
-        // Always check agent_status.txt regardless of CLI process state.
-        // The agent's own IDLE/PREVIEW signal is authoritative even if the daemon
-        // process still reports busy (race condition on process exit).
+        // Unified status check — agent_status.txt is the authoritative signal.
+        // ALWAYS unlock the queue immediately when IDLE/PREVIEW is seen, regardless
+        // of _activePrompt state. This prevents the stuck-queue bug where the pipeline
+        // was gated on _activePrompt != null and left queue_status.txt = BUSY forever.
         if (!_isDryRunMode) {
           try {
             final statusFile = File('$_dirPath/agent_status.txt');
@@ -3049,26 +3175,39 @@ wshShell.AppActivate $myPid
               final content = (await statusFile.readAsString()).trim();
               final norm = content.toUpperCase();
               if (norm.startsWith('ID') || norm.startsWith('PR')) {
-                // agent_status.txt = IDLE is the authoritative signal that the agent
-                // has finished. Immediately clear the 20-second last-change window so
-                // isThinking (and the AI BUSY indicator) drops right away — regardless
-                // of whether an active prompt is still in memory.
-                if (norm.startsWith('ID') && _antigravityLastChangeObservedAt != null) {
-                  _antigravityLastChangeObservedAt = null;
-                  notifyListeners();
-                }
+                // ── Unconditional immediate unlock ───────────────────────────
+                // These must ALWAYS run regardless of _activePrompt or lock state.
+                _isAntigravityBusy = false;
+                _isTranscriptActive = false;
+                _antigravityLastChangeObservedAt = null;
+                _isProcessingQueue = false;
+
                 final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
+                final willFinalize = isAgentBusy &&
+                    (_bridgeMode == AntigravityBridgeMode.sdk ||
+                     _bridgeMode == AntigravityBridgeMode.desktop ||
+                     _bridgeMode == AntigravityBridgeMode.cli ||
+                     _bridgeMode == AntigravityBridgeMode.handsfree);
+
+                if (!willFinalize) {
+                  _writeQueueStatus('IDLE');
+                }
+                notifyListeners();
+
+                // ── Prompt lifecycle finalization (optional) ─────────────────
+                // Only enter _processStatusChange if there is an active prompt to
+                // finalize (write notes, verification, advance queue, etc.)
                 if (isAgentBusy) {
-                  if (_bridgeMode == AntigravityBridgeMode.sdk || _bridgeMode == AntigravityBridgeMode.desktop || _bridgeMode == AntigravityBridgeMode.cli || _bridgeMode == AntigravityBridgeMode.handsfree) {
-                    print('[AiBridge] Active mode detected agent transition to IDLE/PREVIEW (raw: $content). Clearing busy state and processing status change.');
-                    _activeAgents.clear();
-                    _isAntigravityBusy = false;
-                    _antigravityLastChangeObservedAt = null;
+                  if (willFinalize) {
                     final statusName = norm.startsWith('PR') ? 'PREVIEW' : 'IDLE';
+                    _logPhase('TRIGGER: agent_status.txt → "$content" detected. Queue unlocked. Entering lifecycle finalization for $statusName.');
+                    _activeAgents.clear();
                     if (!_isHandlingAgentStatus) {
                       await _processStatusChange(statusName);
                     }
                   }
+                } else {
+                  _logPhase('TRIGGER: agent_status.txt → "$content" detected. Queue unlocked. No active prompt — skipping lifecycle finalization.');
                 }
               }
             }
@@ -3363,6 +3502,10 @@ wshShell.AppActivate $myPid
 
   @visibleForTesting
   bool get isPromptDispatchedForTesting => _isPromptDispatched;
+
+  /// Public getter for the Bridge Monitor UI to check dispatch state.
+  bool get isPromptDispatched => _isPromptDispatched;
+
 
   Future<void> compilePrimaryDirectivesFile([AiTask? task]) async {
     if (Platform.environment.containsKey('FLUTTER_TEST') && !forceDiskSaveInTests) {
@@ -3699,27 +3842,45 @@ wshShell.AppActivate $myPid
       _writeActiveModeFile(_bridgeMode.name);
 
 
-      final savedQueue = prefs.getStringList('ai_bridge_queue');
-      if (savedQueue != null && savedQueue.isNotEmpty) {
-        try {
-          _pendingPrompts.addAll(
-              savedQueue.map((s) => QueuedPrompt.fromJson(jsonDecode(s))));
-        } catch (e) {
-          debugPrint('Error decoding pending ai queue: $e');
-        }
-      }
+      // ── Startup always starts clean ────────────────────────────────────────
+      // Never restore in-flight state (pending queue, active prompt, dispatch
+      // flags) from a previous session. The agent may have crashed, been
+      // killed, or completed without writing IDLE — so stale queue state would
+      // cause the pipeline to get stuck immediately on launch.
+      // Completed-prompt history is kept for reference.
+      _pendingPrompts.clear();
+      _activePrompt = null;
+      _activeProcessingTaskId = null;
+      _activeProcessingTaskAssignedAt = null;
+      _isPromptDispatched = false;
+      _isAntigravityBusy = false;
+      _isHandlingAgentStatus = false;
+      _statusHandlingLockAcquiredAt = null;
+      _isTranscriptActive = false;
+      _antigravityLastChangeObservedAt = null;
+      _activeAgents.clear();
 
-      final savedCompletedQueue =
-          prefs.getStringList('ai_bridge_completed_queue');
+      // Wipe the persisted in-flight keys so they don't come back on the next restart
+      try {
+        await prefs.remove('ai_bridge_queue');
+        await prefs.remove('ai_bridge_active_prompt');
+        await prefs.remove('ai_bridge_active_processing_task_id');
+        await prefs.remove('ai_bridge_active_processing_task_assigned_at');
+        await prefs.remove('ai_bridge_is_prompt_dispatched');
+      } catch (_) {}
+
+      // Restore completed history (display only — not re-dispatched)
+      final savedCompletedQueue = prefs.getStringList('ai_bridge_completed_queue');
       if (savedCompletedQueue != null && savedCompletedQueue.isNotEmpty) {
         try {
-          _completedPrompts.addAll(savedCompletedQueue
-              .map((s) => QueuedPrompt.fromJson(jsonDecode(s))));
+          _completedPrompts.addAll(
+              savedCompletedQueue.map((s) => QueuedPrompt.fromJson(jsonDecode(s))));
         } catch (e) {
-          debugPrint('Error decoding completed ai queue: $e');
+          debugPrint('[AiBridge] Error decoding completed queue history: $e');
         }
       }
 
+      // Restore dry-run simulated action log (cosmetic, not functional)
       final savedSimulated = prefs.getStringList('ai_bridge_simulated_actions');
       if (savedSimulated != null && savedSimulated.isNotEmpty) {
         try {
@@ -3727,30 +3888,9 @@ wshShell.AppActivate $myPid
           _simulatedActions.addAll(
               savedSimulated.map((s) => SimulatedAction.fromJson(jsonDecode(s))));
         } catch (e) {
-          debugPrint('Error decoding simulated actions: $e');
+          debugPrint('[AiBridge] Error decoding simulated actions: $e');
         }
       }
-
-      final savedActivePrompt = prefs.getString('ai_bridge_active_prompt');
-      if (savedActivePrompt != null) {
-        try {
-          _activePrompt = QueuedPrompt.fromJson(jsonDecode(savedActivePrompt));
-        } catch (e) {
-          debugPrint('Error decoding active prompt: $e');
-        }
-      } else {
-        _activePrompt = null;
-      }
-
-      _activeProcessingTaskId = prefs.getString('ai_bridge_active_processing_task_id');
-      final assignedAtStr = prefs.getString('ai_bridge_active_processing_task_assigned_at');
-      if (assignedAtStr != null) {
-        _activeProcessingTaskAssignedAt = DateTime.tryParse(assignedAtStr);
-      } else {
-        _activeProcessingTaskAssignedAt = null;
-      }
-
-      _isPromptDispatched = prefs.getBool('ai_bridge_is_prompt_dispatched') ?? false;
 
       final dir = Directory(_dirPath);
       if (!await dir.exists()) {
@@ -3773,44 +3913,28 @@ wshShell.AppActivate $myPid
             }
           } catch (_) {}
 
-          // Clean up any stale files from a previous run/crash only if agent was busy
+          // ── Unconditional startup reset ────────────────────────────────────
+          // Always force agent_status.txt to IDLE on restart — regardless of
+          // what the previous session left behind. The queue was cleared above,
+          // so there is no activePrompt to resume and the agent is not running.
+          debugPrint('[AiBridge] Startup: forcing agent_status.txt → IDLE and clearing all pending bridge files.');
           final statusFile = File('$_dirPath/agent_status.txt');
-          String currentStatus = 'IDLE';
-          if (statusFile.existsSync()) {
+          try {
+            if (!statusFile.parent.existsSync()) statusFile.parent.createSync(recursive: true);
+            statusFile.writeAsStringSync('IDLE');
+          } catch (_) {}
+
+          // Delete any leftover output/review files from the previous run
+          for (final name in [
+            'latest_notes.json',
+            'latest_verification.json',
+            'latest_preview.json',
+            'pending_review.json',
+          ]) {
             try {
-              currentStatus = statusFile.readAsStringSync().trim().toUpperCase();
+              final f = File('$_dirPath/$name');
+              if (f.existsSync()) f.deleteSync();
             } catch (_) {}
-          }
-          if (currentStatus == 'BUSY' && _activePrompt == null) {
-            debugPrint('[AiBridge] Startup check: agent_status.txt was BUSY but activePrompt is null. Resetting status to IDLE immediately on startup.');
-            try {
-              statusFile.writeAsStringSync('IDLE');
-              currentStatus = 'IDLE';
-            } catch (_) {}
-            final notesFile = File('$_dirPath/latest_notes.json');
-            if (notesFile.existsSync()) {
-              try {
-                notesFile.deleteSync();
-              } catch (_) {}
-            }
-            final verificationFile = File('$_dirPath/latest_verification.json');
-            if (verificationFile.existsSync()) {
-              try {
-                verificationFile.deleteSync();
-              } catch (_) {}
-            }
-            final previewFile = File('$_dirPath/latest_preview.json');
-            if (previewFile.existsSync()) {
-              try {
-                previewFile.deleteSync();
-              } catch (_) {}
-            }
-          }
-          if ((currentStatus == 'IDLE' || currentStatus == 'PREVIEW') && _activePrompt != null) {
-            debugPrint('[AiBridge] Startup check: agent_status.txt is $currentStatus and activePrompt is not null. Advancing queue.');
-            Future.delayed(const Duration(milliseconds: 600), () {
-              _processStatusChange(currentStatus);
-            });
           }
         }
       }
@@ -3891,14 +4015,17 @@ wshShell.AppActivate $myPid
     // have been incremented and we bail out immediately.
     final int interruptToken = _interruptionToken;
     print('[AiBridge] Acquired status handling lock (_isHandlingAgentStatus = true)');
+    _logPhase('LOCK ACQUIRED: _processStatusChange started for "$content". activePrompt=${_activePrompt != null}, isAntigravityBusy=$_isAntigravityBusy, activeAgents=${_activeAgents.length}');
 
     // Watchdog: the 25-second re-entry guard only fires on a *second* call, but
     // all callers are guarded by !_isHandlingAgentStatus, so re-entry never occurs.
-    // This timer self-releases the lock after 3 minutes so the pipeline can recover
-    // even if an inner await (e.g. SharedPreferences, file I/O) hangs indefinitely.
-    final watchdogTimer = Timer(const Duration(minutes: 3), () {
+    // This timer self-releases the lock after 12 minutes so the pipeline can recover
+    // even if an inner await hangs indefinitely. The 12-minute ceiling accounts for
+    // the 5-minute bounce-protection reminder wait + the 10-minute busy-wait +
+    // dart analyze + file I/O overhead.
+    final watchdogTimer = Timer(const Duration(minutes: 12), () {
       if (_isHandlingAgentStatus) {
-        print('[AiBridge] WATCHDOG: _processStatusChange has been running > 3 minutes. Force-releasing lock and resetting pipeline.');
+        print('[AiBridge] WATCHDOG: _processStatusChange has been running > 12 minutes. Force-releasing lock and resetting pipeline.');
         _isHandlingAgentStatus = false;
         _statusHandlingLockAcquiredAt = null;
         _isAntigravityBusy = false;
@@ -3935,6 +4062,7 @@ wshShell.AppActivate $myPid
       }
       if (interruptToken != _interruptionToken) {
         print('[AiBridge] Interrupt detected after initial delay. Aborting _processStatusChange.');
+        _logPhase('ABORTED: Interrupt token changed after initial delay — clearQueue/forceReset was called during busy-wait. Pipeline reset externally.');
         return;
       }
 
@@ -3986,6 +4114,7 @@ wshShell.AppActivate $myPid
 
       if (interruptToken != _interruptionToken) {
         print('[AiBridge] Interrupt detected after brain-file read. Aborting _processStatusChange.');
+        _logPhase('ABORTED: Interrupt token changed after brain-file read. Pipeline reset externally.');
         return;
       }
 
@@ -4044,6 +4173,7 @@ wshShell.AppActivate $myPid
         }
         if (interruptToken != _interruptionToken) {
           print('[AiBridge] Interrupt detected after dart analyze. Aborting _processStatusChange.');
+          _logPhase('ABORTED: Interrupt token changed after dart analyze. Pipeline reset externally.');
           return;
         }
         if (hasCompileError) {
@@ -4258,6 +4388,7 @@ wshShell.AppActivate $myPid
                   category: LogCategory.SYNC,
                 );
                 print('[AiBridge] Missing output files after retries. Sending reminder prompt to agent: ${missingList.join(', ')}');
+                _logPhase('MISSING FILES: After $attemptCount retries, output files still missing: ${missingList.join(', ')}. Dispatching reminder to agent. Bounce-protection will wait for BUSY then IDLE.');
 
                 try {
                   if (Platform.environment.containsKey('FLUTTER_TEST')) {
@@ -4280,26 +4411,91 @@ wshShell.AppActivate $myPid
                   );
                 }
 
-                // Wait for agent to go IDLE again (up to 20s) after the reminder
+                // Bounce-protected wait after the missing-files reminder.
+                //
+                // Extended-thinking models (e.g. Claude Sonnet with thinking enabled)
+                // have a multi-minute internal reasoning phase before they write any
+                // files. Without this guard the 20-second timeout fires while the AI
+                // is still thinking, causing a premature abort.
+                //
+                // Phase 1 — Bounce detection (up to 8s):
+                //   Poll agent_status.txt to confirm the agent actually received the
+                //   reminder and transitioned to BUSY. If BUSY is observed we know
+                //   the AI is actively working and we must wait for it to finish.
+                //
+                // Phase 2 — Extended idle wait (up to 5 min):
+                //   Now that BUSY was confirmed, wait patiently for IDLE/PREVIEW.
+                //   This covers even the longest extended-thinking sessions.
                 {
-                  int reminderStatusWait = 0;
-                  const int maxReminderStatusWaits = 40; // 40 × 500ms = 20s
-                  while (reminderStatusWait < maxReminderStatusWaits) {
+                  bool agentWentBusy = false;
+
+                  // Phase 1: wait up to 8 s for agent_status.txt → BUSY
+                  for (int bounce = 0; bounce < 16; bounce++) {
+                    if (interruptToken != _interruptionToken) break;
+                    await Future.delayed(const Duration(milliseconds: 500));
                     try {
                       final statusFile = File('$_dirPath/agent_status.txt');
                       if (statusFile.existsSync()) {
                         final statusStr = statusFile.readAsStringSync().trim().toUpperCase();
+                        if (statusStr.startsWith('BU')) {
+                          agentWentBusy = true;
+                          print('[AiBridge] Bounce protection: agent_status.txt → BUSY detected after reminder. Waiting for IDLE (extended timeout).');
+                          _logPhase('BOUNCE PHASE 1: BUSY confirmed — agent received reminder and is now thinking. Switching to extended wait (up to 5 min).');
+                          break;
+                        }
+                        // If it's already IDLE/PREVIEW the agent responded instantly
                         if (statusStr.startsWith('ID') || statusStr.startsWith('PR')) {
+                          print('[AiBridge] Bounce protection: agent_status.txt already IDLE/PREVIEW after reminder (no thinking phase).');
+                          _logPhase('BOUNCE PHASE 1: agent_status.txt already IDLE/PREVIEW — agent responded instantly (no extended thinking). Proceeding to file ingestion.');
                           break;
                         }
                       }
                     } catch (_) {}
-                    if (interruptToken != _interruptionToken) break;
-                    await Future.delayed(const Duration(milliseconds: 500));
-                    reminderStatusWait++;
                   }
-                  if (reminderStatusWait > 0) {
-                    print('[AiBridge] Reminder: waited ${reminderStatusWait * 500}ms for agent_status.txt to confirm IDLE after missing-files reminder.');
+
+                  // Phase 2: if BUSY was observed, wait up to 5 min for IDLE/PREVIEW
+                  if (agentWentBusy) {
+                    int reminderStatusWait = 0;
+                    const int maxReminderStatusWaits = 600; // 600 × 500ms = 5 min
+                    while (reminderStatusWait < maxReminderStatusWaits) {
+                      try {
+                        final statusFile = File('$_dirPath/agent_status.txt');
+                        if (statusFile.existsSync()) {
+                          final statusStr = statusFile.readAsStringSync().trim().toUpperCase();
+                          if (statusStr.startsWith('ID') || statusStr.startsWith('PR')) {
+                            break;
+                          }
+                        }
+                      } catch (_) {}
+                      if (interruptToken != _interruptionToken) break;
+                      await Future.delayed(const Duration(milliseconds: 500));
+                      reminderStatusWait++;
+                    }
+                    if (reminderStatusWait > 0) {
+                      print('[AiBridge] Bounce protection: waited ${reminderStatusWait * 500}ms for agent_status.txt to confirm IDLE after reminder (extended wait).');
+                    }
+                  } else {
+                    // BUSY was never seen — fall back to original 20s wait
+                    _logPhase('BOUNCE PHASE 1: BUSY never observed within 8s after reminder. Falling back to 20s wait (agent may not have received prompt yet).');
+                    int reminderStatusWait = 0;
+                    const int maxReminderStatusWaits = 40; // 40 × 500ms = 20s
+                    while (reminderStatusWait < maxReminderStatusWaits) {
+                      try {
+                        final statusFile = File('$_dirPath/agent_status.txt');
+                        if (statusFile.existsSync()) {
+                          final statusStr = statusFile.readAsStringSync().trim().toUpperCase();
+                          if (statusStr.startsWith('ID') || statusStr.startsWith('PR')) {
+                            break;
+                          }
+                        }
+                      } catch (_) {}
+                      if (interruptToken != _interruptionToken) break;
+                      await Future.delayed(const Duration(milliseconds: 500));
+                      reminderStatusWait++;
+                    }
+                    if (reminderStatusWait > 0) {
+                      print('[AiBridge] Reminder: waited ${reminderStatusWait * 500}ms for agent_status.txt to confirm IDLE after missing-files reminder (fallback wait).');
+                    }
                   }
                 }
 
@@ -4313,9 +4509,15 @@ wshShell.AppActivate $myPid
                   final bool notesOk = notesContent.trim().isNotEmpty;
                   final bool verificationOk = !hasVerificationCriteria || verificationContent.trim().isNotEmpty;
                   final bool previewOk = content != 'PREVIEW' || previewContent.trim().isNotEmpty;
-                  if (notesOk && verificationOk && previewOk) {
-                    print('[AiBridge] Missing files recovered after reminder on attempt ${reminderAttempt + 1}.');
-                    break;
+                  
+                  if (reminderAttempt < 10) {
+                    if (notesOk && verificationOk && previewOk) {
+                      print('[AiBridge] Missing files recovered after reminder on attempt ${reminderAttempt + 1}.');
+                      _logPhase('REMINDER RECOVERY: Missing files recovered on attempt ${reminderAttempt + 1} after reminder. Proceeding with ingestion.');
+                      break;
+                    }
+                  } else {
+                    _logPhase('REMINDER RECOVERY: Files still missing after $reminderAttempt retry attempts post-reminder. Proceeding anyway (may have incomplete data).');
                   }
                   reminderAttempt++;
                 }
@@ -4474,9 +4676,11 @@ wshShell.AppActivate $myPid
                           existing[matchIdx].status = AiVerificationStatus.pendingReview;
                         }
                       } else {
-                        newItem.isVerified = false;
-                        newItem.status = AiVerificationStatus.pendingReview;
-                        existing.add(newItem);
+                        // No matching criterion found — this verification item is proof
+                        // detail from the agent that doesn't correspond to a known criterion.
+                        // Do NOT add it as a new task criterion (that would create phantom
+                        // checklist items and cause an infinite re-queue loop on every cycle).
+                        print('[AiBridge] Verification item "${newItem.description.substring(0, newItem.description.length.clamp(0, 80))}" had no matching criterion — skipped (not added as new item).');
                       }
                     }
                     changed = true;
