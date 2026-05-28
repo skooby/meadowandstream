@@ -1831,6 +1831,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     await _updateDispatchState();
     _isPromptDispatched = true;
     _isAntigravityBusy = true;
+    notifyListeners(); // Immediately notify UI that agent is busy — the 1500ms poller is too slow for fast queue items.
 
     // 1. Log Dispatch
     logSimulatedAction('STATE', 'Dispatch Prompt', 'Dispatching prompt to agent.');
@@ -4152,6 +4153,34 @@ wshShell.AppActivate $myPid
               }
             }
 
+            // Wait for agent_status.txt to confirm IDLE/PREVIEW before ingesting
+            // output files. The transcript poller can call _processStatusChange early
+            // (before the agent finishes writing latest_notes.json etc.), so we must
+            // not start polling for those files until the agent has actually written
+            // its own status file — that is the authoritative signal that all bridge
+            // output files have been flushed to disk.
+            {
+              int statusWaitCount = 0;
+              const int maxStatusWaits = 40; // 40 × 500 ms = 20 s max
+              while (statusWaitCount < maxStatusWaits) {
+                try {
+                  final statusFile = File('$_dirPath/agent_status.txt');
+                  if (statusFile.existsSync()) {
+                    final statusContent = statusFile.readAsStringSync().trim().toUpperCase();
+                    if (statusContent.startsWith('ID') || statusContent.startsWith('PR')) {
+                      break; // agent_status.txt is IDLE or PREVIEW — safe to ingest
+                    }
+                  }
+                } catch (_) {}
+                if (interruptToken != _interruptionToken) break;
+                await Future.delayed(const Duration(milliseconds: 500));
+                statusWaitCount++;
+              }
+              if (statusWaitCount > 0) {
+                print('[AiBridge] Waited ${statusWaitCount * 500}ms for agent_status.txt to confirm IDLE before ingesting output files.');
+              }
+            }
+
             bool hasVerificationCriteria = _tasks[taskIdx].verificationCriteria.isNotEmpty;
             int attemptCount = 0;
             while (attemptCount < 25) {
@@ -4169,6 +4198,98 @@ wshShell.AppActivate $myPid
                 break;
               }
               attemptCount++;
+            }
+
+            // --- Missing-file recovery: send a one-shot reminder to the agent ---
+            // If the retry loop exhausted and files are still missing, the agent
+            // finished processing but forgot to write its output files. Send it a
+            // targeted reminder, wait for it to go IDLE again, then do a second
+            // shorter retry pass. This fires at most once per task completion.
+            {
+              final bool notesMissingFinal = notesContent.trim().isEmpty;
+              final bool verificationMissingFinal = hasVerificationCriteria && verificationContent.trim().isEmpty;
+              final bool previewMissingFinal = content == 'PREVIEW' && previewContent.trim().isEmpty;
+
+              if (notesMissingFinal || verificationMissingFinal || previewMissingFinal) {
+                final missingList = <String>[];
+                if (notesMissingFinal) missingList.add('`.ai_bridge/latest_notes.json`');
+                if (verificationMissingFinal) missingList.add('`.ai_bridge/latest_verification.json`');
+                if (previewMissingFinal) missingList.add('`.ai_bridge/latest_preview.json`');
+
+                final missingFileReminder =
+                    'AI Bridge Output Files Missing: You have finished processing but the following '
+                    'required output file(s) were not written to disk: ${missingList.join(', ')}. '
+                    'You MUST write these files now using your file-writing tool. '
+                    'Refer to the PROGRESS NOTES and QUEUE RELEASE directives in `.ai_bridge/primary_directives.md`. '
+                    'After writing the files, overwrite `.ai_bridge/agent_status.txt` with `IDLE` as your final step.';
+
+                SystemLogsService.instance.addLog(
+                  '[AI Bridge] Missing output files after ${attemptCount} retries: ${missingList.join(', ')}. Sending reminder to agent.',
+                  category: LogCategory.SYNC,
+                );
+                print('[AiBridge] Missing output files after retries. Sending reminder prompt to agent: ${missingList.join(', ')}');
+
+                try {
+                  if (Platform.environment.containsKey('FLUTTER_TEST')) {
+                    if (_bridgeMode != AntigravityBridgeMode.sdk) {
+                      await _sendToAiAgent(missingFileReminder);
+                    } else {
+                      await antigravityClient.sendPrompt(missingFileReminder);
+                    }
+                  } else {
+                    if (_bridgeMode != AntigravityBridgeMode.sdk) {
+                      await _sendToAiAgent(missingFileReminder).timeout(const Duration(seconds: 10));
+                    } else {
+                      await antigravityClient.sendPrompt(missingFileReminder).timeout(const Duration(seconds: 10));
+                    }
+                  }
+                } catch (e) {
+                  SystemLogsService.instance.addLog(
+                    '[AI Bridge] Error dispatching missing-files reminder: $e',
+                    category: LogCategory.ERROR,
+                  );
+                }
+
+                // Wait for agent to go IDLE again (up to 20s) after the reminder
+                {
+                  int reminderStatusWait = 0;
+                  const int maxReminderStatusWaits = 40; // 40 × 500ms = 20s
+                  while (reminderStatusWait < maxReminderStatusWaits) {
+                    try {
+                      final statusFile = File('$_dirPath/agent_status.txt');
+                      if (statusFile.existsSync()) {
+                        final statusStr = statusFile.readAsStringSync().trim().toUpperCase();
+                        if (statusStr.startsWith('ID') || statusStr.startsWith('PR')) {
+                          break;
+                        }
+                      }
+                    } catch (_) {}
+                    if (interruptToken != _interruptionToken) break;
+                    await Future.delayed(const Duration(milliseconds: 500));
+                    reminderStatusWait++;
+                  }
+                  if (reminderStatusWait > 0) {
+                    print('[AiBridge] Reminder: waited ${reminderStatusWait * 500}ms for agent_status.txt to confirm IDLE after missing-files reminder.');
+                  }
+                }
+
+                // Second shorter retry pass to pick up newly written files
+                int reminderAttempt = 0;
+                while (reminderAttempt < 10) {
+                  if (reminderAttempt > 0) {
+                    await Future.delayed(const Duration(milliseconds: 500));
+                  }
+                  await attemptIngestion();
+                  final bool notesOk = notesContent.trim().isNotEmpty;
+                  final bool verificationOk = !hasVerificationCriteria || verificationContent.trim().isNotEmpty;
+                  final bool previewOk = content != 'PREVIEW' || previewContent.trim().isNotEmpty;
+                  if (notesOk && verificationOk && previewOk) {
+                    print('[AiBridge] Missing files recovered after reminder on attempt ${reminderAttempt + 1}.');
+                    break;
+                  }
+                  reminderAttempt++;
+                }
+              }
             }
 
             try {
