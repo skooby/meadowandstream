@@ -298,7 +298,10 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   String? _antigravityPromptEndpoint;
   String? _antigravityStartupCommand;
   String? _antigravityModel;
+  String? _antigravityLoModel;
+  String? _antigravityHiModel;
   String? _antigravityApiKey;
+  String? _antigravityAvailableModels;
   Future<List<AntigravityModel>>? _modelsFuture;
   Future<List<String>>? _ollamaModelsFuture;
   int _aiBridgeSubTabIndex = 0;
@@ -311,6 +314,8 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   String? _ollamaModel;
   int _ollamaTimeoutMs = 120000;
   String? _ollamaClarityPrompt;
+  String? _ollamaRewritePrompt;
+  String? _ollamaGenerateTaskPrompt;
 
   bool _isTestingAntigravity = false;
   bool _isTestingCli = false;
@@ -473,11 +478,16 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       } else {
         _antigravityModel = savedModel;
       }
+      _antigravityLoModel = prefs.getString('antigravity_lo_model') ?? 'gemini-2.0-flash-lite';
+      _antigravityHiModel = prefs.getString('antigravity_hi_model') ?? 'gemini-2.0-flash';
+      _antigravityAvailableModels = prefs.getString('antigravity_available_models') ?? 'gemini-2.0-flash-lite, gemini-2.0-flash, gemini-2.0-pro, gemini-3.5-flash';
       _versionControlRepoUrl = prefs.getString('project_version_control_repo_url');
       _ollamaBaseUrl = prefs.getString('ollamaBaseUrl');
       _ollamaModel = prefs.getString('ollamaModel');
       _ollamaTimeoutMs = prefs.getInt('ollamaTimeoutMs') ?? 120000;
-      _ollamaClarityPrompt = prefs.getString('ollamaClarityPrompt') ?? 'Review this prompt for clarity and return YES or NO as an answer. The prompt is';
+      _ollamaClarityPrompt = prefs.getString('ollamaClarityPrompt') ?? 'Determine if the following prompt is clear? "{PROMPT}"';
+      _ollamaRewritePrompt = prefs.getString('ollamaRewritePrompt') ?? 'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: {PROMPT}';
+      _ollamaGenerateTaskPrompt = prefs.getString('ollamaGenerateTaskPrompt') ?? 'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"';
 
       _windowAvailability = loadedAvail;
 
@@ -738,6 +748,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       final newOllamaModel = values.containsKey('ollamaModel') ? values['ollamaModel'] as String? : _ollamaModel;
       final newOllamaTimeoutMs = int.tryParse((values['ollamaTimeoutMs'] ?? _ollamaTimeoutMs).toString()) ?? _ollamaTimeoutMs;
       final newOllamaClarityPrompt = values.containsKey('ollamaClarityPrompt') ? values['ollamaClarityPrompt'] as String? : _ollamaClarityPrompt;
+      final newOllamaRewritePrompt = values.containsKey('ollamaRewritePrompt') ? values['ollamaRewritePrompt'] as String? : _ollamaRewritePrompt;
+      final newOllamaGenerateTaskPrompt = values.containsKey('ollamaGenerateTaskPrompt') ? values['ollamaGenerateTaskPrompt'] as String? : _ollamaGenerateTaskPrompt;
+
       final newAgentRules = values.containsKey('agentRules') ? values['agentRules'] as String? : _agentRules;
       final newAntigravityBaseUrl = values.containsKey('antigravityBaseUrl') ? values['antigravityBaseUrl'] as String? : _antigravityBaseUrl;
       final newAntigravityInvokeEndpoint = values.containsKey('antigravityInvokeEndpoint') ? values['antigravityInvokeEndpoint'] as String? : _antigravityInvokeEndpoint;
@@ -745,6 +758,23 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       final newAntigravityStartupCommand = values.containsKey('antigravityStartupCommand') ? values['antigravityStartupCommand'] as String? : _antigravityStartupCommand;
       final newAntigravityApiKey = values.containsKey('antigravityApiKey') ? values['antigravityApiKey'] as String? : _antigravityApiKey;
       final newAntigravityModel = values.containsKey('antigravityModel') ? values['antigravityModel'] as String? : _antigravityModel;
+      // Read LO/HI/AvailableModels from whichever tab's field name is currently registered.
+      // SDK tab uses 'antigravityLoModel'; Desktop/CLI tabs use the NonSdk variants.
+      final newAntigravityLoModel = values.containsKey('antigravityLoModel')
+          ? values['antigravityLoModel'] as String?
+          : values.containsKey('antigravityLoModelNonSdk')
+              ? values['antigravityLoModelNonSdk'] as String?
+              : _antigravityLoModel;
+      final newAntigravityHiModel = values.containsKey('antigravityHiModel')
+          ? values['antigravityHiModel'] as String?
+          : values.containsKey('antigravityHiModelNonSdk')
+              ? values['antigravityHiModelNonSdk'] as String?
+              : _antigravityHiModel;
+      final newAntigravityAvailableModels = values.containsKey('antigravityAvailableModels')
+          ? values['antigravityAvailableModels'] as String?
+          : values.containsKey('antigravityAvailableModelsDesktop')
+              ? values['antigravityAvailableModelsDesktop'] as String?
+              : _antigravityAvailableModels;
       final newAntigravityTargetWindowTitle = values.containsKey('antigravityTargetWindowTitle') ? values['antigravityTargetWindowTitle'] as String? : _antigravityTargetWindowTitle;
       final newAntigravityFocusMacroName = values.containsKey('antigravityFocusMacroName') ? values['antigravityFocusMacroName'] as String? : _antigravityFocusMacroName;
       
@@ -848,7 +878,20 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
            await prefs.remove('ollamaClarityPrompt');
         }
       }
-
+      if (values.containsKey('ollamaRewritePrompt') && values['ollamaRewritePrompt'] != null) {
+        if (newOllamaRewritePrompt != null && newOllamaRewritePrompt.trim().isNotEmpty) {
+           await prefs.setString('ollamaRewritePrompt', newOllamaRewritePrompt.trim());
+        } else {
+           await prefs.remove('ollamaRewritePrompt');
+        }
+      }
+      if (values.containsKey('ollamaGenerateTaskPrompt') && values['ollamaGenerateTaskPrompt'] != null) {
+        if (newOllamaGenerateTaskPrompt != null && newOllamaGenerateTaskPrompt.trim().isNotEmpty) {
+           await prefs.setString('ollamaGenerateTaskPrompt', newOllamaGenerateTaskPrompt.trim());
+        } else {
+           await prefs.remove('ollamaGenerateTaskPrompt');
+        }
+      }
       if (values.containsKey('backupDirectoryPath') && values['backupDirectoryPath'] != null) {
         if (newBackupDir != null && newBackupDir.trim().isNotEmpty) {
            await prefs.setString('project_backup_directory_path', newBackupDir.trim());
@@ -960,6 +1003,36 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
         }
       }
 
+      // LO model — may come from the SDK tab field or the Desktop/CLI non-SDK field.
+      if ((values.containsKey('antigravityLoModel') && values['antigravityLoModel'] != null) ||
+          (values.containsKey('antigravityLoModelNonSdk') && values['antigravityLoModelNonSdk'] != null)) {
+        if (newAntigravityLoModel != null && newAntigravityLoModel.trim().isNotEmpty) {
+            await prefs.setString('antigravity_lo_model', newAntigravityLoModel.trim());
+        } else {
+            await prefs.remove('antigravity_lo_model');
+        }
+      }
+
+      // HI model — may come from the SDK tab field or the Desktop/CLI non-SDK field.
+      if ((values.containsKey('antigravityHiModel') && values['antigravityHiModel'] != null) ||
+          (values.containsKey('antigravityHiModelNonSdk') && values['antigravityHiModelNonSdk'] != null)) {
+        if (newAntigravityHiModel != null && newAntigravityHiModel.trim().isNotEmpty) {
+            await prefs.setString('antigravity_hi_model', newAntigravityHiModel.trim());
+        } else {
+            await prefs.remove('antigravity_hi_model');
+        }
+      }
+
+      // Available models list — may come from the CLI tab field or the Desktop tab's unique field name.
+      if ((values.containsKey('antigravityAvailableModels') && values['antigravityAvailableModels'] != null) ||
+          (values.containsKey('antigravityAvailableModelsDesktop') && values['antigravityAvailableModelsDesktop'] != null)) {
+        if (newAntigravityAvailableModels != null && newAntigravityAvailableModels.trim().isNotEmpty) {
+            await prefs.setString('antigravity_available_models', newAntigravityAvailableModels.trim());
+        } else {
+            await prefs.remove('antigravity_available_models');
+        }
+      }
+
       if (values.containsKey('antigravityTargetWindowTitle') && values['antigravityTargetWindowTitle'] != null) {
         if (newAntigravityTargetWindowTitle != null && newAntigravityTargetWindowTitle.trim().isNotEmpty) {
             await prefs.setString('antigravity_target_window_title', newAntigravityTargetWindowTitle.trim());
@@ -1033,6 +1106,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             _antigravityPromptEndpoint = newAntigravityPromptEndpoint;
             _antigravityStartupCommand = newAntigravityStartupCommand;
             _antigravityModel = newAntigravityModel;
+            _antigravityLoModel = newAntigravityLoModel;
+            _antigravityHiModel = newAntigravityHiModel;
+            _antigravityAvailableModels = newAntigravityAvailableModels;
             _antigravityApiKey = newAntigravityApiKey;
             _antigravityStatusDebug = newAntigravityStatusDebug;
             _antigravitySendViaClipboard = newAntigravitySendViaClipboard;
@@ -1045,6 +1121,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             _ollamaModel = newOllamaModel;
             _ollamaTimeoutMs = newOllamaTimeoutMs;
             _ollamaClarityPrompt = newOllamaClarityPrompt;
+            _ollamaRewritePrompt = newOllamaRewritePrompt;
+            _ollamaGenerateTaskPrompt = newOllamaGenerateTaskPrompt;
+
             // _albumFolderIds, _tagsFolderId, _languagesFolderId remain synchronously updated.
          });
          
@@ -1666,6 +1745,75 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
     );
   }
 
+  List<String> _getParsedAvailableModels() {
+    final raw = _antigravityAvailableModels ?? '';
+    if (raw.trim().isEmpty) {
+      return ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-pro', 'gemini-3.5-flash'];
+    }
+    return raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  }
+
+  Widget _buildLoHiDropdownsForNonSdk() {
+    final models = _getParsedAvailableModels();
+    // Use unique field names (antigravityLoModelNonSdk / antigravityHiModelNonSdk)
+    // to avoid collisions with the SDK tab's 'antigravityLoModel' / 'antigravityHiModel'
+    // fields that are already registered in the same FormBuilder scope.
+    final hasLoSelection = models.contains(_antigravityLoModel);
+    final initialLo = hasLoSelection ? _antigravityLoModel : (models.isNotEmpty ? models.first : 'gemini-2.0-flash-lite');
+    
+    final hasHiSelection = models.contains(_antigravityHiModel);
+    final initialHi = hasHiSelection ? _antigravityHiModel : (models.isNotEmpty ? models.last : 'gemini-2.0-flash');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildLabeled('LO Model (economy tier)', Icons.trending_down, FormBuilderDropdown<String>(
+          name: 'antigravityLoModelNonSdk',
+          decoration: _inputDecoration(),
+          dropdownColor: AppColors.panelBackground,
+          initialValue: initialLo,
+          onChanged: (val) {
+            if (val != null) {
+              setState(() => _antigravityLoModel = val);
+              _onFormChanged();
+            }
+          },
+          onSaved: (val) {
+            if (val != null) _antigravityLoModel = val;
+          },
+          items: models.map((m) {
+            return DropdownMenuItem(
+              value: m,
+              child: Text(m, style: TextStyle(color: AppColors.panelTextPrimary)),
+            );
+          }).toList(),
+        )),
+        const SizedBox(height: 16),
+        _buildLabeled('HI Model (power tier)', Icons.trending_up, FormBuilderDropdown<String>(
+          name: 'antigravityHiModelNonSdk',
+          decoration: _inputDecoration(),
+          dropdownColor: AppColors.panelBackground,
+          initialValue: initialHi,
+          onChanged: (val) {
+            if (val != null) {
+              setState(() => _antigravityHiModel = val);
+              _onFormChanged();
+            }
+          },
+          onSaved: (val) {
+            if (val != null) _antigravityHiModel = val;
+          },
+          items: models.map((m) {
+            return DropdownMenuItem(
+              value: m,
+              child: Text(m, style: TextStyle(color: AppColors.panelTextPrimary)),
+            );
+          }).toList(),
+        )),
+      ],
+    );
+  }
+
   Widget _buildLabeled(String label, IconData icon, Widget child) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1792,6 +1940,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                 'antigravityPromptEndpoint': _antigravityPromptEndpoint ?? '/api/v1/prompt',
                 'antigravityStartupCommand': _antigravityStartupCommand ?? 'antigravity-server',
                 'antigravityApiKey': _antigravityApiKey ?? '',
+                'antigravityAvailableModels': _antigravityAvailableModels ?? 'gemini-2.0-flash-lite, gemini-2.0-flash, gemini-2.0-pro, gemini-3.5-flash',
+                'antigravityLoModel': _antigravityLoModel ?? 'gemini-2.0-flash-lite',
+                'antigravityHiModel': _antigravityHiModel ?? 'gemini-2.0-flash',
                 'antigravityStatusDebug': _antigravityStatusDebug,
                 'antigravitySendViaClipboard': _antigravitySendViaClipboard,
                 'versionControlRepoUrl': _versionControlRepoUrl ?? '',
@@ -3069,15 +3220,49 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                             const SizedBox(height: 16),
                             _buildLabeled('Prompt Clarity Instruction', Icons.description, FormBuilderTextField(
                               name: 'ollamaClarityPrompt',
-                              initialValue: _ollamaClarityPrompt ?? 'Review this prompt for clarity and return YES or NO as an answer. The prompt is',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
+                              initialValue: _ollamaClarityPrompt ?? '{"prompt": "Is the following checklist item clear, specific, and actionable? \\"{PROMPT}\\"", "responseFormat": "binary"}',
+                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize * 0.85, fontFamily: 'monospace', height: 1.5),
+                              maxLines: 6,
+                              minLines: 4,
                               decoration: _inputDecoration(),
                             )),
                             Padding(
                               padding: EdgeInsets.only(top: 8.0, left: 12.0),
                               child: Text(
-                                'Configure connection details for the Local AI Assistant. The LocalAiService binds natively to this Ollama instance.',
-                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+                                'Use JSON format with "prompt" and "responseFormat": "binary" to enforce YES/NO structured output with notes. Use {PROMPT} as a placeholder.',
+                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.85),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Rewrite Prompt Instruction', Icons.auto_fix_high, FormBuilderTextField(
+                              name: 'ollamaRewritePrompt',
+                              initialValue: _ollamaRewritePrompt ?? 'Rewrite this prompt to make it clearer, more precise, and direct. Return only the rewritten prompt with no explanation. The prompt is: {PROMPT}',
+                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize * 0.85, fontFamily: 'monospace', height: 1.5),
+                              maxLines: 6,
+                              minLines: 4,
+                              decoration: _inputDecoration(),
+                            )),
+                            Padding(
+                              padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                              child: Text(
+                                'Sent to the AI when the lightbulb is pressed on an unclear checklist item. Use {PROMPT} as a placeholder for the original item text.',
+                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.85),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _buildLabeled('Generate Task Prompt', Icons.auto_fix_high, FormBuilderTextField(
+                              name: 'ollamaGenerateTaskPrompt',
+                              initialValue: _ollamaGenerateTaskPrompt ?? 'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"',
+                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize * 0.85, fontFamily: 'monospace', height: 1.5),
+                              maxLines: 8,
+                              minLines: 5,
+                              decoration: _inputDecoration(),
+                            )),
+                            Padding(
+                              padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                              child: Text(
+                                'Sent to the AI when the ✨ Generate Task button is pressed in the task editor description bar. Use {DESCRIPTION} as a placeholder for the task description text.',
+                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.85),
                               ),
                             ),
                             const SizedBox(height: 32),
@@ -3212,6 +3397,94 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                   );
                                 },
                               )),
+                              const SizedBox(height: 16),
+                              _buildLabeled('Antigravity LO Model', Icons.psychology, FutureBuilder<List<AntigravityModel>>(
+                                future: _modelsFuture,
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return const SizedBox(
+                                      height: 48,
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        ),
+                                      ),
+                                    );
+                                  } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final models = snapshot.data!;
+                                  final hasSelection = models.any((m) => m.id == _antigravityLoModel);
+                                  final initialValue = hasSelection
+                                      ? _antigravityLoModel
+                                      : (models.isNotEmpty ? models.first.id : 'gemini-2.0-flash-lite');
+                                  return FormBuilderDropdown<String>(
+                                    name: 'antigravityLoModel',
+                                    decoration: _inputDecoration(),
+                                    dropdownColor: AppColors.panelBackground,
+                                    initialValue: initialValue,
+                                    onChanged: (val) {
+                                      _antigravityLoModel = val;
+                                    },
+                                    onSaved: (val) {
+                                      _antigravityLoModel = val;
+                                    },
+                                    items: models.map((m) {
+                                      return DropdownMenuItem(
+                                        value: m.id,
+                                        child: Text(m.displayName, style: TextStyle(color: AppColors.panelTextPrimary)),
+                                      );
+                                    }).toList(),
+                                  );
+                                },
+                              )),
+                              const SizedBox(height: 16),
+                              _buildLabeled('Antigravity HI Model', Icons.psychology, FutureBuilder<List<AntigravityModel>>(
+                                future: _modelsFuture,
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return const SizedBox(
+                                      height: 48,
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        ),
+                                      ),
+                                    );
+                                  } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final models = snapshot.data!;
+                                  final hasSelection = models.any((m) => m.id == _antigravityHiModel);
+                                  final initialValue = hasSelection
+                                      ? _antigravityHiModel
+                                      : (models.isNotEmpty ? models.first.id : 'gemini-2.0-flash');
+                                  return FormBuilderDropdown<String>(
+                                    name: 'antigravityHiModel',
+                                    decoration: _inputDecoration(),
+                                    dropdownColor: AppColors.panelBackground,
+                                    initialValue: initialValue,
+                                    onChanged: (val) {
+                                      _antigravityHiModel = val;
+                                    },
+                                    onSaved: (val) {
+                                      _antigravityHiModel = val;
+                                    },
+                                    items: models.map((m) {
+                                      return DropdownMenuItem(
+                                        value: m.id,
+                                        child: Text(m.displayName, style: TextStyle(color: AppColors.panelTextPrimary)),
+                                      );
+                                    }).toList(),
+                                  );
+                                },
+                              )),
                               const SizedBox(height: 32),
                               Align(
                                 alignment: Alignment.centerLeft,
@@ -3235,6 +3508,26 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                   style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
                                 ),
                               ),
+                              const SizedBox(height: 16),
+                              _buildLabeled('Available Models (Comma-separated)', Icons.list, FormBuilderTextField(
+                                // Use a unique name here — 'antigravityAvailableModels' is already
+                                // registered by the CLI tab in this same FormBuilder scope.
+                                name: 'antigravityAvailableModelsDesktop',
+                                initialValue: _antigravityAvailableModels,
+                                style: TextStyle(color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                                onChanged: (val) {
+                                  setState(() {
+                                    _antigravityAvailableModels = val;
+                                  });
+                                  _onFormChanged();
+                                },
+                                onSaved: (val) {
+                                  _antigravityAvailableModels = val;
+                                },
+                              )),
+                              const SizedBox(height: 16),
+                              _buildLoHiDropdownsForNonSdk(),
                             ] else if (_aiBridgeSubTabIndex == 2) ...[
                               Text('CLI SETTINGS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.9, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                               const SizedBox(height: 12),
@@ -3299,6 +3592,24 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                 decoration: _inputDecoration(),
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                               )),
+                              const SizedBox(height: 16),
+                              _buildLabeled('Available Models (Comma-separated)', Icons.list, FormBuilderTextField(
+                                name: 'antigravityAvailableModels',
+                                initialValue: _antigravityAvailableModels,
+                                style: TextStyle(color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                                onChanged: (val) {
+                                  setState(() {
+                                    _antigravityAvailableModels = val;
+                                  });
+                                  _onFormChanged();
+                                },
+                                onSaved: (val) {
+                                  _antigravityAvailableModels = val;
+                                },
+                              )),
+                              const SizedBox(height: 16),
+                              _buildLoHiDropdownsForNonSdk(),
                               const SizedBox(height: 32),
                               Align(
                                 alignment: Alignment.centerLeft,

@@ -120,6 +120,33 @@ class MacroService extends ChangeNotifier {
     _startSystemLoop();
     _initPrefs();
     _startFileWatcher();
+    _initExcludedPids();
+  }
+
+  final List<int> _excludedPids = [pid];
+  
+  void _initExcludedPids() {
+    try {
+      Process.run('powershell', [
+        '-Command',
+        'try { \$curr = $pid; while (\$curr) { \$parent = (Get-CimInstance Win32_Process -Filter "ProcessId = \$curr" -ErrorAction SilentlyContinue).ParentProcessId; if (\$parent -and \$parent -ne 0) { Write-Output \$parent; \$curr = \$parent } else { break } } } catch {}'
+      ]).then((result) {
+        if (result.exitCode == 0) {
+          final lines = result.stdout.toString().split('\n');
+          for (var line in lines) {
+            final p = int.tryParse(line.trim());
+            if (p != null && p != 0 && !_excludedPids.contains(p)) {
+              _excludedPids.add(p);
+            }
+          }
+          debugPrint('[MacroService] Resolved excluded parent PIDs: $_excludedPids');
+        }
+      }).catchError((e) {
+        debugPrint('[MacroService] Failed to resolve parent PIDs: $e');
+      });
+    } catch (e) {
+      debugPrint('[MacroService] Error starting parent PID resolution: $e');
+    }
   }
 
   Future<void> _initPrefs() async {
@@ -920,23 +947,59 @@ function SwitchWindow {
     param([string]$title)
     $wshell = New-Object -ComObject wscript.shell
     
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    Write-Host "MACRO_LOG|SwitchWindow: Starting switch for '$title'..."
+    
     # 1. Get the list of process IDs to exclude (current macro process and all its parent processes)
     $excludePids = @($PID)
-    $currentPid = $PID
-    while ($currentPid) {
-        $p = $null
+    if ($global:MacroExcludedPids) {
+        $excludePids += $global:MacroExcludedPids
+    } else {
+        # Fallback to query process hierarchy if the pre-computed variable is missing
+        $currentPid = $PID
         try {
-            $p = Get-CimInstance Win32_Process -Filter "ProcessId = $currentPid" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $allProcs = Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId -ErrorAction SilentlyContinue
+            if (-not $allProcs) {
+                $allProcs = Get-WmiObject Win32_Process -Property ProcessId, ParentProcessId -ErrorAction SilentlyContinue
+            }
+            if ($allProcs) {
+                $parentMap = @{}
+                foreach ($bp in $allProcs) {
+                    if ($bp.ProcessId -and $bp.ParentProcessId) {
+                        $parentMap[[int]$bp.ProcessId] = [int]$bp.ParentProcessId
+                    }
+                }
+                while ($currentPid -and $parentMap.ContainsKey($currentPid)) {
+                    $parent = $parentMap[$currentPid]
+                    if ($parent -and $parent -ne 0 -and $excludePids -notcontains $parent) {
+                        $excludePids += $parent
+                        $currentPid = $parent
+                    } else {
+                        break
+                    }
+                }
+            }
         } catch {
-            $p = Get-WmiObject Win32_Process -Filter "ProcessId = $currentPid" -ErrorAction SilentlyContinue | Select-Object -First 1
-        }
-        if ($p -and $p.ParentProcessId -and $p.ParentProcessId -ne 0) {
-            $currentPid = $p.ParentProcessId
-            $excludePids += $currentPid
-        } else {
-            $currentPid = $null
+            $currentPid = $PID
+            while ($currentPid) {
+                $p = $null
+                try {
+                    $p = Get-CimInstance Win32_Process -Filter "ProcessId = $currentPid" -ErrorAction SilentlyContinue | Select-Object -First 1
+                } catch {
+                    $p = Get-WmiObject Win32_Process -Filter "ProcessId = $currentPid" -ErrorAction SilentlyContinue | Select-Object -First 1
+                }
+                if ($p -and $p.ParentProcessId -and $p.ParentProcessId -ne 0 -and $excludePids -notcontains $p.ParentProcessId) {
+                    $currentPid = $p.ParentProcessId
+                    $excludePids += $currentPid
+                } else {
+                    $currentPid = $null
+                }
+            }
         }
     }
+    
+    Write-Host "MACRO_LOG|SwitchWindow: Step 1 (Parent exclusion) took $($sw.ElapsedMilliseconds) ms. Excluded PIDs: $($excludePids -join ',')"
+    $step1Time = $sw.ElapsedMilliseconds
     
     # 2. Enumerate all visible windows to find a match by title (regex or substring)
     $windowsText = [Win32]::GetVisibleWindows()
@@ -950,24 +1013,56 @@ function SwitchWindow {
         }
     }
     
+    Write-Host "MACRO_LOG|SwitchWindow: Step 2a (GetVisibleWindows) took $($sw.ElapsedMilliseconds - $step1Time) ms. Count: $($windows.Count)"
+    $step2aTime = $sw.ElapsedMilliseconds
+    
+    # Pre-fetch all running processes in a single call to avoid heavy sequential Get-Process calls
+    $procMap = @{}
+    try {
+        $procs = Get-Process -ErrorAction SilentlyContinue
+        if ($procs) {
+            foreach ($p in $procs) {
+                $procMap[$p.Id] = $p
+            }
+        }
+    } catch {}
+    
+    Write-Host "MACRO_LOG|SwitchWindow: Step 2b (Pre-fetch Get-Process) took $($sw.ElapsedMilliseconds - $step2aTime) ms. Map size: $($procMap.Count)"
+    $step2bTime = $sw.ElapsedMilliseconds
+
     $match = $null
     if ($windows) {
         $match = $windows | Where-Object {
+            # Check the direct name first
+            if ($_.Title -match $title) {
+                $winHwnd = $_.Hwnd
+                $winPid = 0
+                [Win32]::GetWindowThreadProcessId($winHwnd, [ref]$winPid) | Out-Null
+                if ($excludePids -contains $winPid) {
+                    if ($title -match 'antigravity|ai bridge|music_app|agentic|desktop') {
+                        return $true
+                    } else {
+                        return $false
+                    }
+                }
+                return $true
+            }
+            
+            # If the title didn't match directly, fall back to process checks
             $winHwnd = $_.Hwnd
             $winPid = 0
             [Win32]::GetWindowThreadProcessId($winHwnd, [ref]$winPid) | Out-Null
             if ($excludePids -contains $winPid) {
                 # Skip windows belonging to our process tree, unless explicitly targeted
                 if ($title -match 'antigravity|ai bridge|music_app|agentic|desktop') {
-                    # Continue to match checks below
+                    # Continue checks below
                 } else {
                     return $false
                 }
             }
-            if ($_.Title -match $title) { return $true }
             if ($winPid -ne 0) {
-                $proc = Get-Process -Id $winPid -ErrorAction SilentlyContinue
-                if ($proc) {
+                if ($procMap.ContainsKey($winPid)) {
+                    $proc = $procMap[$winPid]
                     if ($proc.ProcessName -match $title) { return $true }
                     if ($proc.Description -match $title) { return $true }
                     if ($proc.Product -match $title) { return $true }
@@ -977,11 +1072,30 @@ function SwitchWindow {
         } | Select-Object -First 1
     }
     
+    Write-Host "MACRO_LOG|SwitchWindow: Step 2c (Match loop) took $($sw.ElapsedMilliseconds - $step2bTime) ms. Match found: $($match -ne $null)"
+    $step2cTime = $sw.ElapsedMilliseconds
+    
     # 3. Fuzzy fallback matching for terminal/console windows if no direct match is found
     if (-not $match -and ($title -match 'powershell|pwsh|cmd|terminal|antigravity|cli')) {
         Write-Host "MACRO_LOG|SwitchWindow: Match not found for '$title', attempting fuzzy match for terminal..."
         if ($windows) {
             $match = $windows | Where-Object {
+                # Check the direct name first for fuzzy terminals
+                if ($_.Title -match 'powershell|pwsh|cmd|command prompt|terminal') {
+                    $winHwnd = $_.Hwnd
+                    $winPid = 0
+                    [Win32]::GetWindowThreadProcessId($winHwnd, [ref]$winPid) | Out-Null
+                    if ($excludePids -contains $winPid) {
+                        if ($title -match 'antigravity|ai bridge|music_app|agentic|desktop') {
+                            return $true
+                        } else {
+                            return $false
+                        }
+                    }
+                    return $true
+                }
+                
+                # Fallback to process checks for fuzzy terminals
                 $winHwnd = $_.Hwnd
                 $winPid = 0
                 [Win32]::GetWindowThreadProcessId($winHwnd, [ref]$winPid) | Out-Null
@@ -992,10 +1106,9 @@ function SwitchWindow {
                         return $false
                     }
                 }
-                if ($_.Title -match 'powershell|pwsh|cmd|command prompt|terminal') { return $true }
                 if ($winPid -ne 0) {
-                    $proc = Get-Process -Id $winPid -ErrorAction SilentlyContinue
-                    if ($proc) {
+                    if ($procMap.ContainsKey($winPid)) {
+                        $proc = $procMap[$winPid]
                         if ($proc.ProcessName -match 'powershell|pwsh|cmd|terminal') { return $true }
                         if ($proc.Description -match 'powershell|pwsh|cmd|terminal') { return $true }
                     }
@@ -1003,7 +1116,10 @@ function SwitchWindow {
                 return $false
             } | Select-Object -First 1
         }
+        Write-Host "MACRO_LOG|SwitchWindow: Step 3 (Fuzzy fallback) took $($sw.ElapsedMilliseconds - $step2cTime) ms. Match found: $($match -ne $null)"
     }
+    
+    $step3Time = $sw.ElapsedMilliseconds
     
     # 4. Activate the window
     if ($match) {
@@ -1043,6 +1159,8 @@ function SwitchWindow {
         $wshell.AppActivate($title) | Out-Null
         Start-Sleep -Milliseconds 200
     }
+    
+    Write-Host "MACRO_LOG|SwitchWindow: Step 4 (Window activation) took $($sw.ElapsedMilliseconds - $step3Time) ms. Total SwitchWindow duration: $($sw.ElapsedMilliseconds) ms."
 }
 
 function ReturnToApp {
@@ -1139,6 +1257,10 @@ function NextClipboard {
 function GetBridgeMode {
     [System.Diagnostics.DebuggerHidden()]
     param()
+    if ($global:MacroActiveBridgeMode) {
+        return $global:MacroActiveBridgeMode
+    }
+    # Fallback if global variable is missing
     $searchDirs = @()
     if ($PSScriptRoot) {
         $searchDirs += $PSScriptRoot
@@ -1238,15 +1360,26 @@ function GetBridgeMode {
            }
         }
 
+        String activeMode = 'sdk';
+        try {
+          final modeFile = File('.ai_bridge/active_mode.txt');
+          if (modeFile.existsSync()) {
+            activeMode = modeFile.readAsStringSync().trim();
+          }
+        } catch (_) {}
+
+        final pidsCsv = _excludedPids.join(', ');
+        final String globalsHeader = '\$global:MacroExcludedPids = @($pidsCsv)\n\$global:MacroActiveBridgeMode = "$activeMode"';
+
         String manualWait = '';
         if (macro.executionTiming != 'System') {
            manualWait = 'while (([Win32]::GetAsyncKeyState(1) -band 0x8000) -or ([Win32]::GetAsyncKeyState(2) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x11) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x10) -band 0x8000) -or ([Win32]::GetAsyncKeyState(0x12) -band 0x8000)) {\n    Start-Sleep -Milliseconds 10\n}\n';
         }
 
         String debugCmd = (debugMode && scriptPrefix.isEmpty) ? 'Set-PSDebug -Trace 1\n' : '';
-        file.writeAsStringSync('$psHeader\n$manualWait$debugCmd$scriptPrefix$parsedScript\n$scriptSuffix');
+        file.writeAsStringSync('$globalsHeader\n$psHeader\n$manualWait$debugCmd$scriptPrefix$parsedScript\n$scriptSuffix');
         void processLogs(String data) {
-          int headerLines = psHeader.split('\n').length + (manualWait.isNotEmpty ? manualWait.split('\n').length - 1 : 0) + (debugCmd.isNotEmpty ? 1 : 0) + (scriptPrefix.isNotEmpty ? scriptPrefix.split('\n').length - 1 : 0);
+          int headerLines = globalsHeader.split('\n').length + psHeader.split('\n').length + (manualWait.isNotEmpty ? manualWait.split('\n').length - 1 : 0) + (debugCmd.isNotEmpty ? 1 : 0) + (scriptPrefix.isNotEmpty ? scriptPrefix.split('\n').length - 1 : 0);
           for (var line in data.split('\n')) {
             if (line.trim().startsWith('MACRO_LOG|')) {
               SystemLogsService.instance.addLog('[Macro: ${macro.name.trim()}] ${line.trim().substring(10)}', category: LogCategory.MACRO);
@@ -1272,7 +1405,7 @@ function GetBridgeMode {
         }
 
         void processErrors(String data) {
-          int headerLines = psHeader.split('\n').length + (manualWait.isNotEmpty ? manualWait.split('\n').length - 1 : 0) + (debugCmd.isNotEmpty ? 1 : 0) + (scriptPrefix.isNotEmpty ? scriptPrefix.split('\n').length - 1 : 0);
+          int headerLines = globalsHeader.split('\n').length + psHeader.split('\n').length + (manualWait.isNotEmpty ? manualWait.split('\n').length - 1 : 0) + (debugCmd.isNotEmpty ? 1 : 0) + (scriptPrefix.isNotEmpty ? scriptPrefix.split('\n').length - 1 : 0);
           for (var line in data.split('\n')) {
             if (line.trim().isNotEmpty) {
               var match = RegExp(r'\.ps1:(\d+)').firstMatch(line);
@@ -1292,6 +1425,7 @@ function GetBridgeMode {
 
         SystemLogsService.instance.addLog('▶ Executing Macro: ${macro.name.trim()}...', category: LogCategory.MACRO);
 
+        final stopwatch = Stopwatch()..start();
         final process = await Process.start('powershell', ['-ExecutionPolicy', 'Bypass', '-File', '.ai_bridge/temp_macro_${macro.id}.ps1']);
         
         if (macro.executionTiming == 'System') {
@@ -1304,20 +1438,27 @@ function GetBridgeMode {
         if (effectiveWait) {
           int code = await process.exitCode.timeout(const Duration(seconds: 5), onTimeout: () {
             process.kill();
-            SystemLogsService.instance.addLog('⚠ Macro timed out after 5 seconds: ${macro.name.trim()}', category: LogCategory.ERROR);
+            stopwatch.stop();
+            SystemLogsService.instance.addLog('⚠ Macro timed out after 5 seconds: ${macro.name.trim()} (took ${stopwatch.elapsedMilliseconds} ms)', category: LogCategory.ERROR);
             return -1;
           });
+          stopwatch.stop();
           if (code == 0) {
-             SystemLogsService.instance.addLog('✔ Macro Completed: ${macro.name.trim()}', category: LogCategory.MACRO);
+             SystemLogsService.instance.addLog('✔ Macro Completed: ${macro.name.trim()} (took ${stopwatch.elapsedMilliseconds} ms)', category: LogCategory.MACRO);
+          } else if (code != -1) {
+             SystemLogsService.instance.addLog('✖ Macro Failed: ${macro.name.trim()} (took ${stopwatch.elapsedMilliseconds} ms)', category: LogCategory.ERROR);
           }
         } else {
           process.exitCode.then((code) {
+             stopwatch.stop();
              if (macro.executionTiming == 'System') {
                _runningSystemProcesses.remove(macro.id);
                _runningSystemMacros.remove(macro.id);
              }
              if (code == 0) {
-                 SystemLogsService.instance.addLog('✔ Macro Completed: ${macro.name.trim()}', category: LogCategory.MACRO);
+                 SystemLogsService.instance.addLog('✔ Macro Completed: ${macro.name.trim()} (took ${stopwatch.elapsedMilliseconds} ms)', category: LogCategory.MACRO);
+             } else {
+                 SystemLogsService.instance.addLog('✖ Macro Failed: ${macro.name.trim()} (took ${stopwatch.elapsedMilliseconds} ms)', category: LogCategory.ERROR);
              }
           });
         }

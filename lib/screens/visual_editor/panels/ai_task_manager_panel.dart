@@ -132,6 +132,9 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
   Set<String> _collapsedActiveFolders = {};
   Set<String> _collapsedCompletedFolders = {};
 
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
   double _dialogWidth = 600;
   double _dialogHeight = 500;
   double _dialogLeftRatio = 0.5;
@@ -394,6 +397,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     _activeScrollController.dispose();
     _completedScrollController.dispose();
     _queueScrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -758,6 +762,106 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                     child: Text('Accept Changes', style: TextStyle(color: AppColors.panelTextPrimary)),
                   )
                 ]));
+  }
+
+  // ── Reusable: Search Bar ─────────────────────────────────────────────────
+  Widget _buildSearchBar({required int? matchCount}) {
+    final isActive = _searchQuery.isNotEmpty;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isActive ? AppColors.accent.withOpacity(0.06) : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: isActive ? AppColors.accent.withOpacity(0.4) : Colors.transparent,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: KeyboardListener(
+              focusNode: FocusNode(),
+              onKeyEvent: (event) {
+                if (event is KeyDownEvent &&
+                    event.logicalKey == LogicalKeyboardKey.escape) {
+                  setState(() {
+                    _searchController.clear();
+                    _searchQuery = '';
+                  });
+                }
+              },
+              child: TextField(
+                controller: _searchController,
+                style: TextStyle(
+                  color: AppColors.panelTextPrimary,
+                  fontSize: AppUIConfig.rootFontSize,
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Search name, description, notes, checklist...',
+                  hintStyle: TextStyle(
+                    color: AppColors.panelTextSecondary,
+                    fontSize: AppUIConfig.rootFontSize,
+                  ),
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Icon(
+                      Icons.search,
+                      size: 16,
+                      color: isActive ? AppColors.accent : AppColors.panelTextSecondary,
+                    ),
+                  ),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  suffixIcon: isActive
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (matchCount != null)
+                              Container(
+                                margin: const EdgeInsets.only(right: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: matchCount > 0
+                                      ? AppColors.accent.withOpacity(0.18)
+                                      : AppColors.error.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '$matchCount found',
+                                  style: TextStyle(
+                                    color: matchCount > 0 ? AppColors.accent : AppColors.error,
+                                    fontSize: AppUIConfig.rootFontSize * 0.82,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            IconButton(
+                              icon: Icon(Icons.close, size: 13, color: AppColors.panelTextSecondary),
+                              tooltip: 'Clear search (Esc)',
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              constraints: const BoxConstraints(),
+                              onPressed: () => setState(() {
+                                _searchController.clear();
+                                _searchQuery = '';
+                              }),
+                            ),
+                          ],
+                        )
+                      : null,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                ),
+                onChanged: (val) => setState(() => _searchQuery = val.trim()),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildTaskRootDropZone(bool isHovering) {
@@ -3332,6 +3436,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                 ),
               ),
             ),
+            _buildModelToggle(scale),
             Container(
               margin: EdgeInsets.only(left: 8 * scale, right: 4 * scale),
               decoration: BoxDecoration(
@@ -3383,6 +3488,64 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
         ),
       );
     }
+
+  Widget _buildModelToggleSegment(String label, bool isSelected, double scale, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(4 * scale),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 4 * scale),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.accent.withOpacity(0.2) : Colors.transparent,
+            borderRadius: BorderRadius.circular(4 * scale),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.white60,
+              fontSize: 10 * scale,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModelToggle(double scale) {
+    final useHi = AiBridgeService.instance.useHiModel;
+    return Container(
+      margin: EdgeInsets.only(left: 6 * scale, right: 2 * scale),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(5 * scale),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.15),
+          width: 1.0,
+        ),
+        color: Colors.black26,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildModelToggleSegment('LO', !useHi, scale, () {
+            AiBridgeService.instance.setUseHiModel(false);
+          }),
+          Container(
+            width: 1.0,
+            height: 14 * scale,
+            color: Colors.white.withOpacity(0.15),
+          ),
+          _buildModelToggleSegment('HI', useHi, scale, () {
+            AiBridgeService.instance.setUseHiModel(true);
+          }),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSubagentItem(String taskId, SubagentConnection connection) {
     final taskList = AiBridgeService.instance.tasks.where((t) => t.id == taskId).toList();
     final displayTitle = taskList.isNotEmpty ? taskList.first.name.toUpperCase() : 'AGENT $taskId';
@@ -4023,10 +4186,22 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
               final tasks = AiBridgeService.instance.tasks;
 
               List<Widget> activeWidgets = [];
+              int matchedTaskCount = 0; // tracks non-folder tasks passing filter in current worksheet
 
               bool passesFilter(AiTask task) {
                 if (task.isFolder) {
                   return true; // Folders are filtered through hasChildren
+                }
+                if (_searchQuery.isNotEmpty) {
+                  final q = _searchQuery.toLowerCase();
+                  final matchesName        = task.name.toLowerCase().contains(q);
+                  final matchesDescription = task.description.toLowerCase().contains(q);
+                  final matchesNotes       = task.notes.toLowerCase().contains(q);
+                  final matchesQuestion    = task.implementationQuestion.toLowerCase().contains(q);
+                  final matchesChecklist   = task.verificationCriteria.any(
+                      (c) => c.description.toLowerCase().contains(q));
+                  if (!matchesName && !matchesDescription && !matchesNotes &&
+                      !matchesQuestion && !matchesChecklist) return false;
                 }
                 return task.priority.index >= AiBridgeService.instance.filterPriority.index;
               }
@@ -4058,6 +4233,8 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                 for (var child in children) {
                   if (child.isWorksheet) continue;
                   if (!child.isFolder && !passesFilter(child)) continue;
+                  // When searching, hide folders that have no matching descendants
+                  if (child.isFolder && _searchQuery.isNotEmpty && !hasChildren(child.id)) continue;
 
                   bool isEven = activeIndex % 2 == 0;
                   activeIndex++;
@@ -4065,6 +4242,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                       .add(_buildTaskItem(child, depth, isEven: isEven, isCompletedSection: child.status == AiTaskStatus.completed));
                   activeWidgets
                       .add(Divider(color: AppColors.overlaySubtle, height: 1));
+                  if (!child.isFolder) matchedTaskCount++;
                   if (child.isFolder &&
                       !_collapsedActiveFolders.contains(child.id)) {
                     traverse(child.id, depth + 1, visited: visited);
@@ -4094,6 +4272,12 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                       },
                     ),
                     child: Column(children: [
+                      // ── Search Bar ──────────────────────────────────────────
+                      Builder(builder: (context) {
+                        // matchedTaskCount is worksheet-scoped (from traverse above)
+                        final matchCount = _searchQuery.isNotEmpty ? matchedTaskCount : null;
+                        return _buildSearchBar(matchCount: matchCount);
+                      }),
                       Expanded(
                           child: DragTarget<String>(
                             onAcceptWithDetails: (details) {
@@ -4191,9 +4375,44 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                   }
                                 ),
                                 const SizedBox(width: 8),
-                                IconButton(
+                                 IconButton(
                                      icon: Icon(Icons.stop, size: 16, color: AppColors.error),
-                                     onPressed: () => AiBridgeService.instance.clearQueue(),
+                                     onPressed: () async {
+                                       final confirmed = await showDialog<bool>(
+                                         context: context,
+                                         builder: (ctx) => AlertDialog(
+                                           backgroundColor: AppColors.panelBackground,
+                                           shape: RoundedRectangleBorder(
+                                             borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius),
+                                             side: BorderSide(color: AppColors.controlBorder),
+                                           ),
+                                           title: Row(
+                                             children: [
+                                               Icon(Icons.stop, color: AppColors.error, size: 18),
+                                               const SizedBox(width: 8),
+                                               Text('Clear Queue', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: 14)),
+                                             ],
+                                           ),
+                                           content: Text(
+                                             'This will abort the active task and remove all pending queue items. Continue?',
+                                             style: TextStyle(color: AppColors.panelTextSecondary, fontSize: 12),
+                                           ),
+                                           actions: [
+                                             TextButton(
+                                               onPressed: () => Navigator.of(ctx).pop(false),
+                                               child: Text('Cancel', style: TextStyle(color: AppColors.panelTextSecondary)),
+                                             ),
+                                             TextButton(
+                                               onPressed: () => Navigator.of(ctx).pop(true),
+                                               child: Text('Clear Queue', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+                                             ),
+                                           ],
+                                         ),
+                                       );
+                                       if (confirmed == true) {
+                                         AiBridgeService.instance.clearQueue();
+                                       }
+                                     },
                                      tooltip: 'Clear Queue',
                                      padding: EdgeInsets.zero,
                                      constraints: const BoxConstraints(),
@@ -4201,7 +4420,42 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
                                  const SizedBox(width: 8),
                                  IconButton(
                                      icon: const Icon(Icons.restart_alt, size: 16, color: Colors.orangeAccent),
-                                     onPressed: () => AiBridgeService.instance.forceResetIdle(),
+                                     onPressed: () async {
+                                       final confirmed = await showDialog<bool>(
+                                         context: context,
+                                         builder: (ctx) => AlertDialog(
+                                           backgroundColor: AppColors.panelBackground,
+                                           shape: RoundedRectangleBorder(
+                                             borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius),
+                                             side: BorderSide(color: AppColors.controlBorder),
+                                           ),
+                                           title: Row(
+                                             children: [
+                                               const Icon(Icons.restart_alt, color: Colors.orangeAccent, size: 18),
+                                               const SizedBox(width: 8),
+                                               Text('Force Reset IDLE', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: 14)),
+                                             ],
+                                           ),
+                                           content: Text(
+                                             'Force the bridge back to IDLE and resume the queue from the next pending item. Use this to unstick a frozen agent.',
+                                             style: TextStyle(color: AppColors.panelTextSecondary, fontSize: 12),
+                                           ),
+                                           actions: [
+                                             TextButton(
+                                               onPressed: () => Navigator.of(ctx).pop(false),
+                                               child: Text('Cancel', style: TextStyle(color: AppColors.panelTextSecondary)),
+                                             ),
+                                             TextButton(
+                                               onPressed: () => Navigator.of(ctx).pop(true),
+                                               child: const Text('Force Reset', style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+                                             ),
+                                           ],
+                                         ),
+                                       );
+                                       if (confirmed == true) {
+                                         AiBridgeService.instance.forceResetIdle();
+                                       }
+                                     },
                                      tooltip: 'Force Reset IDLE (Unstick)',
                                      padding: EdgeInsets.zero,
                                      constraints: const BoxConstraints(),

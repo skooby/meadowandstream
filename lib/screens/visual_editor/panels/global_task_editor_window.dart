@@ -1578,15 +1578,17 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                 final val = _verificationControllers[i].text.trim();
                                                 if (val.isNotEmpty) {
                                                   Future.microtask(() async {
-                                                    final template = LocalAiService.instance.clarityPrompt;
-                                                    final promptText = template.contains('{PROMPT}')
-                                                        ? template.replaceAll('{PROMPT}', val)
-                                                        : '$template $val';
-                                                    final result = await LocalAiService.instance.generateText(promptText);
+                                                    final result = await LocalAiService.instance.checkClarity(val);
                                                     if (result != null) {
-                                                      final response = result.trim().toUpperCase();
+                                                      final (isUnclear, aiNotes) = result;
                                                       setStateBuilder(() {
-                                                        verificationCriteriaList[i].requestClarification = response.contains('NO');
+                                                        verificationCriteriaList[i].requestClarification = isUnclear;
+                                                        if (isUnclear && aiNotes != null && aiNotes.isNotEmpty) {
+                                                          final existing = verificationCriteriaList[i].notes;
+                                                          verificationCriteriaList[i].notes = existing.isNotEmpty
+                                                              ? '⚠️ $aiNotes\n\n$existing'
+                                                              : '⚠️ $aiNotes';
+                                                        }
                                                       });
                                                       _executeAutoSave();
                                                     }
@@ -1803,7 +1805,10 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                   ScaffoldMessenger.of(context).showSnackBar(
                                                     const SnackBar(content: Text('Retooling prompt with AI...')),
                                                   );
-                                                  final instruction = 'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: $currentPrompt';
+                                                  final rewriteTemplate = LocalAiService.instance.rewritePrompt;
+                                                  final instruction = rewriteTemplate.contains('{PROMPT}')
+                                                      ? rewriteTemplate.replaceAll('{PROMPT}', currentPrompt)
+                                                      : '$rewriteTemplate $currentPrompt';
                                                   final retooled = await LocalAiService.instance.generateText(instruction);
                                                   if (retooled != null && retooled.trim().isNotEmpty && context.mounted) {
                                                     setStateBuilder(() {
@@ -1911,20 +1916,61 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
+                                if (verificationCriteriaList[i].notes.isNotEmpty) ...[
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (verificationCriteriaList[i].notes.startsWith('⚠️')) ...[
+                                            Icon(Icons.smart_toy_outlined, size: 12, color: Colors.orangeAccent.withOpacity(0.8)),
+                                            const SizedBox(width: 4),
+                                            Text('AI Notes', style: TextStyle(color: Colors.orangeAccent.withOpacity(0.8), fontSize: AppUIConfig.rootFontSize * 0.8, fontWeight: FontWeight.w600)),
+                                          ] else ...[
+                                            Text('Notes', style: TextStyle(color: Colors.white38, fontSize: AppUIConfig.rootFontSize * 0.8)),
+                                          ],
+                                        ],
+                                      ),
+                                      if (!isItemLocked)
+                                        InkWell(
+                                          onTap: () {
+                                            setStateBuilder(() {
+                                              verificationCriteriaList[i].notes = '';
+                                              _executeAutoSave();
+                                            });
+                                          },
+                                          borderRadius: BorderRadius.circular(4),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.clear, size: 12, color: Colors.white38),
+                                                const SizedBox(width: 3),
+                                                Text('Clear', style: TextStyle(color: Colors.white38, fontSize: AppUIConfig.rootFontSize * 0.8)),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                ],
                                 Container(
                                   constraints: const BoxConstraints(maxHeight: 120),
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: Colors.black38,
                                     borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: Colors.white10),
+                                    border: Border.all(color: verificationCriteriaList[i].notes.startsWith('⚠️') ? Colors.orangeAccent.withOpacity(0.3) : Colors.white10),
                                   ),
                                   child: TextFormField(
                                     key: ValueKey('${existingTask?.id}_verification_notes_${i}_${verificationCriteriaList[i].notes}'),
                                     initialValue: verificationCriteriaList[i].notes,
                                     readOnly: isItemLocked,
                                     style: TextStyle(
-                                        color: Colors.white70,
+                                        color: verificationCriteriaList[i].notes.startsWith('⚠️') ? Colors.orangeAccent.withOpacity(0.85) : Colors.white70,
                                         fontSize: AppUIConfig.rootFontSize * 0.9),
                                     decoration: InputDecoration(
                                       isDense: true,
@@ -1939,6 +1985,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                     },
                                   ),
                                 ),
+
                                 if (verificationCriteriaList[i].status == AiVerificationStatus.verified) ...[
                                   const SizedBox(height: 8),
                                   Container(
@@ -2205,15 +2252,36 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                           event.logicalKey == LogicalKeyboardKey.enter &&
                           !HardwareKeyboard.instance.isShiftPressed) {
                         if (newSubTaskController.text.trim().isNotEmpty) {
+                          final newText = newSubTaskController.text.trim();
                           setStateBuilder(() {
                             verificationCriteriaList.add(AiVerificationCriteria(
-                                description: newSubTaskController.text.trim()));
+                                description: newText));
                             _verificationControllers.add(TextEditingController(
-                                text: newSubTaskController.text.trim()));
+                                text: newText));
                             _verificationGoalControllers.add(TextEditingController());
                             newSubTaskController.clear();
                           });
                           _executeAutoSave(instant: true);
+                          // Run AI clarity check on the new item
+                          final newIdx = verificationCriteriaList.length - 1;
+                          Future.microtask(() async {
+                            final result = await LocalAiService.instance.checkClarity(newText);
+                            if (result != null) {
+                              final (isUnclear, aiNotes) = result;
+                              setStateBuilder(() {
+                                if (newIdx < verificationCriteriaList.length) {
+                                  verificationCriteriaList[newIdx].requestClarification = isUnclear;
+                                  if (isUnclear && aiNotes != null && aiNotes.isNotEmpty) {
+                                    final existing = verificationCriteriaList[newIdx].notes;
+                                    verificationCriteriaList[newIdx].notes = existing.isNotEmpty
+                                        ? '⚠️ $aiNotes\n\n$existing'
+                                        : '⚠️ $aiNotes';
+                                  }
+                                }
+                              });
+                              _executeAutoSave();
+                            }
+                          });
                         }
                         return KeyEventResult.handled;
                       }
@@ -2251,15 +2319,36 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                   color: AppColors.accent,
                   onPressed: () {
                     if (newSubTaskController.text.trim().isNotEmpty) {
+                      final newText = newSubTaskController.text.trim();
                       setStateBuilder(() {
                         verificationCriteriaList.add(AiVerificationCriteria(
-                            description: newSubTaskController.text.trim()));
+                            description: newText));
                         _verificationControllers.add(TextEditingController(
-                            text: newSubTaskController.text.trim()));
+                            text: newText));
                         _verificationGoalControllers.add(TextEditingController());
                         newSubTaskController.clear();
                       });
                       _executeAutoSave(instant: true);
+                      // Run AI clarity check on the new item
+                      final newIdx = verificationCriteriaList.length - 1;
+                      Future.microtask(() async {
+                        final result = await LocalAiService.instance.checkClarity(newText);
+                        if (result != null) {
+                          final (isUnclear, aiNotes) = result;
+                          setStateBuilder(() {
+                            if (newIdx < verificationCriteriaList.length) {
+                              verificationCriteriaList[newIdx].requestClarification = isUnclear;
+                              if (isUnclear && aiNotes != null && aiNotes.isNotEmpty) {
+                                final existing = verificationCriteriaList[newIdx].notes;
+                                verificationCriteriaList[newIdx].notes = existing.isNotEmpty
+                                    ? '⚠️ $aiNotes\n\n$existing'
+                                    : '⚠️ $aiNotes';
+                              }
+                            }
+                          });
+                          _executeAutoSave();
+                        }
+                      });
                     }
                   },
                 ),
@@ -2636,16 +2725,18 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                         padding: const EdgeInsets.all(6),
                                         constraints: const BoxConstraints(),
                                         onPressed: (isTaskReadOnly || AiBridgeService.instance.isThinking) ? null : () async {
-                                          print('[AiBridge] Active Tasks and Checklist Items:');
-                                          for (final t in AiBridgeService.instance.tasks) {
-                                            if (t.isFolder || t.isWorksheet || t.status == AiTaskStatus.completed) continue;
-                                            print('Task: ${t.name} (Status: ${t.status.name})');
-                                            if (t.verificationCriteria.isEmpty) {
-                                              print('  - No checklist items');
-                                            } else {
-                                              for (final criteria in t.verificationCriteria) {
-                                                print('  - Checklist Item: ${criteria.description} (Status: ${criteria.status.name}, Try Count: ${criteria.tryCount})');
-                                              }
+                                          print('[AiBridge] Queuing Task: ${existingTask!.name}');
+                                          final unchecked = existingTask!.verificationCriteria
+                                              .where((e) => (e.status != AiVerificationStatus.verified &&
+                                                  e.status != AiVerificationStatus.ignored &&
+                                                  e.status != AiVerificationStatus.pendingReview &&
+                                                  !e.isPreview))
+                                              .toList();
+                                          if (unchecked.isEmpty) {
+                                            print('  - Queuing entire task prompt');
+                                          } else {
+                                            for (final criteria in unchecked) {
+                                              print('  - Queuing Checklist Item: ${criteria.description}');
                                             }
                                           }
                                           await AiBridgeService.instance.submitTaskChecklist(
@@ -2740,6 +2831,73 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                           padding: EdgeInsets.zero,
                                                           constraints: const BoxConstraints(),
                                                           tooltip: isProcessing ? 'Reviewing...' : 'Review Prompt with AI',
+                                                        );
+                                                      },
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    ListenableBuilder(
+                                                      listenable: LocalAiService.instance,
+                                                      builder: (context, _) {
+                                                        final isProcessingGen = LocalAiService.instance.isProcessing;
+                                                        return IconButton(
+                                                          icon: isProcessingGen
+                                                              ? const SizedBox(
+                                                                  width: 16,
+                                                                  height: 16,
+                                                                  child: CircularProgressIndicator(
+                                                                    strokeWidth: 2,
+                                                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+                                                                  ),
+                                                                )
+                                                              : const Icon(Icons.auto_fix_high, size: 16),
+                                                          onPressed: isProcessingGen
+                                                              ? null
+                                                              : () async {
+                                                                  if (descController.text.isEmpty) return;
+                                                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generating task...')));
+                                                                  final generated = await LocalAiService.instance.generateTask(descController.text);
+                                                                  if (generated == null) {
+                                                                    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: ${LocalAiService.instance.lastError}')));
+                                                                    return;
+                                                                  }
+                                                                  setStateBuilder(() {
+                                                                    if (nameController.text.trim().isEmpty && generated.title.isNotEmpty) {
+                                                                      nameController.text = generated.title;
+                                                                    }
+                                                                    for (final itemText in generated.checklistItems) {
+                                                                      if (itemText.isEmpty) continue;
+                                                                      verificationCriteriaList.add(AiVerificationCriteria(description: itemText));
+                                                                      _verificationControllers.add(TextEditingController(text: itemText));
+                                                                      _verificationGoalControllers.add(TextEditingController());
+                                                                    }
+                                                                  });
+                                                                  _executeAutoSave(instant: true);
+                                                                  final startIdx = verificationCriteriaList.length - generated.checklistItems.length;
+                                                                  for (int gi = 0; gi < generated.checklistItems.length; gi++) {
+                                                                    final idx = startIdx + gi;
+                                                                    final itemText = generated.checklistItems[gi];
+                                                                    Future.microtask(() async {
+                                                                      final clarityResult = await LocalAiService.instance.checkClarity(itemText);
+                                                                      if (clarityResult != null) {
+                                                                        final (isUnclear, aiNotes) = clarityResult;
+                                                                        setStateBuilder(() {
+                                                                          if (idx < verificationCriteriaList.length) {
+                                                                            verificationCriteriaList[idx].requestClarification = isUnclear;
+                                                                            if (isUnclear && aiNotes != null && aiNotes.isNotEmpty) {
+                                                                              verificationCriteriaList[idx].notes = '⚠️ $aiNotes';
+                                                                            }
+                                                                          }
+                                                                        });
+                                                                        _executeAutoSave();
+                                                                      }
+                                                                    });
+                                                                  }
+                                                                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generated ${generated.checklistItems.length} checklist items!')));
+                                                                },
+                                                          color: Colors.greenAccent,
+                                                          padding: EdgeInsets.zero,
+                                                          constraints: const BoxConstraints(),
+                                                          tooltip: isProcessingGen ? 'Generating...' : 'Generate Task with AI',
                                                         );
                                                       },
                                                     ),

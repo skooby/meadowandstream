@@ -12,11 +12,17 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory tempBridgeDir;
+  late MockAntigravityClient mockClient;
+  late AntigravityClient originalClient;
+  late AntigravityClient originalSdkClient;
 
   setUp(() async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'ai_tasks_delay_seconds': 0.0,
+    });
     tempBridgeDir = Directory.systemTemp.createTempSync('ai_bridge_test_dir');
     AiBridgeService.instance.testDirPath = tempBridgeDir.path;
+    AiBridgeService.instance.testBrainDir = tempBridgeDir;
     AiBridgeService.instance.stepIndexAtDispatch = null;
     AiBridgeService.instance.promptDispatchedAt = null;
     AiBridgeService.instance.isPromptDispatched = false;
@@ -25,10 +31,20 @@ void main() {
     await AiBridgeService.instance.clearQueue();
     AntigravityStatusService.instance.statusFilePath = '${tempBridgeDir.path}/agent_status.txt';
     AntigravityStatusService.instance.resetState();
+    
+    mockClient = MockAntigravityClient();
+    originalClient = AiBridgeService.instance.antigravityClient;
+    AiBridgeService.instance.antigravityClient = mockClient;
+    originalSdkClient = AntigravityClient.instance;
+    AntigravityClient.instance = mockClient;
   });
 
   tearDown(() {
+    AiBridgeService.instance.antigravityClient = originalClient;
+    AntigravityClient.instance = originalSdkClient;
     AiBridgeService.instance.testDirPath = '.ai_bridge';
+    AiBridgeService.instance.testBrainDir = null;
+    AiBridgeService.instance.testFilePath = '.ai_bridge/tasks.json';
     AiBridgeService.instance.stepIndexAtDispatch = null;
     AiBridgeService.instance.promptDispatchedAt = null;
     AiBridgeService.instance.isPromptDispatched = false;
@@ -701,6 +717,11 @@ class MockAntigravityClient extends AntigravityClient {
   final List<String> sentPrompts = [];
 
   MockAntigravityClient() : super.custom();
+
+  @override
+  Future<List<String>> getAvailableModels() async {
+    return ['flash_lite', 'flash', 'pro'];
+  }
 
   @override
   Future<void> sendPrompt(String text) async {

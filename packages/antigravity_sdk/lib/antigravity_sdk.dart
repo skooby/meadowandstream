@@ -256,6 +256,7 @@ class AntigravityClient {
           'gemini-1.5-flash',
           'gemini-2.0-flash',
           'gemini-2.5-flash',
+          'gemini-3.5-flash',
           'claude-3-5-haiku',
           'llama-3.1-70b',
         ]);
@@ -701,6 +702,7 @@ class AntigravityModelsClient {
       else if (m == 'gemini-2.0-pro') displayName = 'Gemini 2.0 Pro';
       else if (m == 'gemini-2.5-flash-lite') displayName = 'Gemini 2.5 Flash Lite';
       else if (m == 'gemini-2.5-flash') displayName = 'Gemini 2.5 Flash';
+      else if (m == 'gemini-3.5-flash') displayName = 'Gemini 3.5 Flash';
       else if (m == 'gemini-2.5-pro') displayName = 'Gemini 2.5 Pro';
       else if (m == 'claude-3-5-sonnet') displayName = 'Claude 3.5 Sonnet';
       else if (m == 'claude-3-5-haiku') displayName = 'Claude 3.5 Haiku';

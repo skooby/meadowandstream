@@ -130,12 +130,15 @@ class SystemLogsService extends ChangeNotifier {
       orElse: () => LogTypeConfig(category: category),
     );
 
-    // If console logging is enabled and it's not a GENERAL log (which is handled separately by debugPrint), print it.
-    if (config.console && category != LogCategory.GENERAL) {
+    // Always print AI logs to console so they're visible regardless of saved config.
+    if (category == LogCategory.AI) {
+      debugPrint('[AI] $message');
+    } else if (config.console && category != LogCategory.GENERAL) {
       debugPrint('[$category] $message');
     }
 
-    if (!config.system) {
+    // AI logs always go to the system log panel regardless of saved config.
+    if (!config.system && category != LogCategory.AI) {
       return;
     }
 

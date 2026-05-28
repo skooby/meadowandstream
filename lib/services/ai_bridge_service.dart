@@ -487,6 +487,7 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   void setDryRunMode(bool enabled) {
     _isDryRunMode = enabled;
     clearSimulatedActions();
+    _getPrefs().then((prefs) => prefs.setBool('ai_bridge_dry_run_mode', enabled));
   }
 
   void logSimulatedAction(String type, String title, String detail) {
@@ -976,20 +977,38 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
 
       final apiKey = prefs.getString('antigravity_api_key') ?? '';
 
-      antigravityClient = AntigravityClient.custom(
-        config: AntigravityConfig(
-          binaryPath: binaryPath,
-          lsAddress: lsAddress,
-          csrfToken: csrfToken,
-          projectId: projectId,
-          targetModel: targetModel,
-          apiKey: apiKey,
-        ),
-        onLog: (logMessage) {
-          SystemLogsService.instance.addLog(logMessage, category: LogCategory.AI);
-        },
-      );
-      AntigravityClient.instance = antigravityClient;
+      if (Platform.environment.containsKey('FLUTTER_TEST')) {
+        try {
+          antigravityClient;
+        } catch (_) {
+          antigravityClient = AntigravityClient.custom(
+            config: const AntigravityConfig(
+              binaryPath: '',
+              lsAddress: '127.0.0.1:8080',
+              csrfToken: '',
+              projectId: '',
+              targetModel: 'gemini-2.0-flash',
+              apiKey: '',
+            ),
+          );
+          AntigravityClient.instance = antigravityClient;
+        }
+      } else {
+        antigravityClient = AntigravityClient.custom(
+          config: AntigravityConfig(
+            binaryPath: binaryPath,
+            lsAddress: lsAddress,
+            csrfToken: csrfToken,
+            projectId: projectId,
+            targetModel: targetModel,
+            apiKey: apiKey,
+          ),
+          onLog: (logMessage) {
+            SystemLogsService.instance.addLog(logMessage, category: LogCategory.AI);
+          },
+        );
+        AntigravityClient.instance = antigravityClient;
+      }
 
       // Fetch and log available models at start for testing
       Future.microtask(() async {
@@ -1010,18 +1029,35 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       });
     } catch (e) {
       debugPrint('[AiBridgeService] Error initializing client: $e');
-      // Fallback client to prevent null exceptions
-      antigravityClient = AntigravityClient.custom(
-        config: const AntigravityConfig(
-          binaryPath: '',
-          lsAddress: '127.0.0.1:8080',
-          csrfToken: '',
-          projectId: '',
-          targetModel: 'gemini-2.0-flash',
-          apiKey: '',
-        ),
-      );
-      AntigravityClient.instance = antigravityClient;
+      if (Platform.environment.containsKey('FLUTTER_TEST')) {
+        try {
+          antigravityClient;
+        } catch (_) {
+          antigravityClient = AntigravityClient.custom(
+            config: const AntigravityConfig(
+              binaryPath: '',
+              lsAddress: '127.0.0.1:8080',
+              csrfToken: '',
+              projectId: '',
+              targetModel: 'gemini-2.0-flash',
+              apiKey: '',
+            ),
+          );
+          AntigravityClient.instance = antigravityClient;
+        }
+      } else {
+        antigravityClient = AntigravityClient.custom(
+          config: const AntigravityConfig(
+            binaryPath: '',
+            lsAddress: '127.0.0.1:8080',
+            csrfToken: '',
+            projectId: '',
+            targetModel: 'gemini-2.0-flash',
+            apiKey: '',
+          ),
+        );
+        AntigravityClient.instance = antigravityClient;
+      }
     }
     // Subscribe to artifact updates
     antigravityClient.onArtifactUpdate.listen((update) {
@@ -1186,6 +1222,37 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     );
   }
 
+  Future<void> _chooseModelTier() async {
+    final prefs = await SharedPreferences.getInstance();
+    final useHi = prefs.getBool('antigravity_use_hi_model') ?? false;
+    final loModel = prefs.getString('antigravity_lo_model') ?? 'gemini-2.0-flash-lite';
+    final hiModel = prefs.getString('antigravity_hi_model') ?? 'gemini-2.0-flash';
+    final modelToUse = useHi ? hiModel : loModel;
+
+    await prefs.setString('antigravity_model', modelToUse);
+    await updateAntigravityConfig();
+
+    // Write the chosen model directly into ~/.gemini/antigravity-cli/settings.json
+    // so the Antigravity CLI loads it natively on its next session init.
+    try {
+      final userProfile = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
+      final settingsFile = File('$userProfile\\.gemini\\antigravity-cli\\settings.json');
+      Map<String, dynamic> settingsJson = {};
+      if (await settingsFile.exists()) {
+        final raw = await settingsFile.readAsString();
+        settingsJson = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      }
+      settingsJson['model'] = modelToUse;
+      await settingsFile.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(settingsJson),
+        flush: true,
+      );
+      debugPrint('[AiBridgeService] Wrote model "$modelToUse" to antigravity-cli settings.json');
+    } catch (e) {
+      debugPrint('[AiBridgeService] Failed to write model to antigravity-cli settings.json: $e');
+    }
+  }
+
   String _dirPath = '.ai_bridge';
   String _filePath = '.ai_bridge/tasks.json';
   String get bridgeDirPath => _dirPath;
@@ -1315,6 +1382,23 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   AntigravityBridgeMode _bridgeMode = AntigravityBridgeMode.sdk;
   AntigravityBridgeMode get bridgeMode => _bridgeMode;
 
+  String _rulesDirPath = '.agent/rules';
+
+  @visibleForTesting
+  set testRulesDirPath(String path) {
+    _rulesDirPath = path;
+  }
+
+  bool _useHiModel = false;
+  bool get useHiModel => _useHiModel;
+
+  void setUseHiModel(bool value) async {
+    _useHiModel = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('antigravity_use_hi_model', value);
+  }
+
   void setBridgeMode(AntigravityBridgeMode mode) async {
     _bridgeMode = mode;
     _writeActiveModeFile(mode.name);
@@ -1361,10 +1445,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   String get queueStatus => _queueStatus;
 
   void _writeQueueStatus(String status) {
+    if (_queueStatus == status) return;
     _queueStatus = status;
-    if (_isDryRunMode) {
-      logSimulatedAction('FILE_WRITE', 'Write queue_status.txt', 'Writing status: $status');
-    }
+    logSimulatedAction('FILE_WRITE', 'Write queue_status.txt', status);
     try {
       final qFile = File('$_dirPath/queue_status.txt');
       if (!qFile.parent.existsSync()) {
@@ -1391,6 +1474,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   int _compileErrorLoopCount = 0;
   bool _isHandlingAgentStatus = false;
   DateTime? _statusHandlingLockAcquiredAt;
+  // Incremented by clearQueue() / forceResetIdle() so that in-flight async
+  // methods can detect they've been superseded and abort gracefully.
+  int _interruptionToken = 0;
 
   final Map<String, SubagentConnection> _activeAgents = {};
   Map<String, SubagentConnection> get activeAgents => Map.unmodifiable(_activeAgents);
@@ -1474,6 +1560,39 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       {List<String>? taskIds, bool insertFirst = false, String? targetCriteriaDescription}) async {
     clearSimulatedActions();
     _lastLoggedStepIndex = -1;
+
+    // Check for custom macro rules (Slash Command Override)
+    final rules = await loadCustomRules(_rulesDirPath);
+    CustomRule? triggeredRule;
+    final trimmedText = text.trim();
+    for (final rule in rules) {
+      if (trimmedText == rule.trigger) {
+        triggeredRule = rule;
+        break;
+      }
+    }
+
+    if (triggeredRule != null) {
+      if (triggeredRule.action == 'route-harness') {
+        final model = extractModelFromRuleBody(triggeredRule.body);
+        if (model != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('antigravity_model', model);
+          await updateAntigravityConfig();
+          
+          final logMsg = 'Routed harness to model: $model based on rule trigger: ${triggeredRule.trigger}';
+          debugPrint('[AiBridgeService] $logMsg');
+          SystemLogsService.instance.addLog('[AiBridgeService] $logMsg', category: LogCategory.AI);
+          
+          if (_isDryRunMode) {
+            logSimulatedAction('RULE_TRIGGERED', triggeredRule.trigger, logMsg);
+          }
+          notifyListeners();
+          return; // Intercept prompt/command, do not queue
+        }
+      }
+    }
+
     if (_isDryRunMode) {
       logSimulatedAction('QUEUE', 'Add Prompt to Queue', text);
       if (taskIds != null && taskIds.isNotEmpty) {
@@ -1490,19 +1609,12 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     if (taskIds != null && taskIds.isNotEmpty) {
       if (!_isDryRunMode) {
         await SandboxService.instance.addToSandbox(taskIds);
-        if (!insertFirst) {
-          _writeCurrentTaskFile(taskIds.first);
-        }
-      } else {
-        logSimulatedAction('FILE_WRITE', 'Write current_task.json (Simulated)', 'Writing task ID: ${taskIds.first}');
-        _writeCurrentTaskFile(taskIds.first);
       }
     }
 
     await _saveQueueState();
     notifyListeners();
 
-    _writeQueueStatus('BUSY');
     if (_activeProcessingTaskId == null && _activePrompt == null) {
       _pendingUpdateType = null;
       await _processQueue();
@@ -1513,8 +1625,8 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     _lastLoggedStepIndex = -1;
     await _ensureBackendRunning();
     await syncDatabaseDump();
-    await compilePrimaryDirectivesFile();
     await _updateDispatchState();
+    await _chooseModelTier();
     final json = task.toJson();
     json['name'] = _buildTaskPathName(task);
     json['endingInstructions'] = _endingInstructions;
@@ -1552,149 +1664,20 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> _sendToAiAgent(String text) async {
+    await _chooseModelTier();
     stateMachine.enterDispatching();
     await _updateDispatchState();
     _isPromptDispatched = true;
     _isAntigravityBusy = true;
-    
-    if (_isDryRunMode) {
-      logSimulatedAction('STATE', 'Dispatch Prompt (Dry Run)', 'Dispatching prompt to simulated agent.');
-      logSimulatedAction('PROMPT', 'Prompt Text', text);
-      stateMachine.enterBusy();
-      
-      if (_activeProcessingTaskId != null) {
-        logSimulatedAction('FILE_WRITE', 'Write current_task.json', 'Writing task ID: $_activeProcessingTaskId');
-        _writeCurrentTaskFile(_activeProcessingTaskId!);
-      } else {
-        final json = {
-          "id": "free_prompt",
-          "name": "Free-form Request",
-          "description": text,
-          "verificationCriteria": []
-        };
-        logSimulatedAction('FILE_WRITE', 'Write current_task.json (Free-form)', jsonEncode(json));
-        try {
-          File('$_dirPath/current_task.json').writeAsStringSync(jsonEncode(json), flush: true);
-        } catch (_) {}
-      }
-      
-      if (_bridgeMode == AntigravityBridgeMode.cli || _bridgeMode == AntigravityBridgeMode.desktop) {
-        logSimulatedAction('MACRO', 'Execute Macro Trigger', 'BridgeConnect');
-        final String targetTitle = _bridgeMode == AntigravityBridgeMode.cli
-            ? 'Antigravity CLI'
-            : 'Antigravity - Agentic Desktop';
-        final vbsScript = '''
-Set wshShell = CreateObject("WScript.Shell")
-wshShell.AppActivate "$targetTitle"
-WScript.Sleep 500
-wshShell.SendKeys "^v"
-WScript.Sleep 200
-wshShell.SendKeys "~"
-WScript.Sleep 300
-wshShell.AppActivate $pid
-''';
-        logSimulatedAction('VBS_SCRIPT', 'Write & Run VBS Paste Script ($targetTitle)', vbsScript);
-      } else if (_bridgeMode == AntigravityBridgeMode.handsfree) {
-        logSimulatedAction('STATE', 'Handsfree mode simulation', 'Simulating context writing to current_task.json.');
-      }
-      
-      logSimulatedAction('STATUS_WRITE', 'Set Status File (agent_status.txt)', 'BUSY');
-      try {
-        final statusFile = File('$_dirPath/agent_status.txt');
-        if (!statusFile.parent.existsSync()) {
-          statusFile.parent.createSync(recursive: true);
-        }
-        statusFile.writeAsStringSync('BUSY');
-      } catch (_) {}
-      
-      _dryRunTimer = Timer(const Duration(seconds: 1), () async {
-        if (_activePrompt != null) {
-          logSimulatedAction('STATE', 'Simulation Completed', 'Active prompt finished simulated run.');
-          
-          try {
-            final notesFile = File('$_dirPath/latest_notes.json');
-            if (!notesFile.parent.existsSync()) {
-              notesFile.parent.createSync(recursive: true);
-            }
-            final targetDesc = _activePrompt?.targetCriteriaDescription;
-            final notesJson = jsonEncode({
-              "summary": targetDesc != null ? "Processed: $targetDesc" : "Processed",
-              "notes": targetDesc != null ? "Successfully processed checklist item: $targetDesc" : "Processed"
-            });
-            logSimulatedAction('FILE_WRITE', 'Write latest_notes.json', notesJson);
-            notesFile.writeAsStringSync(notesJson);
-            
-            final List<dynamic> verifList = [];
-            if (_activeProcessingTaskId != null) {
-              try {
-                final task = _tasks.firstWhere((t) => t.id == _activeProcessingTaskId);
-                final targetDesc = _activePrompt?.targetCriteriaDescription;
-                logSimulatedAction('STATE', 'Simulation verif list build', 'targetDesc: $targetDesc, task criteria count: ${task.verificationCriteria.length}');
-                final targetDescNorm = targetDesc?.trim().toLowerCase();
-                final hasExactMatch = targetDescNorm != null && task.verificationCriteria.any((vc) => vc.description.trim().toLowerCase() == targetDescNorm);
-                for (final vc in task.verificationCriteria) {
-                  final vcDescNorm = vc.description.trim().toLowerCase();
-                  final isMatch = targetDescNorm == null ||
-                      (hasExactMatch
-                          ? vcDescNorm == targetDescNorm
-                          : (vcDescNorm == targetDescNorm ||
-                             targetDescNorm.startsWith(vcDescNorm) ||
-                             vcDescNorm.startsWith(targetDescNorm)));
-                  logSimulatedAction('STATE', 'Matching criteria', 'vc: $vcDescNorm vs target: $targetDescNorm - Match: $isMatch');
-                  if (isMatch) {
-                    verifList.add({
-                      "description": vc.description,
-                      "proof": "Processed in simulator",
-                      "notes": "All checks completed."
-                    });
-                  }
-                }
-              } catch (_) {}
-            }
-            if (verifList.isEmpty) {
-              verifList.add({
-                "description": "Verification Criteria",
-                "proof": "Processed in simulator",
-                "notes": "All checks completed."
-              });
-            }
-            
-            final verifFile = File('$_dirPath/latest_verification.json');
-            final verifJson = jsonEncode(verifList);
-            logSimulatedAction('FILE_WRITE', 'Write latest_verification.json', verifJson);
-            verifFile.writeAsStringSync(verifJson);
-          } catch (_) {}
-          
-          _isAntigravityBusy = false;
-          _antigravityLastChangeObservedAt = null;
 
-          logSimulatedAction('STATUS_WRITE', 'Set Status File (agent_status.txt)', 'IDLE');
-          try {
-            final statusFile = File('$_dirPath/agent_status.txt');
-            if (!statusFile.parent.existsSync()) {
-              statusFile.parent.createSync(recursive: true);
-            }
-            statusFile.writeAsStringSync('IDLE');
-          } catch (_) {}
-
-          await _processStatusChange('IDLE');
-        }
-      });
-      return;
-    }
-
-    if (Platform.environment.containsKey('FLUTTER_TEST')) {
-      await antigravityClient.sendPrompt(text);
-      return;
-    }
-
-    // Write current_task.json as a robust fallback so the CLI agent receives
-    // the context even if Windows UAC/UIPI prevents clipboard pasting.
+    // 1. Log Dispatch
     logSimulatedAction('STATE', 'Dispatch Prompt', 'Dispatching prompt to agent.');
     logSimulatedAction('PROMPT', 'Prompt Text', text);
+
+    // 2. Write current_task.json
     if (_activeProcessingTaskId != null) {
       logSimulatedAction('FILE_WRITE', 'Write current_task.json', 'Writing task ID: $_activeProcessingTaskId');
-      _writeCurrentTaskFile(_activeProcessingTaskId!);
+      _writeCurrentTaskFile(_activeProcessingTaskId!, targetCriteriaDescription: _activePrompt?.targetCriteriaDescription);
     } else {
       final json = {
         "id": "free_prompt",
@@ -1704,46 +1687,35 @@ wshShell.AppActivate $pid
       };
       logSimulatedAction('FILE_WRITE', 'Write current_task.json (Free-form)', jsonEncode(json));
       try {
-        File('$_dirPath/current_task.json')
-            .writeAsStringSync(jsonEncode(json), flush: true);
+        File('$_dirPath/current_task.json').writeAsStringSync(jsonEncode(json), flush: true);
       } catch (e) {
         debugPrint('Failed to write current_task.json: $e');
       }
     }
 
-    await Clipboard.setData(ClipboardData(text: text));
+    if (Platform.environment.containsKey('FLUTTER_TEST') && !_isDryRunMode) {
+      await antigravityClient.sendPrompt(text);
+      return;
+    }
+
+    // Model for Desktop/CLI/Handsfree is applied by _chooseModelTier() writing
+    // directly to ~/.gemini/antigravity-cli/settings.json before this point.
+    // No clipboard prepend needed.
+    if (!_isDryRunMode) {
+      await Clipboard.setData(ClipboardData(text: text));
+    }
+
+    // 3. Prepare VBScript content and Log Macro / VBScript Actions
     if (_bridgeMode == AntigravityBridgeMode.cli || _bridgeMode == AntigravityBridgeMode.desktop) {
-      if (_bridgeMode == AntigravityBridgeMode.cli) {
-        if (_sendViaClipboard) {
-          final isRunning = await AntigravityStatusService.instance.isProcessRunning();
-          if (!isRunning) {
-            logSimulatedAction('STATE', 'CLI Process Offline', 'Launching terminal window...');
-            debugPrint('[AiBridgeService] CLI terminal process is offline. Launching terminal window...');
-            await AntigravityStatusService.instance.ensureTerminalDaemonRunning();
-            await Future.delayed(const Duration(milliseconds: 2000));
-          }
-        }
-      }
+      logSimulatedAction('MACRO', 'Execute Macro Trigger', 'BridgeConnect');
+      
+      final String targetTitle = _bridgeMode == AntigravityBridgeMode.cli
+          ? 'Antigravity CLI'
+          : 'Antigravity - Agentic Desktop';
+      final int myPid = pid;
 
-      if (_bridgeMode == AntigravityBridgeMode.desktop || _sendViaClipboard) {
-        try {
-          logSimulatedAction('MACRO', 'Execute Macro Trigger', 'BridgeConnect');
-          await MacroService.instance.executeTrigger('BridgeConnect');
-        } catch (e) {
-          debugPrint('[AiBridgeService] Error executing BridgeConnect macro: $e');
-        }
-
-        final String targetTitle = _bridgeMode == AntigravityBridgeMode.cli
-            ? 'Antigravity CLI'
-            : 'Antigravity - Agentic Desktop';
-
-        final int myPid = pid;
-        final vbsFile = File('$_dirPath/paste.vbs');
-        if (!vbsFile.parent.existsSync()) {
-          vbsFile.parent.createSync(recursive: true);
-        }
-        if (_bridgeMode == AntigravityBridgeMode.cli) {
-          final script = '''
+      final script = _bridgeMode == AntigravityBridgeMode.cli
+          ? '''
 Set wshShell = CreateObject("WScript.Shell")
 wshShell.AppActivate "$targetTitle"
 WScript.Sleep 500
@@ -1752,11 +1724,8 @@ WScript.Sleep 200
 wshShell.SendKeys "~"
 WScript.Sleep 300
 wshShell.AppActivate $myPid
-''';
-          logSimulatedAction('VBS_SCRIPT', 'Write paste.vbs (CLI)', script);
-          await vbsFile.writeAsString(script);
-        } else {
-          final script = '''
+'''
+          : '''
 Set wshShell = CreateObject("WScript.Shell")
 success = wshShell.AppActivate("AI Bridge")
 If Not success Then
@@ -1772,10 +1741,33 @@ wshShell.SendKeys "~"
 WScript.Sleep 300
 wshShell.AppActivate $myPid
 ''';
-          logSimulatedAction('VBS_SCRIPT', 'Write paste.vbs (Desktop)', script);
-          await vbsFile.writeAsString(script);
+
+      final String modeSuffix = _bridgeMode == AntigravityBridgeMode.cli ? '(CLI)' : '(Desktop)';
+      logSimulatedAction('VBS_SCRIPT', 'Write paste.vbs $modeSuffix', script);
+      logSimulatedAction('VBS_SCRIPT', 'Run paste.vbs script', 'Executing wscript paste.vbs');
+
+      if (!_isDryRunMode) {
+        if (_bridgeMode == AntigravityBridgeMode.cli && _sendViaClipboard) {
+          final isRunning = await AntigravityStatusService.instance.isProcessRunning();
+          if (!isRunning) {
+            logSimulatedAction('STATE', 'CLI Process Offline', 'Launching terminal window...');
+            debugPrint('[AiBridgeService] CLI terminal process is offline. Launching terminal window...');
+            await AntigravityStatusService.instance.ensureTerminalDaemonRunning();
+            await Future.delayed(const Duration(milliseconds: 2000));
+          }
         }
-        logSimulatedAction('VBS_SCRIPT', 'Run paste.vbs script', 'Executing wscript paste.vbs');
+
+        try {
+          await MacroService.instance.executeTrigger('BridgeConnect');
+        } catch (e) {
+          debugPrint('[AiBridgeService] Error executing BridgeConnect macro: $e');
+        }
+
+        final vbsFile = File('$_dirPath/paste.vbs');
+        if (!vbsFile.parent.existsSync()) {
+          vbsFile.parent.createSync(recursive: true);
+        }
+        await vbsFile.writeAsString(script);
         await Process.run('wscript', [vbsFile.path]).timeout(
           const Duration(seconds: 5),
           onTimeout: () {
@@ -1786,14 +1778,116 @@ wshShell.AppActivate $myPid
       }
     } else if (_bridgeMode == AntigravityBridgeMode.handsfree) {
       logSimulatedAction('STATE', 'Handsfree mode transition', 'Writing task context to current_task.json.');
-      debugPrint('[AiBridgeService] Handsfree mode: context written to current_task.json.');
+      if (!_isDryRunMode) {
+        debugPrint('[AiBridgeService] Handsfree mode: context written to current_task.json.');
+      }
     }
 
+    // 4. Set Status File agent_status.txt
     final statusFile = File('$_dirPath/agent_status.txt');
     logSimulatedAction('STATUS_WRITE', 'Set Status File (agent_status.txt)', 'BUSY');
-    await statusFile.writeAsString('BUSY');
+    try {
+      if (!statusFile.parent.existsSync()) {
+        statusFile.parent.createSync(recursive: true);
+      }
+      statusFile.writeAsStringSync('BUSY');
+    } catch (_) {}
+
     stateMachine.enterBusy();
     _updateStateMachineInputs();
+
+    // 5. If dry run, simulate the agent completing: write output files then trigger IDLE.
+    //    This is the ONLY dry-run-specific block — everything after _processStatusChange('IDLE')
+    //    is shared code that runs identically in both modes.
+    if (_isDryRunMode) {
+      _dryRunTimer = Timer(const Duration(seconds: 1), () async {
+        if (_activePrompt != null) {
+          // Simulate agent writing its output files (latest_notes.json / latest_verification.json).
+          // In live mode the real LLM writes these; here we produce placeholder content so
+          // _processStatusChange can ingest them through the exact same path.
+          try {
+            final notesFile = File('$_dirPath/latest_notes.json');
+            if (!notesFile.parent.existsSync()) {
+              notesFile.parent.createSync(recursive: true);
+            }
+
+            // Resolve the exact criteria item the agent was given — same logic as _writeCurrentTaskFile.
+            AiVerificationCriteria? targetCriteria;
+            AiTask? targetTask;
+            final List<dynamic> verifList = [];
+
+            if (_activeProcessingTaskId != null) {
+              try {
+                targetTask = _tasks.firstWhere((t) => t.id == _activeProcessingTaskId);
+                final targetDesc = _activePrompt?.targetCriteriaDescription;
+                if (targetDesc != null) {
+                  // Exact match (case-insensitive), fallback to first — mirrors _writeCurrentTaskFile.
+                  targetCriteria = targetTask.verificationCriteria.firstWhere(
+                    (vc) => vc.description.trim().toLowerCase() == targetDesc.trim().toLowerCase(),
+                    orElse: () => targetTask!.verificationCriteria.first,
+                  );
+                } else {
+                  // No specific item targeted: pick the first unchecked one — mirrors _writeCurrentTaskFile.
+                  final unchecked = targetTask.verificationCriteria.where((vc) =>
+                      vc.status != AiVerificationStatus.verified &&
+                      vc.status != AiVerificationStatus.ignored &&
+                      vc.status != AiVerificationStatus.pendingReview &&
+                      !vc.isPreview).toList();
+                  if (unchecked.isNotEmpty) {
+                    targetCriteria = unchecked.first;
+                  } else if (targetTask.verificationCriteria.isNotEmpty) {
+                    targetCriteria = targetTask.verificationCriteria.first;
+                  }
+                }
+              } catch (_) {}
+            }
+
+            if (targetCriteria != null) {
+              verifList.add({
+                "description": targetCriteria.description,
+                "isVerified": true,
+                "proof": "Verified in simulator.",
+                "notes": "All checks completed.",
+              });
+            }
+
+            // Build notes using the actual task name + criteria description.
+            final criteriaLabel = targetCriteria?.description ?? _activePrompt?.targetCriteriaDescription;
+            final taskLabel = targetTask?.name;
+            final notesSummary = (taskLabel != null && criteriaLabel != null)
+                ? 'Completed: $taskLabel — $criteriaLabel'
+                : (criteriaLabel != null ? 'Completed: $criteriaLabel' : 'Processed');
+            final notesDetail = criteriaLabel != null
+                ? 'Successfully processed: $criteriaLabel'
+                : 'Processed';
+            final notesJson = jsonEncode({"summary": notesSummary, "notes": notesDetail});
+            logSimulatedAction('FILE_WRITE', 'Agent Output: latest_notes.json', notesJson);
+            notesFile.writeAsStringSync(notesJson);
+
+            final verifFile = File('$_dirPath/latest_verification.json');
+            final verifJson = jsonEncode(verifList);
+            logSimulatedAction('FILE_WRITE', 'Agent Output: latest_verification.json', verifJson);
+            verifFile.writeAsStringSync(verifJson);
+          } catch (_) {}
+
+          // Mark busy as false so _processStatusChange's busy-wait passes immediately,
+          // then simulate agent writing IDLE — triggering the same completion path as live mode.
+          _isAntigravityBusy = false;
+          _antigravityLastChangeObservedAt = null;
+          logSimulatedAction('STATUS_WRITE', 'Agent Output: agent_status.txt', 'IDLE');
+          try {
+            final statusFile = File('$_dirPath/agent_status.txt');
+            if (!statusFile.parent.existsSync()) {
+              statusFile.parent.createSync(recursive: true);
+            }
+            statusFile.writeAsStringSync('IDLE');
+          } catch (_) {}
+
+          // Hand off to the shared completion path — identical to live mode from here.
+          await _processStatusChange('IDLE');
+        }
+      });
+    }
   }
 
   String? _lastJsonParseError;
@@ -1864,7 +1958,6 @@ wshShell.AppActivate $myPid
       }
 
       if (_pendingPrompts.isNotEmpty) {
-        _writeQueueStatus('BUSY');
         final nextPrompt = _pendingPrompts.first;
 
         if (nextPrompt.taskIds != null && nextPrompt.taskIds!.isNotEmpty) {
@@ -1889,9 +1982,6 @@ wshShell.AppActivate $myPid
         _activePrompt = nextPrompt;
         _isPromptDispatched = false;
         _pendingPrompts.removeAt(0);
-        if (_activeProcessingTaskId != null) {
-          _writeCurrentTaskFile(_activeProcessingTaskId!, targetCriteriaDescription: nextPrompt.targetCriteriaDescription);
-        }
         await _saveQueueState();
         notifyListeners();
 
@@ -1995,6 +2085,7 @@ wshShell.AppActivate $myPid
           targetCriteriaDescription: nextPrompt.targetCriteriaDescription,
           completedAt: nextPrompt.completedAt,
         );
+        _writeQueueStatus('BUSY');
         if (_bridgeMode != AntigravityBridgeMode.sdk) {
           await _sendToAiAgent(promptText);
         } else {
@@ -2019,6 +2110,7 @@ wshShell.AppActivate $myPid
             }
           } else {
             await _ensureBackendRunning();
+            await _chooseModelTier();
             await antigravityClient.sendPrompt(promptText);
           }
         }
@@ -2038,6 +2130,7 @@ wshShell.AppActivate $myPid
   }
 
   Future<void> clearQueue() async {
+    _interruptionToken++; // Signal any in-flight _processStatusChange to abort.
     _writeQueueStatus('IDLE');
     try {
       final statusFile = File('$_dirPath/agent_status.txt');
@@ -2131,6 +2224,7 @@ wshShell.AppActivate $myPid
   }
 
   Future<void> forceResetIdle() async {
+    _interruptionToken++; // Signal any in-flight _processStatusChange to abort.
     _dryRunTimer?.cancel();
     _isAntigravityBusy = false;
     _antigravityLastChangeObservedAt = null;
@@ -2720,13 +2814,23 @@ wshShell.AppActivate $myPid
                     if (lastStep != null &&
                         lastStep['type'] == 'PLANNER_RESPONSE' &&
                         lastStep['status'] == 'DONE') {
-                      final String modelContent = lastStep['content'] ?? '';
-                      final String statusName = modelContent.contains('<preview>') ? 'PREVIEW' : 'IDLE';
+                      // Guard against Claude extended-thinking steps: a thinking-only
+                      // PLANNER_RESPONSE has no tool_calls and must NOT be treated as
+                      // a completed agent turn — only a step with actual tool invocations
+                      // (write_to_file for bridge files, etc.) counts as real work done.
+                      final toolCalls = lastStep['tool_calls'];
+                      final hasToolCalls = toolCalls is List && toolCalls.isNotEmpty;
+                      if (!hasToolCalls) {
+                        print('[AiBridge] Poller: skipping PLANNER_RESPONSE with no tool_calls — likely an extended-thinking block, not a completed turn.');
+                      } else {
+                        final String modelContent = lastStep['content'] ?? '';
+                        final String statusName = modelContent.contains('<preview>') ? 'PREVIEW' : 'IDLE';
 
-                      final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
-                      if (isAgentBusy && !_isHandlingAgentStatus && !_isAntigravityBusy && !_isDryRunMode) {
-                        print('[AiBridge] Poller detected completed PLANNER_RESPONSE in transcript.jsonl. Triggering status processing: $statusName');
-                        await _processStatusChange(statusName);
+                        final isAgentBusy = _activePrompt != null || _activeAgents.isNotEmpty;
+                        if (isAgentBusy && !_isHandlingAgentStatus && !_isAntigravityBusy && !_isDryRunMode) {
+                          print('[AiBridge] Poller detected completed PLANNER_RESPONSE (with tool_calls) in transcript.jsonl. Triggering status processing: $statusName');
+                          await _processStatusChange(statusName);
+                        }
                       }
                     }
                   }
@@ -3321,7 +3425,9 @@ wshShell.AppActivate $myPid
       _isQueuePaused = prefs.getBool('ai_queue_paused') ?? false;
       _isPreviewMode = prefs.getBool('ai_queue_preview_mode') ?? false;
       _isIqMode = prefs.getBool('ai_queue_iq_mode') ?? false;
+      _isDryRunMode = prefs.getBool('ai_bridge_dry_run_mode') ?? false;
       _sendViaClipboard = prefs.getBool('antigravity_send_via_clipboard') ?? true;
+      _useHiModel = prefs.getBool('antigravity_use_hi_model') ?? false;
 
       final savedBridgeMode = prefs.getString('antigravity_bridge_mode') ?? 'sdk';
       _bridgeMode = AntigravityBridgeMode.values.firstWhere(
@@ -3517,7 +3623,27 @@ wshShell.AppActivate $myPid
 
     _isHandlingAgentStatus = true;
     _statusHandlingLockAcquiredAt = DateTime.now();
+    // Capture the token at lock-acquisition time. If the user triggers
+    // clearQueue() or forceResetIdle() while we await below, the token will
+    // have been incremented and we bail out immediately.
+    final int interruptToken = _interruptionToken;
     print('[AiBridge] Acquired status handling lock (_isHandlingAgentStatus = true)');
+
+    // Watchdog: the 25-second re-entry guard only fires on a *second* call, but
+    // all callers are guarded by !_isHandlingAgentStatus, so re-entry never occurs.
+    // This timer self-releases the lock after 3 minutes so the pipeline can recover
+    // even if an inner await (e.g. SharedPreferences, file I/O) hangs indefinitely.
+    final watchdogTimer = Timer(const Duration(minutes: 3), () {
+      if (_isHandlingAgentStatus) {
+        print('[AiBridge] WATCHDOG: _processStatusChange has been running > 3 minutes. Force-releasing lock and resetting pipeline.');
+        _isHandlingAgentStatus = false;
+        _statusHandlingLockAcquiredAt = null;
+        _isAntigravityBusy = false;
+        _antigravityLastChangeObservedAt = null;
+        stateMachine.enterIdle();
+        notifyListeners();
+      }
+    });
 
     try {
       try {
@@ -3529,6 +3655,10 @@ wshShell.AppActivate $myPid
       print('[AiBridge] Waiting for _isAntigravityBusy to be false. Current: $_isAntigravityBusy');
       while (_isAntigravityBusy && waitCount < 1200) {
         await Future.delayed(const Duration(milliseconds: 500));
+        if (interruptToken != _interruptionToken) {
+          print('[AiBridge] Interrupt detected during busy-wait. Aborting _processStatusChange.');
+          return;
+        }
         waitCount++;
       }
       if (_isAntigravityBusy) {
@@ -3539,6 +3669,10 @@ wshShell.AppActivate $myPid
       print('[AiBridge] Busy wait finished. Proceeding with status processing.');
       if (!_isDryRunMode) {
         await Future.delayed(const Duration(milliseconds: 800));
+      }
+      if (interruptToken != _interruptionToken) {
+        print('[AiBridge] Interrupt detected after initial delay. Aborting _processStatusChange.');
+        return;
       }
 
       String rawModelContent = '';
@@ -3587,15 +3721,20 @@ wshShell.AppActivate $myPid
         }
       } catch (_) {}
 
-
+      if (interruptToken != _interruptionToken) {
+        print('[AiBridge] Interrupt detected after brain-file read. Aborting _processStatusChange.');
+        return;
+      }
 
       if (content == 'IDLE') {
         bool hasCompileError = false;
         if (Platform.environment.containsKey('FLUTTER_TEST')) {
           print('[AiBridgeService] Skipping dart analyze build check in unit test environment.');
+          logSimulatedAction('STATE', 'Dart Analyze: Skipped', 'Skipping build check in test environment.');
           stateMachine.enterSynchronizing();
         } else {
           print('[AiBridge] Running dart analyze build check...');
+          logSimulatedAction('STATE', 'Dart Analyze: Running', 'Running dart analyze to check for compile errors.');
           Process? process;
           try {
             process = await Process.start('dart', ['analyze'], runInShell: true);
@@ -3619,22 +3758,30 @@ wshShell.AppActivate $myPid
                 output.contains('error \u2022')) {
               hasCompileError = true;
               print('[AiBridge] Build check failed. Dispatching compile error...');
+              logSimulatedAction('STATE', 'Dart Analyze: Failed', 'Compile errors detected. Dispatching auto-correction.');
               stateMachine.enterError('Dart compilation errors detected. Auto-correcting...');
               await forceDispatchCompileError(output);
             } else {
               print('[AiBridge] Build check passed.');
+              logSimulatedAction('STATE', 'Dart Analyze: Passed', 'No compile errors. Proceeding with completion.');
               stateMachine.enterSynchronizing();
             }
           } on TimeoutException catch (e) {
             print('[AiBridge] Automated dart analyze check timed out: $e. Terminating process.');
+            logSimulatedAction('STATE', 'Dart Analyze: Timeout', 'Build check timed out. Continuing.');
             if (process != null) {
               process.kill();
             }
             stateMachine.enterSynchronizing();
           } catch (e) {
             print('[AiBridge] Failed to run automated dart analyze check: $e');
+            logSimulatedAction('STATE', 'Dart Analyze: Error', 'Build check failed: $e');
             stateMachine.enterSynchronizing();
           }
+        }
+        if (interruptToken != _interruptionToken) {
+          print('[AiBridge] Interrupt detected after dart analyze. Aborting _processStatusChange.');
+          return;
         }
         if (hasCompileError) {
           print('[AiBridge] Compile error detected. Clearing active prompt/task state to unblock UI.');
@@ -3654,6 +3801,7 @@ wshShell.AppActivate $myPid
       }
 
       if (_activeProcessingTaskId != null) {
+        logSimulatedAction('STATE', 'Status Ingestion', 'Agent returned $content. Ingesting output files.');
         try {
           final taskIdx = _tasks
               .indexWhere((t) => t.id == _activeProcessingTaskId);
@@ -3804,15 +3952,9 @@ wshShell.AppActivate $myPid
               if (verificationFile.existsSync()) verificationFile.deleteSync();
             } catch (_) {}
 
-            if (!_isDryRunMode) {
-              logSimulatedAction('STATE', 'Status Ingestion', 'Agent transition to $content. Processing output files.');
-            }
-
             // 1. Absorb Notes
             if (notesContent.trim().isNotEmpty) {
-              if (!_isDryRunMode) {
-                logSimulatedAction('FILE_READ', 'Read latest_notes.json', notesContent);
-              }
+              logSimulatedAction('FILE_READ', 'Read latest_notes.json', notesContent);
               String parsedSummary = '';
               String parsedNotes = '';
               try {
@@ -3869,9 +4011,7 @@ wshShell.AppActivate $myPid
             // 2. Absorb Preview
             bool generatedPreviewItems = false;
             if (previewContent.trim().isNotEmpty) {
-              if (!_isDryRunMode) {
-                logSimulatedAction('FILE_READ', 'Read latest_preview.json', previewContent);
-              }
+              logSimulatedAction('FILE_READ', 'Read latest_preview.json', previewContent);
               try {
                 String content = previewContent;
                 if (content.trim().isNotEmpty) {
@@ -3911,9 +4051,7 @@ wshShell.AppActivate $myPid
 
             // 3. Absorb Verification
             if (verificationContent.trim().isNotEmpty) {
-              if (!_isDryRunMode) {
-                logSimulatedAction('FILE_READ', 'Read latest_verification.json', verificationContent);
-              }
+              logSimulatedAction('FILE_READ', 'Read latest_verification.json', verificationContent);
               try {
                 String content = verificationContent;
                 if (content.trim().isNotEmpty) {
@@ -3970,7 +4108,10 @@ wshShell.AppActivate $myPid
              _lastTaskMissingFiles.clear();
 
             if (content == 'IDLE' && !generatedPreviewItems) {
-              final prefs = await _getPrefs();
+              try {
+                // Timeout guard: SharedPreferences can deadlock if the platform channel
+                // is busy — cap this to 8 seconds so it cannot hang the whole pipeline.
+                final prefs = await _getPrefs().timeout(const Duration(seconds: 8));
               final afterCompleteStr = prefs
                       .getString('ai_tasks_bridge_complete_status') ??
                   'dontChange';
@@ -3987,7 +4128,10 @@ wshShell.AppActivate $myPid
                   changed = true;
                 }
               }
-            }
+              } catch (e) {
+                print('[AiBridge] Skipping post-complete status change (SharedPreferences timeout or error): $e');
+              }
+            } // end if (content == 'IDLE' && !generatedPreviewItems)
             if (content == 'PREVIEW') {
               if (_tasks[taskIdx].previewState != 'pending') {
                 _tasks[taskIdx].previewState = 'pending';
@@ -4010,7 +4154,13 @@ wshShell.AppActivate $myPid
               }
             }
             if (changed) {
-              await _save();
+              try {
+                // Timeout guard: _save() writes tasks.json to disk — if the OS has a
+                // file lock (antivirus, etc.) it can block indefinitely without one.
+                await _save().timeout(const Duration(seconds: 15));
+              } catch (e) {
+                print('[AiBridge] _save() timed out or failed during status ingestion: $e');
+              }
             }
           }
         } catch (e) {
@@ -4023,9 +4173,11 @@ wshShell.AppActivate $myPid
         _antigravityLastChangeObservedAt = null;
         setScreenBlockerEnabled(false);
         print('[AiBridge] $content detected. Completing and archiving active prompt.');
+        logSimulatedAction('STATE', '$content Detected', 'Agent returned $content. Archiving active prompt and clearing task state.');
         try {
           File('$_dirPath/agent_status.txt').writeAsStringSync(content);
           print('[AiBridge] Wrote $content to agent_status.txt');
+          logSimulatedAction('FILE_WRITE', 'Write agent_status.txt', content);
         } catch (e) {
           print('[AiBridge] Failed to write status to agent_status.txt: $e');
         }
@@ -4041,6 +4193,7 @@ wshShell.AppActivate $myPid
           final ctFile = File('$_dirPath/current_task.json');
           if (ctFile.existsSync()) {
             print('[AiBridge] Deleting current_task.json');
+            logSimulatedAction('FILE_WRITE', 'Delete current_task.json', 'Removing active task context file.');
             ctFile.deleteSync();
           }
         } catch (e) {
@@ -4057,9 +4210,21 @@ wshShell.AppActivate $myPid
 
       if (_pendingPrompts.isEmpty) {
         _writeQueueStatus('IDLE');
-        _pendingUpdateType = UpdateCoverType.hotRestart;
-        print('[AiBridge] Queue is empty. Triggering pending update. Type: $_pendingUpdateType');
-        await triggerPendingUpdate(force: true);
+        // Log the hot restart step in both modes — live mode executes it, dry-run skips the actual call.
+        logSimulatedAction(
+          'UPDATE_TRIGGER',
+          'Hot Restart',
+          _isDryRunMode
+              ? 'Queue empty. Skipping actual hot restart in dry-run mode.'
+              : 'Queue empty. Triggering hot restart.',
+        );
+        if (!_isDryRunMode) {
+          _pendingUpdateType = UpdateCoverType.hotRestart;
+          print('[AiBridge] Queue is empty. Triggering pending update. Type: $_pendingUpdateType');
+          await triggerPendingUpdate(force: true);
+        } else {
+          print('[AiBridge] Queue is empty. Hot restart logged (skipped in dry-run).');
+        }
       } else {
         print('[AiBridge] Queue still has ${_pendingPrompts.length} items. Deferring update/reload until end of queue.');
       }
@@ -4067,6 +4232,7 @@ wshShell.AppActivate $myPid
       print('[AiBridge] Executing _processQueue() for any remaining prompts.');
       _processQueue();
     } finally {
+      watchdogTimer.cancel(); // Always cancel — normal completion doesn't need the watchdog
       _isHandlingAgentStatus = false;
       print('[AiBridge] Released status handling lock (_isHandlingAgentStatus = false)');
     }
@@ -4588,7 +4754,9 @@ wshShell.AppActivate $myPid
     }
     if (_isDryRunMode) {
       if (_pendingUpdateType != null) {
-        logSimulatedAction('UPDATE_TRIGGER', 'Trigger $_pendingUpdateType', 'Triggering simulated $_pendingUpdateType');
+        if (_pendingUpdateType != UpdateCoverType.hotRestart) {
+          logSimulatedAction('UPDATE_TRIGGER', 'Trigger $_pendingUpdateType', 'Triggering simulated $_pendingUpdateType');
+        }
         _pendingUpdateType = null;
       }
       return;
@@ -5491,4 +5659,117 @@ wshShell.AppActivate $myPid
     await _save();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Custom Macro Rules (Slash Command Override) Data Model and Helpers
+// ---------------------------------------------------------------------------
+
+class CustomRule {
+  final String trigger;
+  final String action;
+  final String body;
+
+  CustomRule({
+    required this.trigger,
+    required this.action,
+    required this.body,
+  });
+}
+
+Future<List<CustomRule>> loadCustomRules(String dirPath) async {
+  final dir = Directory(dirPath);
+  if (!await dir.exists()) {
+    return [];
+  }
+  final rules = <CustomRule>[];
+  try {
+    await for (final entity in dir.list()) {
+      if (entity is File && entity.path.endsWith('.md')) {
+        final content = await entity.readAsString();
+        final rule = parseCustomRule(content);
+        if (rule != null) {
+          rules.add(rule);
+        }
+      }
+    }
+  } catch (e) {
+    debugPrint('Error loading custom rules: $e');
+  }
+  return rules;
+}
+
+CustomRule? parseCustomRule(String content) {
+  final lines = content.split(RegExp(r'\r?\n'));
+  if (lines.isEmpty || lines.first.trim() != '---') {
+    return null;
+  }
+  int secondSeparator = -1;
+  for (int i = 1; i < lines.length; i++) {
+    if (lines[i].trim() == '---') {
+      secondSeparator = i;
+      break;
+    }
+  }
+  if (secondSeparator == -1) {
+    return null;
+  }
+  String trigger = '';
+  String action = '';
+  for (int i = 1; i < secondSeparator; i++) {
+    final line = lines[i].trim();
+    if (line.isEmpty) continue;
+    final colonIdx = line.indexOf(':');
+    if (colonIdx != -1) {
+      final key = line.substring(0, colonIdx).trim().toLowerCase();
+      var val = line.substring(colonIdx + 1).trim();
+      if (val.startsWith('"') && val.endsWith('"') && val.length >= 2) {
+        val = val.substring(1, val.length - 1);
+      } else if (val.startsWith("'") && val.endsWith("'") && val.length >= 2) {
+        val = val.substring(1, val.length - 1);
+      }
+      if (key == 'trigger') {
+        trigger = val;
+      } else if (key == 'action') {
+        action = val;
+      }
+    }
+  }
+  final body = lines.sublist(secondSeparator + 1).join('\n').trim();
+  if (trigger.isNotEmpty && action.isNotEmpty) {
+    return CustomRule(trigger: trigger, action: action, body: body);
+  }
+  return null;
+}
+
+String? extractModelFromRuleBody(String body) {
+  final knownModels = [
+    'gemini-3.5-flash',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-pro',
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-2.0-pro',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-8b',
+    'gemini-1.5-pro',
+    'claude-3-5-sonnet',
+    'claude-3-5-haiku',
+    'llama-3.1-8b',
+    'llama-3.1-70b',
+    'llama-3.1-405b',
+  ];
+  for (final model in knownModels) {
+    if (body.contains(model)) {
+      return model;
+    }
+  }
+  final regex = RegExp(r'(gemini|claude|llama)-[a-zA-Z0-9.-]+');
+  final match = regex.firstMatch(body);
+  if (match != null) {
+    return match.group(0);
+  }
+  return null;
+}
+
 

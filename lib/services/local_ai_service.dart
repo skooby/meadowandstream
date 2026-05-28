@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'system_logs_service.dart';
 
 class LocalAiService extends ChangeNotifier {
   // Singleton pattern for easy access
@@ -17,7 +18,10 @@ class LocalAiService extends ChangeNotifier {
   String baseUrl = 'http://localhost:11434';
   String defaultModel = 'qwen2.5:3b';
   int timeoutMs = 120000;
-  String clarityPrompt = 'Review this prompt for clarity and return YES or NO as an answer. The prompt is';
+  String clarityPrompt = 'Determine if the following prompt is clear? "{PROMPT}"';
+  String clarityResponseFormat = 'binary'; // 'binary' enforces YES/NO output
+  String rewritePrompt = 'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: {PROMPT}';
+  String generateTaskPrompt = 'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"';
 
   Future<void> loadConfig() async {
     try {
@@ -25,7 +29,23 @@ class LocalAiService extends ChangeNotifier {
       baseUrl = prefs.getString('ollamaBaseUrl') ?? 'http://localhost:11434';
       defaultModel = prefs.getString('ollamaModel') ?? 'qwen2.5:3b';
       timeoutMs = prefs.getInt('ollamaTimeoutMs') ?? 120000;
-      clarityPrompt = prefs.getString('ollamaClarityPrompt') ?? 'Review this prompt for clarity and return YES or NO as an answer. The prompt is';
+      final rawClarity = prefs.getString('ollamaClarityPrompt') ?? 'Determine if the following prompt is clear? "{PROMPT}"';
+      // Support JSON format: {"prompt": "...", "responseFormat": "binary"}
+      try {
+        final decoded = jsonDecode(rawClarity);
+        if (decoded is Map && decoded.containsKey('prompt')) {
+          clarityPrompt = decoded['prompt'] as String;
+          clarityResponseFormat = (decoded['responseFormat'] as String? ?? 'binary').toLowerCase();
+        } else {
+          clarityPrompt = rawClarity;
+          clarityResponseFormat = 'binary'; // default to binary for plain-string prompts
+        }
+      } catch (_) {
+        clarityPrompt = rawClarity;
+        clarityResponseFormat = 'binary';
+      }
+      rewritePrompt = prefs.getString('ollamaRewritePrompt') ?? 'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: {PROMPT}';
+      generateTaskPrompt = prefs.getString('ollamaGenerateTaskPrompt') ?? 'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"';
       notifyListeners();
     } catch (_) {}
   }
@@ -74,7 +94,13 @@ class LocalAiService extends ChangeNotifier {
     double? temperature,
     double? topP,
     int? numPredict,
+    Map<String, dynamic>? format, // Ollama structured output schema
   }) async {
+    final usedModel = model ?? defaultModel;
+    SystemLogsService.instance.addLog(
+      '[AI] generateText | prompt: ${prompt.length > 120 ? '${prompt.substring(0, 120)}…' : prompt}',
+      category: LogCategory.AI,
+    );
     _setProcessing(true);
     try {
       final messages = [{'role': 'user', 'content': prompt}];
@@ -89,13 +115,17 @@ class LocalAiService extends ChangeNotifier {
           if (numPredict != null) options['num_predict'] = numPredict;
 
           final body = <String, dynamic>{
-            'model': model ?? defaultModel,
+            'model': usedModel,
             'prompt': prompt,
             'stream': false,
           };
-          if (options.isNotEmpty) {
-            body['options'] = options;
-          }
+          if (options.isNotEmpty) body['options'] = options;
+          if (format != null) body['format'] = format;
+
+          SystemLogsService.instance.addLog(
+            '[AI] generateText attempt $attempt → POST $baseUrl/api/generate',
+            category: LogCategory.AI,
+          );
 
           final response = await http.post(
             Uri.parse('$baseUrl/api/generate'),
@@ -105,15 +135,32 @@ class LocalAiService extends ChangeNotifier {
 
           if (response.statusCode == 200) {
             final data = jsonDecode(response.body);
-            return data['response'];
+            final result = data['response'] as String?;
+            SystemLogsService.instance.addLog(
+              '[AI] generateText success | response: ${result != null && result.length > 120 ? '${result.substring(0, 120)}…' : result}',
+              category: LogCategory.AI,
+            );
+            return result;
           } else {
             _lastError = 'Server returned ${response.statusCode}: ${response.body}';
+            SystemLogsService.instance.addLog(
+              '[AI] generateText attempt $attempt failed | $_lastError',
+              category: LogCategory.AI,
+            );
           }
         } catch (e) {
           _lastError = 'Attempt $attempt failed: $e';
+          SystemLogsService.instance.addLog(
+            '[AI] generateText attempt $attempt error | $e',
+            category: LogCategory.AI,
+          );
         }
         if (attempt < 2) await Future.delayed(Duration(milliseconds: 1000 * attempt));
       }
+      SystemLogsService.instance.addLog(
+        '[AI] generateText → falling back to OpenAI',
+        category: LogCategory.AI,
+      );
       return await _fallbackToOpenAI(messages, temperature: temperature);
     } finally {
       _setProcessing(false);
@@ -127,7 +174,14 @@ class LocalAiService extends ChangeNotifier {
     double? temperature,
     double? topP,
     int? numPredict,
+    Map<String, dynamic>? format, // Ollama structured output schema
   }) async {
+    final usedModel = model ?? defaultModel;
+    final userMsg = messages.lastWhere((m) => m['role'] == 'user', orElse: () => {})['content'] ?? '';
+    SystemLogsService.instance.addLog(
+      '[AI] sendChat | user: ${userMsg.length > 120 ? '${userMsg.substring(0, 120)}…' : userMsg}',
+      category: LogCategory.AI,
+    );
     _setProcessing(true);
     try {
       await _startOllamaIfNeeded();
@@ -140,13 +194,17 @@ class LocalAiService extends ChangeNotifier {
           if (numPredict != null) options['num_predict'] = numPredict;
 
           final body = <String, dynamic>{
-            'model': model ?? defaultModel,
+            'model': usedModel,
             'messages': messages,
             'stream': false,
           };
-          if (options.isNotEmpty) {
-            body['options'] = options;
-          }
+          if (options.isNotEmpty) body['options'] = options;
+          if (format != null) body['format'] = format;
+
+          SystemLogsService.instance.addLog(
+            '[AI] sendChat attempt $attempt → POST $baseUrl/api/chat',
+            category: LogCategory.AI,
+          );
 
           final response = await http.post(
             Uri.parse('$baseUrl/api/chat'),
@@ -156,15 +214,32 @@ class LocalAiService extends ChangeNotifier {
 
           if (response.statusCode == 200) {
             final data = jsonDecode(response.body);
-            return data['message']['content'];
+            final result = data['message']['content'] as String?;
+            SystemLogsService.instance.addLog(
+              '[AI] sendChat success | response: ${result != null && result.length > 120 ? '${result.substring(0, 120)}…' : result}',
+              category: LogCategory.AI,
+            );
+            return result;
           } else {
             _lastError = 'Server returned ${response.statusCode}: ${response.body}';
+            SystemLogsService.instance.addLog(
+              '[AI] sendChat attempt $attempt failed | $_lastError',
+              category: LogCategory.AI,
+            );
           }
         } catch (e) {
           _lastError = 'Attempt $attempt failed: $e';
+          SystemLogsService.instance.addLog(
+            '[AI] sendChat attempt $attempt error | $e',
+            category: LogCategory.AI,
+          );
         }
         if (attempt < 2) await Future.delayed(Duration(milliseconds: 1000 * attempt));
       }
+      SystemLogsService.instance.addLog(
+        '[AI] sendChat → falling back to OpenAI',
+        category: LogCategory.AI,
+      );
       return await _fallbackToOpenAI(messages, temperature: temperature);
     } finally {
       _setProcessing(false);
@@ -176,10 +251,14 @@ class LocalAiService extends ChangeNotifier {
   /// Utility 1: Prompt Review
   /// Analyzes a prompt for ambiguity, missing reqs, weak constraints, etc.
   Future<String?> reviewPrompt(String userPrompt) async {
+    SystemLogsService.instance.addLog(
+      '[AI] reviewPrompt called | prompt: ${userPrompt.length > 120 ? '${userPrompt.substring(0, 120)}…' : userPrompt}',
+      category: LogCategory.AI,
+    );
     final systemPrompt = clarityPrompt;
 
     // We use a low temperature for deterministic orchestration tasks
-    return await sendChat(
+    final result = await sendChat(
       [
         {'role': 'system', 'content': systemPrompt},
         {'role': 'user', 'content': userPrompt},
@@ -187,11 +266,148 @@ class LocalAiService extends ChangeNotifier {
       temperature: 0.2,
       topP: 0.9,
     );
+    SystemLogsService.instance.addLog(
+      '[AI] reviewPrompt result | ${result ?? 'null (failed)'}',
+      category: LogCategory.AI,
+    );
+    return result;
+  }
+
+  /// Checks if a checklist item prompt is clear.
+  /// Returns a record: (isUnclear, notes) where notes is an explanation when unclear.
+  /// Uses Ollama structured output to guarantee the response schema.
+  Future<(bool, String?)?> checkClarity(String promptText) async {
+    final isBinary = clarityResponseFormat == 'binary';
+
+    final userPrompt = clarityPrompt.contains('{PROMPT}')
+        ? clarityPrompt.replaceAll('{PROMPT}', promptText)
+        : '$clarityPrompt $promptText';
+
+    SystemLogsService.instance.addLog(
+      '[AI] checkClarity | prompt: ${promptText.length > 80 ? '${promptText.substring(0, 80)}…' : promptText}',
+      category: LogCategory.AI,
+    );
+
+    if (isBinary) {
+      // Schema: no 'description' on notes — small models treat it as example content
+      // and hallucinate. The notes instruction is baked into the prompt text instead.
+      const schema = <String, dynamic>{
+        'type': 'object',
+        'properties': {
+          'answer': {
+            'type': 'string',
+            'enum': ['YES', 'NO'],
+          },
+          'notes': {
+            'type': 'string',
+          },
+        },
+        'required': ['answer', 'notes'],
+      };
+
+      final raw = await generateText(
+        userPrompt,
+        format: schema,
+        temperature: 0.0,
+        numPredict: 120,
+      );
+
+      if (raw == null) {
+        SystemLogsService.instance.addLog('[AI] checkClarity | no response', category: LogCategory.AI);
+        return null;
+      }
+
+      try {
+        final decoded = jsonDecode(raw);
+        final answer = (decoded['answer'] as String? ?? '').toUpperCase();
+        final notes = decoded['notes'] as String?;
+        final isUnclear = answer == 'NO';
+        SystemLogsService.instance.addLog(
+          '[AI] checkClarity | answer=$answer unclear=$isUnclear | notes: ${notes ?? ''}',
+          category: LogCategory.AI,
+        );
+        return (isUnclear, isUnclear ? notes : null);
+      } catch (e) {
+        // Fallback if JSON parse fails
+        final isUnclear = raw.trim().toUpperCase().contains('NO');
+        SystemLogsService.instance.addLog(
+          '[AI] checkClarity | JSON parse failed, fallback → unclear=$isUnclear | raw: $raw',
+          category: LogCategory.AI,
+        );
+        return (isUnclear, null);
+      }
+    } else {
+      final result = await generateText(userPrompt, temperature: 0.0);
+      if (result == null) return null;
+      final isUnclear = result.trim().toUpperCase().contains('NO');
+      SystemLogsService.instance.addLog(
+        '[AI] checkClarity | response: "${result.trim()}" → unclear=$isUnclear',
+        category: LogCategory.AI,
+      );
+      return (isUnclear, null);
+    }
+  }
+
+  /// Utility 1b: Task Generator
+  /// Given a description, returns a structured task title + checklist items.
+  /// Uses Ollama structured output to guarantee the response schema.
+  Future<({String title, List<String> checklistItems})?> generateTask(String description) async {
+    SystemLogsService.instance.addLog(
+      '[AI] generateTask called | desc: ${description.length > 120 ? '${description.substring(0, 120)}…' : description}',
+      category: LogCategory.AI,
+    );
+
+    const schema = <String, dynamic>{
+      'type': 'object',
+      'properties': {
+        'title': {'type': 'string'},
+        'checklistItems': {
+          'type': 'array',
+          'items': {'type': 'string'},
+        },
+      },
+      'required': ['title', 'checklistItems'],
+    };
+
+    final prompt = generateTaskPrompt.replaceAll('{DESCRIPTION}', description);
+
+    final raw = await generateText(
+      prompt,
+      format: schema,
+      temperature: 0.3,
+      numPredict: 400,
+    );
+
+    if (raw == null) {
+      SystemLogsService.instance.addLog('[AI] generateTask | no response', category: LogCategory.AI);
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      final title = (decoded['title'] as String? ?? '').trim();
+      final items = (decoded['checklistItems'] as List<dynamic>? ?? [])
+          .map((e) => (e as String).trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      SystemLogsService.instance.addLog(
+        '[AI] generateTask | title="$title" items=${items.length}',
+        category: LogCategory.AI,
+      );
+      return (title: title, checklistItems: items);
+    } catch (e) {
+      SystemLogsService.instance.addLog('[AI] generateTask | JSON parse failed: $e | raw: $raw', category: LogCategory.AI);
+      return null;
+    }
   }
 
   /// Utility 2: Task Summarizer
   /// Summarizes workflow notes into objectives, completed, pending, etc.
   Future<String?> summarizeTask(String taskNotes) async {
+    SystemLogsService.instance.addLog(
+      '[AI] summarizeTask called | notes length: ${taskNotes.length} chars',
+      category: LogCategory.AI,
+    );
     final systemPrompt = '''
 You are an expert project manager. Summarize the following task notes into a concise status report.
 Include the following sections:
@@ -203,7 +419,7 @@ Include the following sections:
 Keep the output brief, highly structured, and strictly derived from the provided notes.
 ''';
 
-    return await sendChat(
+    final result = await sendChat(
       [
         {'role': 'system', 'content': systemPrompt},
         {'role': 'user', 'content': taskNotes},
@@ -211,14 +427,28 @@ Keep the output brief, highly structured, and strictly derived from the provided
       temperature: 0.2,
       topP: 0.9,
     );
+    SystemLogsService.instance.addLog(
+      '[AI] summarizeTask result | ${result != null ? 'success (${result.length} chars)' : 'null (failed)'}',
+      category: LogCategory.AI,
+    );
+    return result;
   }
 
   Future<String?> _fallbackToOpenAI(List<Map<String, String>> messages, {double? temperature}) async {
     final apiKey = dotenv.env['OPENAI_API_KEY'];
     if (apiKey == null || apiKey.isEmpty) {
       _lastError = '$_lastError (OpenAI fallback failed: No API Key found in .env)';
+      SystemLogsService.instance.addLog(
+        '[AI] OpenAI fallback skipped | no API key in .env',
+        category: LogCategory.AI,
+      );
       return null;
     }
+
+    SystemLogsService.instance.addLog(
+      '[AI] OpenAI fallback → POST https://api.openai.com/v1/chat/completions (gpt-4o-mini)',
+      category: LogCategory.AI,
+    );
 
     try {
       final body = <String, dynamic>{
@@ -240,13 +470,26 @@ Keep the output brief, highly structured, and strictly derived from the provided
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['choices'][0]['message']['content'];
+        final result = data['choices'][0]['message']['content'] as String?;
+        SystemLogsService.instance.addLog(
+          '[AI] OpenAI fallback success | response: ${result != null && result.length > 120 ? '${result.substring(0, 120)}…' : result}',
+          category: LogCategory.AI,
+        );
+        return result;
       } else {
         _lastError = 'OpenAI fallback failed: ${response.statusCode} - ${response.body}';
+        SystemLogsService.instance.addLog(
+          '[AI] OpenAI fallback failed | $_lastError',
+          category: LogCategory.AI,
+        );
         return null;
       }
     } catch (e) {
       _lastError = 'OpenAI fallback error: $e';
+      SystemLogsService.instance.addLog(
+        '[AI] OpenAI fallback error | $e',
+        category: LogCategory.AI,
+      );
       return null;
     }
   }
