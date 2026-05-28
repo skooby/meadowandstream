@@ -1784,6 +1784,10 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
   }
 
   Future<void> executeTask(AiTask task) async {
+    if (isTaskOrAncestorIgnored(task)) {
+      print('[AiBridge] Aborting execution of ignored task: ${task.name}');
+      return;
+    }
     _lastLoggedStepIndex = -1;
     await _ensureBackendRunning();
     await syncDatabaseDump();
@@ -3511,12 +3515,38 @@ wshShell.AppActivate $myPid
     return sb.toString();
   }
 
+  bool isTaskOrAncestorIgnored(AiTask task) {
+    if (task.isIgnored) return true;
+    String? pId = task.parentId;
+    final Set<String> visited = {task.id};
+    while (pId != null) {
+      if (visited.contains(pId)) break;
+      visited.add(pId);
+      final pList = _tasks.where((parent) => parent.id == pId);
+      if (pList.isEmpty) break;
+      final parent = pList.first;
+      if (parent.isIgnored) return true;
+      pId = parent.parentId;
+    }
+    if (task.worksheetId != null) {
+      final wsList = _tasks.where((t) => t.id == task.worksheetId);
+      if (wsList.isNotEmpty && wsList.first.isIgnored) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> submitTaskChecklist(
     AiTask task, {
     bool blockScreen = true,
     String replyTypeDirective = '',
     String crashInfo = '',
   }) async {
+    if (isTaskOrAncestorIgnored(task)) {
+      print('[AiBridge] Skipping ignored task: ${task.name}');
+      return;
+    }
     await compilePrimaryDirectivesFile(task);
 
     final unchecked = task.verificationCriteria

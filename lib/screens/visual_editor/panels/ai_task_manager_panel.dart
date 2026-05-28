@@ -971,19 +971,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
     }
 
     bool isTaskOrParentIgnored(AiTask t) {
-      if (t.isIgnored) return true;
-      String? pId = t.parentId;
-      Set<String> visited = {t.id};
-      while (pId != null) {
-        if (visited.contains(pId)) break;
-        visited.add(pId);
-        final pList = AiBridgeService.instance.tasks.where((parent) => parent.id == pId);
-        if (pList.isEmpty) break;
-        final parent = pList.first;
-        if (parent.isIgnored) return true;
-        pId = parent.parentId;
-      }
-      return false;
+      return AiBridgeService.instance.isTaskOrAncestorIgnored(t);
     }
 
     final bool isIgnored = isTaskOrParentIgnored(task);
