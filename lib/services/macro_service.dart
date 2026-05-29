@@ -536,7 +536,9 @@ class MacroService extends ChangeNotifier {
       'Run', 'WaitMs', 'SwitchWindow', 'ReturnToApp', 'SendText', 'Send', 'Log', 'LogPixelColor', 
       'PixelIs', 'PixelIsNot', 'PixelMoreThan', 'RelativeMouseMove', 'LeftClick', 
       'RightClick', 'LeftDoubleClick', 'MiddleClick', 'MoveMouse', 'BlockInput', 'WinMove',
-      'AppendClipboard', 'SetClipboard', 'NextClipboard', 'GetBridgeMode'
+      'AppendClipboard', 'SetClipboard', 'NextClipboard', 'GetBridgeMode',
+      'ScreenShot', 'ActiveWindowScreenShot', 'ActivateWindow',
+      'RunOcr', 'OcrSearch', 'OcrHitTest', 'OcrGetText', 'OcrMoveTo',
     ];
     bool changed = true;
     int depth = 0;
@@ -705,6 +707,12 @@ class MacroService extends ChangeNotifier {
 
         const psHeader = r'''
 Add-Type -AssemblyName System.Windows.Forms
+# Force stdout to UTF-8 so Dart's utf8.decoder never receives OEM/CP850 bytes.
+# Process.start spawns non-interactive PowerShell where Console.OutputEncoding
+# defaults to the system OEM code page (CP850/CP437), corrupting any non-ASCII
+# characters in OCR text, window titles, file paths, etc.
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding             = [System.Text.Encoding]::UTF8
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -737,6 +745,26 @@ public class Win32 {
     public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetFocus(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")]
+    public static extern bool LockSetForegroundWindow(uint uLockCode);
+    [DllImport("user32.dll")]
+    public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern bool GetKeyboardState(byte[] lpKeyState);
+    [DllImport("user32.dll")]
+    public static extern bool SetKeyboardState(byte[] lpKeyState);
+    [DllImport("user32.dll")]
+    public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
+    [DllImport("user32.dll")]
+    public static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
@@ -771,6 +799,10 @@ public class Win32 {
 "@
 $global:SavedWindowRect = $null
 $global:SavedWindowHwnd = $null
+$global:BackgroundTargetHwnd = [IntPtr]::Zero
+$global:MacroOcrResult = $null
+$global:MacroScreenshotOriginX = 0
+$global:MacroScreenshotOriginY = 0
 
 function SaveWindowPosSize {
     [System.Diagnostics.DebuggerHidden()]
@@ -906,34 +938,76 @@ function RelativeMouseMove {
     [Win32]::SetCursorPos($x, $y) | Out-Null
 }
 
+function _BgClick {
+    # Internal helper: sends mouse down+up messages to a background window.
+    # $hwnd        - target HWND (from $global:BackgroundTargetHwnd)
+    # $downMsg     - WM_*BUTTONDOWN constant
+    # $upMsg       - WM_*BUTTONUP   constant
+    # $repeatTimes - 1 for single click, 2 for double click
+    param([IntPtr]$hwnd, [uint32]$downMsg, [uint32]$upMsg, [int]$repeatTimes = 1)
+    # Convert current cursor screen position → window client coordinates.
+    $cursor = [Win32+POINT]::new()
+    $cursor.X = [System.Windows.Forms.Cursor]::Position.X
+    $cursor.Y = [System.Windows.Forms.Cursor]::Position.Y
+    [Win32]::ScreenToClient($hwnd, [ref]$cursor) | Out-Null
+    # lParam encodes client (x, y): low word = x, high word = y
+    $lParam = [IntPtr](([int]$cursor.Y -shl 16) -bor ([int]$cursor.X -band 0xFFFF))
+    for ($i = 0; $i -lt $repeatTimes; $i++) {
+        [Win32]::PostMessage($hwnd, $downMsg, [IntPtr]::Zero, $lParam) | Out-Null
+        [Win32]::PostMessage($hwnd, $upMsg,   [IntPtr]::Zero, $lParam) | Out-Null
+        if ($repeatTimes -gt 1 -and $i -lt $repeatTimes - 1) { Start-Sleep -Milliseconds 10 }
+    }
+}
+
 function LeftClick {
     [System.Diagnostics.DebuggerHidden()]
     param()
-    [Win32]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-    [Win32]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    $hwnd = $global:BackgroundTargetHwnd
+    if ($hwnd -and $hwnd -ne [IntPtr]::Zero) {
+        _BgClick $hwnd 0x0201 0x0202   # WM_LBUTTONDOWN / WM_LBUTTONUP
+    } else {
+        [Win32]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        [Win32]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    }
 }
 
 function RightClick {
     [System.Diagnostics.DebuggerHidden()]
     param()
-    [Win32]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
+    $hwnd = $global:BackgroundTargetHwnd
+    if ($hwnd -and $hwnd -ne [IntPtr]::Zero) {
+        _BgClick $hwnd 0x0204 0x0205   # WM_RBUTTONDOWN / WM_RBUTTONUP
+    } else {
+        [Win32]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
+        [Win32]::mouse_event(0x0010, 0, 0, 0, [UIntPtr]::Zero)
+    }
 }
 
 function LeftDoubleClick {
     [System.Diagnostics.DebuggerHidden()]
     param()
-    [Win32]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-    [Win32]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 10
-    [Win32]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-    [Win32]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    $hwnd = $global:BackgroundTargetHwnd
+    if ($hwnd -and $hwnd -ne [IntPtr]::Zero) {
+        _BgClick $hwnd 0x0201 0x0202 2  # WM_LBUTTONDOWN / WM_LBUTTONUP x2
+    } else {
+        [Win32]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        [Win32]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 10
+        [Win32]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        [Win32]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    }
 }
 
 function MiddleClick {
     [System.Diagnostics.DebuggerHidden()]
     param()
-    [Win32]::mouse_event(0x0020, 0, 0, 0, [UIntPtr]::Zero)
-    [Win32]::mouse_event(0x0040, 0, 0, 0, [UIntPtr]::Zero)
+    $hwnd = $global:BackgroundTargetHwnd
+    if ($hwnd -and $hwnd -ne [IntPtr]::Zero) {
+        _BgClick $hwnd 0x0207 0x0208   # WM_MBUTTONDOWN / WM_MBUTTONUP
+    } else {
+        [Win32]::mouse_event(0x0020, 0, 0, 0, [UIntPtr]::Zero)
+        [Win32]::mouse_event(0x0040, 0, 0, 0, [UIntPtr]::Zero)
+    }
 }
 
 function WaitMs {
@@ -945,6 +1019,8 @@ function WaitMs {
 function SwitchWindow {
     [System.Diagnostics.DebuggerHidden()]
     param([string]$title)
+    # Switching to a foreground window ends background-input mode
+    $global:BackgroundTargetHwnd = [IntPtr]::Zero
     $wshell = New-Object -ComObject wscript.shell
     
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -1169,19 +1245,117 @@ function ReturnToApp {
     SwitchWindow "music_app"
 }
 
+function Invoke-BackgroundSend {
+    # Routes a SendKeys-format string to $hwnd without needing the window in
+    # the foreground. Two-mode design to avoid the double-character trap:
+    #
+    # Plain chars   -> PostMessage(WM_CHAR) only.
+    #                  No WM_KEYDOWN, so TranslateMessage in the target app's
+    #                  message loop never fires and no extra WM_CHAR is produced.
+    #
+    # Key events    -> AttachThreadInput + SetKeyboardState + SendMessage(WM_KEYDOWN/UP).
+    #   (Ctrl/Alt,    SendMessage is SYNCHRONOUS and dispatches directly to WndProc,
+    #    special keys) bypassing the message pump entirely, so TranslateMessage is
+    #                  never called. SetKeyboardState spoofs the modifier bits in the
+    #                  shared thread key state so GetKeyState() in the WndProc sees
+    #                  the correct modifiers (real keyboard state does not reflect
+    #                  our posted/sent messages otherwise).
+    param([IntPtr]$hwnd, [string]$keys)
+    $WM_KEYDOWN = [uint32]0x0100
+    $WM_KEYUP   = [uint32]0x0101
+    $WM_CHAR    = [uint32]0x0102
+    $vkMap = @{
+        'ENTER'=0x0D;'RETURN'=0x0D;'TAB'=0x09;'BACKSPACE'=0x08;'BS'=0x08;'BKSP'=0x08
+        'DELETE'=0x2E;'DEL'=0x2E;'ESC'=0x1B;'ESCAPE'=0x1B
+        'UP'=0x26;'DOWN'=0x28;'LEFT'=0x25;'RIGHT'=0x27
+        'HOME'=0x24;'END'=0x23;'PGUP'=0x21;'PGDN'=0x22
+        'F1'=0x70;'F2'=0x71;'F3'=0x72;'F4'=0x73;'F5'=0x74;'F6'=0x75
+        'F7'=0x76;'F8'=0x77;'F9'=0x78;'F10'=0x79;'F11'=0x7A;'F12'=0x7B
+    }
+    # Sends WM_KEYDOWN + WM_KEYUP to $hwnd via SendMessage (synchronous, no
+    # TranslateMessage side-effect). Spoofs modifier bits via SetKeyboardState
+    # so the target WndProc sees the correct modifier state via GetKeyState.
+    function SendKey($vk, $useCtrl, $useShift, $useAlt) {
+        $kPid = 0
+        $kThread = [Win32]::GetWindowThreadProcessId($hwnd, [ref]$kPid)
+        $kCurThread = [Win32]::GetCurrentThreadId()
+        [Win32]::AttachThreadInput($kCurThread, $kThread, $true) | Out-Null
+        $ks = New-Object byte[] 256
+        [Win32]::GetKeyboardState($ks) | Out-Null
+        $ksSaved = $ks.Clone()
+        if ($useCtrl)  { $ks[0x11] = 0x80 }  # VK_CONTROL
+        if ($useShift) { $ks[0x10] = 0x80 }  # VK_SHIFT
+        if ($useAlt)   { $ks[0x12] = 0x80 }  # VK_MENU
+        [Win32]::SetKeyboardState($ks) | Out-Null
+        [Win32]::SendMessage($hwnd, $WM_KEYDOWN, [IntPtr]$vk, [IntPtr]0x00000001) | Out-Null
+        [Win32]::SendMessage($hwnd, $WM_KEYUP,   [IntPtr]$vk, [IntPtr]([int64]0xC0000001)) | Out-Null
+        [Win32]::SetKeyboardState($ksSaved) | Out-Null
+        [Win32]::AttachThreadInput($kCurThread, $kThread, $false) | Out-Null
+    }
+    function PostChar($c) {
+        [Win32]::PostMessage($hwnd, $WM_CHAR, [IntPtr][int][char]$c, [IntPtr]0x00000001) | Out-Null
+    }
+    $ctrl = $false; $shift = $false; $alt = $false
+    $i = 0
+    while ($i -lt $keys.Length) {
+        $c = $keys[$i]
+        switch -CaseSensitive ($c) {
+            '^'  { $ctrl  = $true; $i++; continue }
+            '+'  { $shift = $true; $i++; continue }
+            '%'  { $alt   = $true; $i++; continue }
+            '('  { $i++; continue }
+            ')'  { $ctrl=$false;$shift=$false;$alt=$false; $i++; continue }
+            '{' {
+                $close = $keys.IndexOf('}', $i)
+                if ($close -gt $i) {
+                    $token = $keys.Substring($i+1, $close-$i-1).ToUpper()
+                    $vk = if ($vkMap.ContainsKey($token)) { $vkMap[$token] } else { 0 }
+                    if ($vk -ne 0) { SendKey $vk $ctrl $shift $alt }
+                    $ctrl=$false;$shift=$false;$alt=$false
+                    $i = $close + 1
+                } else { $i++ }
+                continue
+            }
+            default {
+                if ($ctrl -or $alt) {
+                    # Modified key: SendMessage + SetKeyboardState so WndProc
+                    # sees correct modifier in GetKeyState
+                    SendKey ([int][char]::ToUpper($c)) $ctrl $shift $alt
+                } else {
+                    # Plain or Shift+char: WM_CHAR only, no WM_KEYDOWN
+                    $out = if ($shift) { [char]::ToUpper($c) } else { $c }
+                    PostChar $out
+                }
+                $ctrl=$false;$shift=$false;$alt=$false
+                $i++
+                continue
+            }
+        }
+    }
+}
+
+
 function SendText {
     [System.Diagnostics.DebuggerHidden()]
     param([string]$text)
-    Add-Type -AssemblyName System.Windows.Forms
-    $escaped = $text -replace '([+^%~()])', '{$1}'
-    [System.Windows.Forms.SendKeys]::SendWait($escaped)
+    if ($global:BackgroundTargetHwnd -ne $null -and $global:BackgroundTargetHwnd -ne [IntPtr]::Zero) {
+        Invoke-BackgroundSend $global:BackgroundTargetHwnd $text
+    } else {
+        Add-Type -AssemblyName System.Windows.Forms
+        $escaped = $text -replace '([+^%~()])', '{$1}'
+        [System.Windows.Forms.SendKeys]::SendWait($escaped)
+    }
 }
 
 function Send {
     [System.Diagnostics.DebuggerHidden()]
     param([string]$keys)
-    Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.SendKeys]::SendWait($keys)
+    if ($global:BackgroundTargetHwnd -ne $null -and $global:BackgroundTargetHwnd -ne [IntPtr]::Zero) {
+        Invoke-BackgroundSend $global:BackgroundTargetHwnd $keys
+    } else {
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.SendKeys]::SendWait($keys)
+    }
 }
 
 function Log {
@@ -1290,6 +1464,344 @@ function GetBridgeMode {
     return "sdk"
 }
 
+function ActivateWindow {
+    # Routes keyboard focus to the target window WITHOUT raising it to the foreground.
+    # Uses AttachThreadInput + SetFocus so the window receives keystrokes while
+    # staying behind the current foreground window.
+    # Mouse clicks still work normally as long as SetCursorPos targets the window.
+    [System.Diagnostics.DebuggerHidden()]
+    param([string]$title)
+    Write-Host "MACRO_LOG|ActivateWindow: Searching for '$title'..."
+
+    # Enumerate visible windows
+    $windowsText = [Win32]::GetVisibleWindows()
+    $windows = $windowsText -split "`n" | Where-Object { $_ } | ForEach-Object {
+        $parts = $_ -split '\|', 2
+        if ($parts.Length -eq 2) {
+            [PSCustomObject]@{ Hwnd = [IntPtr][int64]$parts[0]; Title = $parts[1] }
+        }
+    }
+
+    $match = $windows | Where-Object { $_.Title -match $title } | Select-Object -First 1
+
+    if (-not $match) {
+        Write-Host "MACRO_LOG|ActivateWindow: No window matched '$title'."
+        return
+    }
+
+    $targetHwnd = $match.Hwnd
+    Write-Host "MACRO_LOG|ActivateWindow: Found '$($match.Title)' (HWND: $targetHwnd)"
+
+    # Get thread IDs
+    $targetPid   = 0
+    $targetThread = [Win32]::GetWindowThreadProcessId($targetHwnd, [ref]$targetPid)
+    $currentThread = [Win32]::GetCurrentThreadId()
+
+    # Lock foreground changes BEFORE attaching focus so the target app cannot
+    # call SetForegroundWindow on itself in its WM_SETFOCUS handler.
+    # LSFW_LOCK = 1, LSFW_UNLOCK = 2
+    [Win32]::LockSetForegroundWindow(1) | Out-Null
+
+    # Attach our thread's input queue to the target's - lets SetFocus work cross-thread
+    $attached = [Win32]::AttachThreadInput($currentThread, $targetThread, $true)
+    [Win32]::SetFocus($targetHwnd) | Out-Null
+    if ($attached) {
+        [Win32]::AttachThreadInput($currentThread, $targetThread, $false) | Out-Null
+    }
+
+    # Unlock foreground changes now that focus is set
+    [Win32]::LockSetForegroundWindow(2) | Out-Null
+
+    # Store the HWND so Send/SendText route via PostMessage to this background window
+    $global:BackgroundTargetHwnd = $targetHwnd
+
+    Write-Host "MACRO_LOG|ActivateWindow: Focus set (thread attach: $attached). Window stays in background."
+}
+
+function ScreenShot {
+
+    [System.Diagnostics.DebuggerHidden()]
+    param([string]$fileName = "")
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    # Expand to cover all virtual screens (multi-monitor)
+    $left   = [System.Windows.Forms.SystemInformation]::VirtualScreen.Left
+    $top    = [System.Windows.Forms.SystemInformation]::VirtualScreen.Top
+    $width  = [System.Windows.Forms.SystemInformation]::VirtualScreen.Width
+    $height = [System.Windows.Forms.SystemInformation]::VirtualScreen.Height
+    $bmp = New-Object System.Drawing.Bitmap($width, $height)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($left, $top, 0, 0, [System.Drawing.Size]::new($width, $height))
+    $g.Dispose()
+    $dir = ".ai_bridge/screenshots"
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    if (-not $fileName) { $fileName = "screenshot_$(Get-Date -Format 'yyyyMMdd_HHmmss').png" }
+    $path = Join-Path (Get-Location) "$dir/$fileName"
+    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $bmp.Dispose()
+    Write-Host "MACRO_CMD|SCREENSHOT_ORIGIN|$left|$top"
+    $global:MacroScreenshotOriginX = $left
+    $global:MacroScreenshotOriginY = $top
+    Write-Host "MACRO_CMD|SCREENSHOT|$path"
+    Write-Host "MACRO_LOG|ScreenShot: Saved full-screen capture to $path ($($width)x$($height)) origin($left,$top)"
+}
+
+function ActiveWindowScreenShot {
+    [System.Diagnostics.DebuggerHidden()]
+    param([string]$fileName = "")
+    Add-Type -AssemblyName System.Drawing
+    # Prefer the background-activated window (set by ActivateWindow) over the
+    # real foreground window, since ActivateWindow keeps the target behind.
+    $hwnd = if ($global:BackgroundTargetHwnd -ne $null -and $global:BackgroundTargetHwnd -ne [IntPtr]::Zero) {
+        $global:BackgroundTargetHwnd
+    } else {
+        [Win32]::GetForegroundWindow()
+    }
+    $rect = New-Object Win32+RECT
+    [Win32]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
+    $left   = $rect.Left
+    $top    = $rect.Top
+    $width  = $rect.Right  - $rect.Left
+    $height = $rect.Bottom - $rect.Top
+    if ($width -le 0 -or $height -le 0) {
+        Write-Host "MACRO_LOG|ActiveWindowScreenShot: Invalid window bounds ($width x $height), aborting."
+        return
+    }
+    $bmp = New-Object System.Drawing.Bitmap($width, $height)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    # PrintWindow renders the window into the bitmap even when it is behind other
+    # windows. PW_RENDERFULLCONTENT (2) works for DWM/DirectComposition windows
+    # (Flutter, Electron, etc.) that would otherwise produce a blank bitmap.
+    $hdc = $g.GetHdc()
+    $ok = [Win32]::PrintWindow($hwnd, $hdc, 2)
+    $g.ReleaseHdc($hdc)
+    $g.Dispose()
+    if (-not $ok) {
+        Write-Host "MACRO_LOG|ActiveWindowScreenShot: PrintWindow failed, falling back to CopyFromScreen."
+        $gFallback = [System.Drawing.Graphics]::FromImage($bmp)
+        $gFallback.CopyFromScreen($left, $top, 0, 0, [System.Drawing.Size]::new($width, $height))
+        $gFallback.Dispose()
+    }
+    $dir = ".ai_bridge/screenshots"
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    if (-not $fileName) { $fileName = "active_window_$(Get-Date -Format 'yyyyMMdd_HHmmss').png" }
+    $path = Join-Path (Get-Location) "$dir/$fileName"
+    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $bmp.Dispose()
+    Write-Host "MACRO_CMD|SCREENSHOT_ORIGIN|$left|$top"
+    $global:MacroScreenshotOriginX = $left
+    $global:MacroScreenshotOriginY = $top
+    Write-Host "MACRO_CMD|SCREENSHOT|$path"
+    Write-Host "MACRO_LOG|ActiveWindowScreenShot: Saved active-window capture to $path ($($width)x$($height)) origin($left,$top)"
+}
+
+
+function RunOcr {
+    # Runs Tesseract OCR on the last captured screenshot (or a specified image path).
+    # Stores the structured result in $global:MacroOcrResult for subsequent OCR commands,
+    # and emits MACRO_CMD|OCR|<json> so Dart persists it to .ai_bridge/last_ocr_result.json.
+    # Requires Tesseract 5.x: https://github.com/UB-Mannheim/tesseract/wiki
+    [System.Diagnostics.DebuggerHidden()]
+    param([string]$imagePath = "", [string]$language = "eng")
+    if (-not $imagePath) {
+        $refFile = ".ai_bridge/last_screenshot.txt"
+        if (-not (Test-Path $refFile)) {
+            Write-Host "MACRO_LOG|RunOcr: No screenshot found. Run ScreenShot() or ActiveWindowScreenShot() first."
+            return
+        }
+        $imagePath = (Get-Content $refFile -Raw).Trim()
+    }
+    if (-not $imagePath -or -not (Test-Path $imagePath)) {
+        Write-Host "MACRO_LOG|RunOcr: Image file not found: '$imagePath'"
+        return
+    }
+    # Resolve Tesseract executable — Flutter's Process.run does not inherit the
+    # full user interactive PATH, so bare 'tesseract' often fails even when
+    # Tesseract is installed. Check PATH first, then fall back to known install locations.
+    $tessExe = $null
+    if (Get-Command "tesseract" -ErrorAction SilentlyContinue) {
+        $tessExe = "tesseract"
+    } else {
+        $candidates = @(
+            "$env:ProgramFiles\Tesseract-OCR\tesseract.exe",
+            "${env:ProgramFiles(x86)}\Tesseract-OCR\tesseract.exe",
+            "$env:LOCALAPPDATA\Programs\Tesseract-OCR\tesseract.exe",
+            "C:\Program Files\Tesseract-OCR\tesseract.exe",
+            "C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
+        )
+        foreach ($c in $candidates) {
+            if (Test-Path $c) { $tessExe = $c; break }
+        }
+    }
+    if (-not $tessExe) {
+        Write-Host "MACRO_LOG|RunOcr: Tesseract not found. Install from https://github.com/UB-Mannheim/tesseract/wiki"
+        return
+    }
+    Write-Host "MACRO_LOG|RunOcr: Using Tesseract at '$tessExe'"
+    $tmpBase = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "ocr_$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())")
+    Write-Host "MACRO_LOG|RunOcr: Processing '$imagePath' (lang=$language)..."
+    & $tessExe $imagePath $tmpBase -l $language hocr 2>$null
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        Write-Host "MACRO_LOG|RunOcr: Tesseract exited $exitCode."
+        return
+    }
+    $hocrPath = "$tmpBase.hocr"
+    if (-not (Test-Path $hocrPath)) {
+        Write-Host "MACRO_LOG|RunOcr: HOCR output not found at '$hocrPath'"
+        return
+    }
+    $hocr = Get-Content $hocrPath -Raw -Encoding UTF8
+    Remove-Item $hocrPath -ErrorAction SilentlyContinue
+
+    $Singleline = [System.Text.RegularExpressions.RegexOptions]::Singleline
+    $wordPat = [System.Text.RegularExpressions.Regex]::new("<span[^>]+class='ocrx_word'[^>]+title='([^']+)'[^>]*>(.*?)</span>", $Singleline)
+    $bboxPat = [regex]"bbox\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"
+    $confPat = [regex]"x_wconf\s+(\d+)"
+    $tagPat  = [regex]"<[^>]+>"
+    $words   = [System.Collections.Generic.List[object]]::new()
+    foreach ($m in $wordPat.Matches($hocr)) {
+        $title = $m.Groups[1].Value
+        $inner = $m.Groups[2].Value
+        $bm = $bboxPat.Match($title)
+        if (-not $bm.Success) { continue }
+        $cm = $confPat.Match($title)
+        $text = $tagPat.Replace($inner, "") -replace '&amp;','&' -replace '&lt;','<' -replace '&gt;','>' -replace '&quot;','"' -replace "&#39;","'" -replace '\s+',' '
+        $text = $text.Trim()
+        if ($text) {
+            $words.Add([PSCustomObject]@{
+                text       = $text
+                left       = [int]$bm.Groups[1].Value
+                top        = [int]$bm.Groups[2].Value
+                right      = [int]$bm.Groups[3].Value
+                bottom     = [int]$bm.Groups[4].Value
+                confidence = if ($cm.Success) { [double]$cm.Groups[1].Value } else { -1.0 }
+            })
+        }
+    }
+    $linePat = [System.Text.RegularExpressions.Regex]::new("<span[^>]+class='ocr_line'[^>]*>(.*?)</span>", $Singleline)
+    $lines   = [System.Collections.Generic.List[string]]::new()
+    foreach ($m in $linePat.Matches($hocr)) {
+        $lt = $tagPat.Replace($m.Groups[1].Value, "") -replace '\s+',' '
+        $lt = $lt.Trim()
+        if ($lt) { $lines.Add($lt) }
+    }
+    $fullText = ($lines -join "`n")
+    # Resolve the screenshot origin. When RunOcr and ActiveWindowScreenShot run
+    # in the same macro script the globals are already set. When they run in
+    # separate macros (separate PowerShell processes) the globals are 0, so we
+    # fall back to the file that Dart persists from MACRO_CMD|SCREENSHOT_ORIGIN|.
+    $originX = $global:MacroScreenshotOriginX
+    $originY = $global:MacroScreenshotOriginY
+    if ($originX -eq 0 -and $originY -eq 0) {
+        $originFile = ".ai_bridge/last_screenshot_origin.txt"
+        if (Test-Path $originFile) {
+            $parts = (Get-Content $originFile -Raw).Trim().Split(',')
+            if ($parts.Count -ge 2) {
+                $originX = [int]$parts[0]
+                $originY = [int]$parts[1]
+            }
+        }
+    }
+    Write-Host "MACRO_LOG|RunOcr: Screenshot origin = ($originX,$originY) — image coords will be offset by this to reach screen space"
+    $global:MacroOcrResult = [PSCustomObject]@{
+        imagePath = $imagePath
+        originX   = $originX
+        originY   = $originY
+        fullText  = $fullText
+        words     = $words.ToArray()
+        wordCount = $words.Count
+    }
+    $json = $global:MacroOcrResult | ConvertTo-Json -Depth 4 -Compress
+    Write-Host "MACRO_CMD|OCR|$json"
+    Write-Host "MACRO_LOG|RunOcr: Complete. $($words.Count) word(s) recognized."
+}
+
+function OcrSearch {
+    # Searches the last RunOcr result for words containing [query].
+    # Logs each match with image bounding box and screen-space center.
+    [System.Diagnostics.DebuggerHidden()]
+    param([string]$query, [switch]$caseSensitive)
+    if ($null -eq $global:MacroOcrResult) {
+        Write-Host "MACRO_LOG|OcrSearch: No OCR result. Run RunOcr() first."
+        return
+    }
+    $ox = $global:MacroOcrResult.originX
+    $oy = $global:MacroOcrResult.originY
+    $hits = @($global:MacroOcrResult.words | Where-Object {
+        $t = if ($caseSensitive) { $_.text } else { $_.text.ToLower() }
+        $q = if ($caseSensitive) { $query } else { $query.ToLower() }
+        $t.Contains($q)
+    })
+    if ($hits.Count -eq 0) {
+        Write-Host "MACRO_LOG|OcrSearch: No matches for '$query'"
+    } else {
+        Write-Host "MACRO_LOG|OcrSearch: $($hits.Count) match(es) for '$query':"
+        foreach ($h in $hits) {
+            $cx = $h.left + [int](($h.right  - $h.left) / 2)
+            $cy = $h.top  + [int](($h.bottom - $h.top)  / 2)
+            Write-Host "MACRO_LOG|OcrSearch:  '$($h.text)' img($($h.left),$($h.top))-($($h.right),$($h.bottom)) screen($($ox+$cx),$($oy+$cy)) conf:$($h.confidence)%"
+        }
+    }
+}
+
+function OcrHitTest {
+    # Returns the word at image-space coordinates (x, y).
+    [System.Diagnostics.DebuggerHidden()]
+    param([int]$x, [int]$y)
+    if ($null -eq $global:MacroOcrResult) {
+        Write-Host "MACRO_LOG|OcrHitTest: No OCR result. Run RunOcr() first."
+        return
+    }
+    foreach ($w in $global:MacroOcrResult.words) {
+        if ($x -ge $w.left -and $x -le $w.right -and $y -ge $w.top -and $y -le $w.bottom) {
+            Write-Host "MACRO_LOG|OcrHitTest: Hit '$($w.text)' bbox($($w.left),$($w.top),$($w.right),$($w.bottom)) conf:$($w.confidence)%"
+            return
+        }
+    }
+    Write-Host "MACRO_LOG|OcrHitTest: No word at image coords ($x,$y)"
+}
+
+function OcrGetText {
+    # Logs the full plain text from the last RunOcr result.
+    [System.Diagnostics.DebuggerHidden()]
+    param()
+    if ($null -eq $global:MacroOcrResult) {
+        Write-Host "MACRO_LOG|OcrGetText: No OCR result. Run RunOcr() first."
+        return
+    }
+    Write-Host "MACRO_LOG|OcrGetText: --- BEGIN OCR TEXT ---"
+    Write-Host $global:MacroOcrResult.fullText
+    Write-Host "MACRO_LOG|OcrGetText: --- END OCR TEXT ($($global:MacroOcrResult.wordCount) words) ---"
+}
+
+function OcrMoveTo {
+    # Moves the mouse to the screen-space center of the first word matching [query].
+    # Converts image-space bounding box center to screen coords using the stored origin.
+    [System.Diagnostics.DebuggerHidden()]
+    param([string]$query, [switch]$caseSensitive)
+    if ($null -eq $global:MacroOcrResult) {
+        Write-Host "MACRO_LOG|OcrMoveTo: No OCR result. Run RunOcr() first."
+        return
+    }
+    $match = $global:MacroOcrResult.words | Where-Object {
+        $t = if ($caseSensitive) { $_.text } else { $_.text.ToLower() }
+        $q = if ($caseSensitive) { $query } else { $query.ToLower() }
+        $t.Contains($q)
+    } | Select-Object -First 1
+    if ($null -eq $match) {
+        Write-Host "MACRO_LOG|OcrMoveTo: No match for '$query'"
+        return
+    }
+    $imgCx   = $match.left + [int](($match.right  - $match.left) / 2)
+    $imgCy   = $match.top  + [int](($match.bottom - $match.top)  / 2)
+    $screenX = $global:MacroOcrResult.originX + $imgCx
+    $screenY = $global:MacroOcrResult.originY + $imgCy
+    [Win32]::SetCursorPos($screenX, $screenY) | Out-Null
+    Write-Host "MACRO_LOG|OcrMoveTo: Moved to '$($match.text)' screen($screenX,$screenY)"
+}
+
 # USER MACRO BEGINS HERE:
 ''';
 
@@ -1377,7 +1889,10 @@ function GetBridgeMode {
         }
 
         String debugCmd = (debugMode && scriptPrefix.isEmpty) ? 'Set-PSDebug -Trace 1\n' : '';
-        file.writeAsStringSync('$globalsHeader\n$psHeader\n$manualWait$debugCmd$scriptPrefix$parsedScript\n$scriptSuffix');
+        final scriptContent = '$globalsHeader\n$psHeader\n$manualWait$debugCmd$scriptPrefix$parsedScript\n$scriptSuffix';
+        // Write with UTF-8 BOM so PowerShell reads non-ASCII chars correctly
+        // regardless of the system OEM code page (cp437/cp850 etc.).
+        file.writeAsBytesSync([0xEF, 0xBB, 0xBF, ...utf8.encode(scriptContent)]);
         void processLogs(String data) {
           int headerLines = globalsHeader.split('\n').length + psHeader.split('\n').length + (manualWait.isNotEmpty ? manualWait.split('\n').length - 1 : 0) + (debugCmd.isNotEmpty ? 1 : 0) + (scriptPrefix.isNotEmpty ? scriptPrefix.split('\n').length - 1 : 0);
           for (var line in data.split('\n')) {
@@ -1389,6 +1904,34 @@ function GetBridgeMode {
             } else if (line.trim() == 'MACRO_CMD|RESTART') {
               SystemLogsService.instance.addLog('[Macro Command: ${macro.name.trim()}] Triggering Hot Restart natively...', category: LogCategory.MACRO);
               VisualEditorScreen.triggerHotRestart?.call();
+            } else if (line.trim().startsWith('MACRO_CMD|SCREENSHOT_ORIGIN|')) {
+              // Emitted by ScreenShot / ActiveWindowScreenShot to record the top-left
+              // screen coordinate of the captured image for OcrMoveTo coordinate mapping.
+              final originParts = line.trim().substring('MACRO_CMD|SCREENSHOT_ORIGIN|'.length).split('|');
+              if (originParts.length >= 2) {
+                try {
+                  File('.ai_bridge/last_screenshot_origin.txt')
+                      .writeAsStringSync('${originParts[0]},${originParts[1]}');
+                } catch (_) {}
+              }
+            } else if (line.trim().startsWith('MACRO_CMD|OCR|')) {
+              // Emitted by RunOcr with a JSON payload containing fullText, words, and bounding boxes.
+              final ocrJson = line.trim().substring('MACRO_CMD|OCR|'.length).trim();
+              try {
+                final wordCountMatch = RegExp(r'"wordCount":(\d+)').firstMatch(ocrJson);
+                final wordCount = wordCountMatch?.group(1) ?? '?';
+                SystemLogsService.instance.addLog(
+                  '[Macro Command: ${macro.name.trim()}] OCR result: $wordCount word(s) — saved to last_ocr_result.json',
+                  category: LogCategory.MACRO,
+                );
+                File('.ai_bridge/last_ocr_result.json').writeAsStringSync(ocrJson);
+              } catch (_) {}
+            } else if (line.trim().startsWith('MACRO_CMD|SCREENSHOT|')) {
+              final screenshotPath = line.trim().substring('MACRO_CMD|SCREENSHOT|'.length).trim();
+              SystemLogsService.instance.addLog('[Macro Command: ${macro.name.trim()}] Screenshot saved: $screenshotPath', category: LogCategory.MACRO);
+              try {
+                File('.ai_bridge/last_screenshot.txt').writeAsStringSync(screenshotPath);
+              } catch (_) {}
             } else if (line.trim().startsWith('DEBUG:')) {
               var match = RegExp(r'DEBUG:\s+(\d+)\+.*>>>>(.*)').firstMatch(line);
               if (match != null) {
@@ -1432,8 +1975,8 @@ function GetBridgeMode {
            _runningSystemProcesses[macro.id] = process;
         }
         
-        process.stdout.transform(utf8.decoder).listen((data) => processLogs(data));
-        process.stderr.transform(utf8.decoder).listen((data) => processErrors(data));
+        process.stdout.transform(const Utf8Decoder(allowMalformed: true)).listen((data) => processLogs(data));
+        process.stderr.transform(const Utf8Decoder(allowMalformed: true)).listen((data) => processErrors(data));
 
         if (effectiveWait) {
           int code = await process.exitCode.timeout(const Duration(seconds: 5), onTimeout: () {

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -265,15 +266,13 @@ class _GlobalNotesEditorWindowState extends State<GlobalNotesEditorWindow> {
             child: isPreviewingNotes
                 ? Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(8.0),
                     decoration: BoxDecoration(
                       color: AppUIConfig.markupBackgroundColor,
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: MarkdownRenderer(
-                      fitContent: false,
+                    child: _AnchorMarkdownPreview(
+                      key: const Key('md_preview'),
                       data: _controller!.text.trim().isEmpty ? '*No notes provided...*' : _controller!.text,
-                      softLineBreak: true,
                       styleSheet: buildMarkdownStyleSheet(AppUIConfig.rootFontSize),
                     ),
                   )
@@ -431,3 +430,177 @@ class _GlobalNotesEditorWindowState extends State<GlobalNotesEditorWindow> {
     );
   }
 }
+
+// ── Anchor slug: matches GitHub-style heading → href conversion ─────────────
+String _anchorSlug(String text) => text
+    .toLowerCase()
+    .replaceAll(RegExp(r'[`*\[\](){}#]'), '')
+    .trim()
+    .replaceAll(RegExp(r'[^\w\s-]'), '')
+    .replaceAll(RegExp(r'\s+'), '-');
+
+// ── Anchor-aware markdown preview ────────────────────────────────────────────
+// Splits the document at heading boundaries. Each heading gets its own
+// Container (a RenderObjectWidget) carrying a GlobalKey so that
+// RenderBox.localToGlobal and ScrollController.animateTo can precisely
+// target it — unlike KeyedSubtree which has no render object of its own.
+class _AnchorMarkdownPreview extends StatefulWidget {
+  final String data;
+  final MarkdownStyleSheet? styleSheet;
+  const _AnchorMarkdownPreview({super.key, required this.data, this.styleSheet});
+
+  @override
+  State<_AnchorMarkdownPreview> createState() => _AnchorMarkdownPreviewState();
+}
+
+class _AnchorMarkdownPreviewState extends State<_AnchorMarkdownPreview> {
+  final ScrollController _scroll = ScrollController();
+  final GlobalKey _columnKey = GlobalKey();
+  final Map<String, GlobalKey> _keys = {};
+
+  // Each section: the heading markdown line + the body markdown below it
+  List<({String slug, String heading, String body})> _sections = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _sections = _parse(widget.data);
+  }
+
+  @override
+  void didUpdateWidget(_AnchorMarkdownPreview old) {
+    super.didUpdateWidget(old);
+    if (old.data != widget.data) {
+      setState(() => _sections = _parse(widget.data));
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  List<({String slug, String heading, String body})> _parse(String raw) {
+    final result = <({String slug, String heading, String body})>[];
+    final headingRe = RegExp(r'^(#{1,4})\s+(.+)$');
+
+    String currentSlug = '';
+    String currentHeading = '';
+    final bodyBuf = StringBuffer();
+
+    void flush() {
+      final body = bodyBuf.toString().trimRight();
+      // Always emit — even if body is empty (heading-only section)
+      result.add((slug: currentSlug, heading: currentHeading, body: body));
+      _keys.putIfAbsent(currentSlug, () => GlobalKey());
+      bodyBuf.clear();
+    }
+
+    bool first = true;
+    for (final line in raw.split('\n')) {
+      final m = headingRe.firstMatch(line);
+      if (m != null) {
+        if (!first) flush();
+        first = false;
+        currentHeading = line;
+        currentSlug = _anchorSlug(m.group(2)!);
+        _keys.putIfAbsent(currentSlug, () => GlobalKey());
+      } else {
+        if (first) {
+          // Content before the first heading — emit as a preamble section
+          bodyBuf.writeln(line);
+        } else {
+          bodyBuf.writeln(line);
+        }
+      }
+    }
+    if (!first) flush();
+    // If there was only preamble with no headings, emit it
+    final preamble = bodyBuf.toString().trim();
+    if (first && preamble.isNotEmpty) {
+      result.add((slug: '', heading: '', body: preamble));
+    }
+    return result;
+  }
+
+  void _scrollTo(String anchor) {
+    final key = _keys[anchor];
+    if (key == null) return;
+
+    // Wait for the current frame to finish laying out before measuring.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = key.currentContext;
+      if (ctx == null) return;
+
+      final targetBox = ctx.findRenderObject() as RenderBox?;
+      final columnBox = _columnKey.currentContext?.findRenderObject() as RenderBox?;
+      if (targetBox == null || columnBox == null) return;
+
+      // Position of the target widget relative to the column's top-left
+      final localOffset = targetBox.localToGlobal(Offset.zero, ancestor: columnBox);
+      final targetPixel = (_scroll.offset + localOffset.dy)
+          .clamp(0.0, _scroll.position.maxScrollExtent);
+
+      _scroll.animateTo(
+        targetPixel,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  void _openLink(String href) {
+    if (href.startsWith('http://') || href.startsWith('https://')) {
+      Process.start('cmd', ['/c', 'start', '', href]);
+    } else if (href.startsWith('file://')) {
+      final path = href.replaceFirst('file://', '');
+      Process.run('explorer.exe', [path.replaceAll('/', '\\')]);
+    }
+  }
+
+  MarkdownBody _md(String data) => MarkdownBody(
+        data: data,
+        fitContent: false,
+        softLineBreak: true,
+        styleSheet: widget.styleSheet,
+        onTapLink: (text, href, title) {
+          if (href == null) return;
+          if (href.startsWith('#')) {
+            _scrollTo(href.substring(1));
+          } else {
+            _openLink(href);
+          }
+        },
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      controller: _scroll,
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        key: _columnKey,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: _sections.map((s) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Heading in its own Container carrying the GlobalKey.
+              // Container IS a RenderObjectWidget, so findRenderObject()
+              // returns a real RenderBox that localToGlobal can measure.
+              if (s.heading.isNotEmpty)
+                Container(
+                  key: _keys[s.slug],
+                  child: _md(s.heading),
+                ),
+              if (s.body.trim().isNotEmpty)
+                _md(s.body),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+

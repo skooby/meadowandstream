@@ -1,5 +1,16 @@
 [
   {
+    "id": "622252d168860249836193b6ce1a29b744dd6c8c",
+    "taskIds": [
+      "1779882820948"
+    ],
+    "title": "AI ASSISTANT [Changed {SUMMARY} tag to resolve to the task's Summary field instead of the project_summary.md file URI.]",
+    "summary": "AI Assistant improvements",
+    "commitHash": "622252d168860249836193b6ce1a29b744dd6c8c",
+    "commitDate": "2026-05-29T13:31:55Z",
+    "verifiedNotes": "- Add a input field for different areas that we will be using AI ASSISTANT for. First is \"Review this prompt for clarity and return YES or NO as an answer. The prompt is\"\n- Add reference material files to custom context model. browse to file button, delete. add file. Lets also show the size of the file. Include our project_summary.md file in this.\n- Add an AI Assistant Prompt Instruction input field in Config > AI Assistant called Context Instruction, Will be used with the {CONTEXT} tag\n- Support other tags for AI ASSISTANCE prompts. {NAME} would be replaced with the name of the current task. {PARENT} would be replaced with the name of the parent folder.\n- Support for replacement of tags until tag doesn't change... For instance {CONTEXT} might have other tags internally like {PARENT}/{NAME}. So it needs to continue to replace tags until processing results in no additional tags.\n- Adding support for the tag {NOTES} which be replaced with notes from the current task\n- Add support for the tag {DESCRIPTION} while would be replaced from the task Description.\n- Add support for the tag {CHECKLIST} which would be replaced with other checklist task names. Put each checklist item with a - at the start. Do not include current checklist item in this list.\n- Change the tag {SUMMARY} which would be replaced with the task Summary."
+  },
+  {
     "id": "29b51d05108f9dda311c95cf4dc908e847295d62",
     "taskIds": [
       "1779882820948"
@@ -324,16 +335,5 @@
     "commitHash": "4824a01f2b603c67c5c6d0edfd8ddc6c8879d42e",
     "commitDate": "2026-05-25T12:54:28Z",
     "verifiedNotes": "- Add a General tab to Config as the very first tab\nAdd list for all System Log types, and check boxes if they should be outputted to System Log and to Console Log\nLets make this editable and reorderable. System Log window would show these in order.\n- Lets reclassify some common logs entries:\n\nAiBridge > SYNC\n- If an entry is hidden in config then don't show that entry for the top bar of the system logs"
-  },
-  {
-    "id": "d62cb6c391444cbc9f3849d9881c92c5c388f200",
-    "taskIds": [
-      "1779596049582"
-    ],
-    "title": "Task Manager [Implement retry and log suppression for transcript poller]",
-    "summary": "Improvements for Task Manager",
-    "commitHash": "d62cb6c391444cbc9f3849d9881c92c5c388f200",
-    "commitDate": "2026-05-25T11:37:59Z",
-    "verifiedNotes": "- Testing Updated Prompt Syntax\n- For each checklist item lets save and transmit a notes area. Make this section always avaible on a checklist task, don't reuse the proof box since we want this editable\n- We keep getting spam for this, is it an issue:\n[AiBridge] Poller error reading last line of transcript: FileSystemException: Cannot open file, path = 'C:\\Users\\David\\.gemini\\antigravity\\brain\\43a2ba71-9a7a-4f99-8f12-358d454fba23/.system_generated/logs/transcript.jsonl' (OS Error: The operation completed successfully, errno = 0)"
   }
 ]
