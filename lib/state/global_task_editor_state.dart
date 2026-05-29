@@ -23,6 +23,10 @@ class GlobalTaskEditorState {
   bool hasUnsavedEdits = false;
   String unsavedReason = '';
 
+  /// The most recently opened existing task — updated synchronously in
+  /// [requestEdit] so any code can read it without async SharedPreferences.
+  AiTask? lastEditedTask;
+
   /// Registered by the editor widget. When called, immediately flushes any
   /// pending debounced save and waits for the I/O to complete.
   Future<void> Function()? flushPendingSave;
@@ -38,6 +42,7 @@ class GlobalTaskEditorState {
     bool forceNoteCreation = false,
   }) {
     if (existingTask != null) {
+      lastEditedTask = existingTask;
       SharedPreferences.getInstance().then((prefs) {
         prefs.setString('ai_last_edited_task_id', existingTask.id);
       });

@@ -226,6 +226,42 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
         ?.name ?? '';
   }
 
+  /// Current task notes for {NOTES} tag substitution in AI prompts.
+  String get _aiTaskNotes => notesController.text.trim();
+
+  /// Current task description for {DESCRIPTION} tag substitution in AI prompts.
+  String get _aiTaskDescription => descController.text.trim();
+
+  /// Current task summary for {SUMMARY} tag substitution in AI prompts.
+  String get _aiTaskSummary => summaryController.text.trim();
+
+  /// Builds a bullet-list of checklist item descriptions for {CHECKLIST} tag substitution.
+  /// Excludes the item whose description matches [excludeText] (case-insensitive trim).
+  String _aiChecklist({String? excludeText}) {
+    final exclude = excludeText?.trim().toLowerCase();
+    final lines = verificationCriteriaList
+        .map((c) => c.description.trim())
+        .where((d) => d.isNotEmpty)
+        .where((d) => exclude == null || d.toLowerCase() != exclude)
+        .map((d) => '- $d')
+        .join('\n');
+    return lines;
+  }
+
+  /// Pushes the current editor controller values to LocalAiService so any
+  /// caller (e.g. Bridge Monitor free-form prompt) can resolve prompt tags
+  /// against the task that is currently open, without depending on build().
+  void _updateAiContext() {
+    LocalAiService.instance.setEditorTaskContext(
+      taskName: _aiTaskName,
+      parentName: _aiParentName,
+      taskSummary: _aiTaskSummary,
+      taskDescription: _aiTaskDescription,
+      taskNotes: _aiTaskNotes,
+      taskChecklist: _aiChecklist(),
+    );
+  }
+
   List<String> fileAttachments = [];
   List<String> hyperlinks = [];
 
@@ -333,6 +369,12 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     summaryController.addListener(_executeAutoSave);
     notesController.addListener(_executeAutoSave);
 
+    // Keep LocalAiService context cache fresh for Bridge Monitor tag resolution.
+    nameController.addListener(_updateAiContext);
+    descController.addListener(_updateAiContext);
+    summaryController.addListener(_updateAiContext);
+    notesController.addListener(_updateAiContext);
+
     descUndo = UndoHistoryController();
     summaryUndo = UndoHistoryController();
     notesUndo = UndoHistoryController();
@@ -354,6 +396,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
 
   @override
   void dispose() {
+    LocalAiService.instance.clearEditorTaskContext();
     GlobalTaskEditorState.instance.hasUnsavedEdits = false;
     GlobalTaskEditorState.instance.flushPendingSave = null;
     VisualEditorScreen.currentWorkspace.removeListener(_loadPreferences);
@@ -371,6 +414,11 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
     descController.removeListener(_executeAutoSave);
     summaryController.removeListener(_executeAutoSave);
     notesController.removeListener(_executeAutoSave);
+
+    nameController.removeListener(_updateAiContext);
+    descController.removeListener(_updateAiContext);
+    summaryController.removeListener(_updateAiContext);
+    notesController.removeListener(_updateAiContext);
 
     _nameFocusNode.dispose();
     _descFocusNode.dispose();
@@ -1078,6 +1126,8 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
       isCustomizationExpanded = false;
       isForceClosing = false;
     });
+    // Push fresh context now that controllers are populated.
+    _updateAiContext();
   }
 
   Future<void> _loadPreferences() async {
@@ -1594,7 +1644,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                 final val = _verificationControllers[i].text.trim();
                                                 if (val.isNotEmpty) {
                                                   Future.microtask(() async {
-                                                    final result = await LocalAiService.instance.checkClarity(val, taskName: _aiTaskName, parentName: _aiParentName);
+                                                    final result = await LocalAiService.instance.checkClarity(val, taskName: _aiTaskName, parentName: _aiParentName, taskNotes: _aiTaskNotes, taskDescription: _aiTaskDescription, taskChecklist: _aiChecklist(excludeText: val), taskSummary: _aiTaskSummary);
                                                     if (result != null) {
                                                       final (isUnclear, aiNotes) = result;
                                                       setStateBuilder(() {
@@ -1825,7 +1875,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                   final instruction = rewriteTemplate.contains('{PROMPT}')
                                                       ? rewriteTemplate.replaceAll('{PROMPT}', currentPrompt)
                                                       : '$rewriteTemplate $currentPrompt';
-                                                  final retooled = await LocalAiService.instance.generateText(instruction, taskName: _aiTaskName, parentName: _aiParentName);
+                                                  final retooled = await LocalAiService.instance.generateText(instruction, taskName: _aiTaskName, parentName: _aiParentName, taskNotes: _aiTaskNotes, taskDescription: _aiTaskDescription, taskChecklist: _aiChecklist(excludeText: currentPrompt), taskSummary: _aiTaskSummary);
                                                   if (retooled != null && retooled.trim().isNotEmpty && context.mounted) {
                                                     setStateBuilder(() {
                                                       _verificationControllers[i].text = retooled.trim();
@@ -2281,7 +2331,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                           // Run AI clarity check on the new item
                           final newIdx = verificationCriteriaList.length - 1;
                           Future.microtask(() async {
-                            final result = await LocalAiService.instance.checkClarity(newText, taskName: _aiTaskName, parentName: _aiParentName);
+                            final result = await LocalAiService.instance.checkClarity(newText, taskName: _aiTaskName, parentName: _aiParentName, taskNotes: _aiTaskNotes, taskDescription: _aiTaskDescription, taskChecklist: _aiChecklist(excludeText: newText), taskSummary: _aiTaskSummary);
                             if (result != null) {
                               final (isUnclear, aiNotes) = result;
                               setStateBuilder(() {
@@ -2348,7 +2398,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                       // Run AI clarity check on the new item
                       final newIdx = verificationCriteriaList.length - 1;
                       Future.microtask(() async {
-                        final result = await LocalAiService.instance.checkClarity(newText, taskName: _aiTaskName, parentName: _aiParentName);
+                        final result = await LocalAiService.instance.checkClarity(newText, taskName: _aiTaskName, parentName: _aiParentName, taskNotes: _aiTaskNotes, taskDescription: _aiTaskDescription, taskChecklist: _aiChecklist(excludeText: newText), taskSummary: _aiTaskSummary);
                         if (result != null) {
                           final (isUnclear, aiNotes) = result;
                           setStateBuilder(() {
@@ -2871,7 +2921,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                               : () async {
                                                                   if (descController.text.isEmpty) return;
                                                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generating task...')));
-                                                                  final generated = await LocalAiService.instance.generateTask(descController.text, taskName: _aiTaskName, parentName: _aiParentName);
+                                                                  final generated = await LocalAiService.instance.generateTask(descController.text, taskName: _aiTaskName, parentName: _aiParentName, taskNotes: _aiTaskNotes, taskDescription: _aiTaskDescription, taskChecklist: _aiChecklist(), taskSummary: _aiTaskSummary);
                                                                   if (generated == null) {
                                                                     if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: ${LocalAiService.instance.lastError}')));
                                                                     return;
@@ -2893,7 +2943,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                                     final idx = startIdx + gi;
                                                                     final itemText = generated.checklistItems[gi];
                                                                     Future.microtask(() async {
-                                                                      final clarityResult = await LocalAiService.instance.checkClarity(itemText, taskName: _aiTaskName, parentName: _aiParentName);
+                                                                      final clarityResult = await LocalAiService.instance.checkClarity(itemText, taskName: _aiTaskName, parentName: _aiParentName, taskNotes: _aiTaskNotes, taskDescription: _aiTaskDescription, taskChecklist: _aiChecklist(excludeText: itemText), taskSummary: _aiTaskSummary);
                                                                       if (clarityResult != null) {
                                                                         final (isUnclear, aiNotes) = clarityResult;
                                                                         setStateBuilder(() {

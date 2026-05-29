@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:path/path.dart' as path;
 import 'system_logs_service.dart';
 import 'ai_bridge_service.dart';
+import '../state/global_task_editor_state.dart';
 
 class LocalAiService extends ChangeNotifier {
   // Singleton pattern for easy access
@@ -31,6 +32,41 @@ class LocalAiService extends ChangeNotifier {
 
   /// Free-form instruction injected wherever {CONTEXT} appears in any prompt.
   String contextInstruction = '';
+
+  // ── Live editor task context ─────────────────────────────────────────────
+  // Populated by the task editor widget on every build so that any caller
+  // (e.g. Bridge Monitor free-form prompt) can resolve prompt tags against
+  // the task that the user currently has open, even before it is saved.
+  String _editorTaskName = '';
+  String _editorParentName = '';
+  String _editorTaskSummary = '';
+  String _editorTaskDescription = '';
+  String _editorTaskNotes = '';
+  String _editorTaskChecklist = '';
+  bool _hasEditorContext = false;
+
+  /// Called by the task editor to keep the live context cache up to date.
+  void setEditorTaskContext({
+    required String taskName,
+    required String parentName,
+    required String taskSummary,
+    required String taskDescription,
+    required String taskNotes,
+    required String taskChecklist,
+  }) {
+    _editorTaskName = taskName;
+    _editorParentName = parentName;
+    _editorTaskSummary = taskSummary;
+    _editorTaskDescription = taskDescription;
+    _editorTaskNotes = taskNotes;
+    _editorTaskChecklist = taskChecklist;
+    _hasEditorContext = true;
+  }
+
+  /// Clears the live editor context cache (called when the editor closes).
+  void clearEditorTaskContext() {
+    _hasEditorContext = false;
+  }
 
   Future<void> loadConfig() async {
     try {
@@ -293,26 +329,116 @@ class LocalAiService extends ChangeNotifier {
   /// until the result stabilises (i.e. no new tags are introduced by an
   /// expanded value). Capped at 10 passes to prevent infinite loops.
   ///
-  /// Tags: {SUMMARY} → project_summary.md file URI, {CONTEXT} → contextInstruction,
-  /// {NAME} → taskName (empty string if null), {PARENT} → parentName (empty string if null).
-  String applyPromptTags(String prompt, {String? taskName, String? parentName}) {
-    final summaryLink = Uri.file(
-      File('${AiBridgeService.instance.bridgeDirPath}/project_summary.md').absolute.path,
-    ).toString();
+  /// Tags resolved iteratively (can cross-reference each other):
+  ///   {SUMMARY} → taskSummary, {CONTEXT} → contextInstruction,
+  ///   {NAME} → taskName, {PARENT} → parentName, {DESCRIPTION} → taskDescription.
+  ///
+  /// Tags substituted as literal text AFTER the loop (contents never re-evaluated):
+  ///   {NOTES} → taskNotes, {CHECKLIST} → taskChecklist.
+  String applyPromptTags(String prompt, {
+    String? taskName,
+    String? parentName,
+    String? taskNotes,
+    String? taskDescription,
+    String? taskChecklist,
+    String? taskSummary,
+  }) {
+    final summary = taskSummary ?? '';
     final name = taskName ?? '';
     final parent = parentName ?? '';
+    final description = taskDescription ?? '';
 
+    // Iterative pass — only scalar tags that may cross-reference each other.
     String current = prompt;
     for (int i = 0; i < 10; i++) {
       final next = current
-          .replaceAll('{SUMMARY}', summaryLink)
+          .replaceAll('{SUMMARY}', summary)
           .replaceAll('{CONTEXT}', contextInstruction)
           .replaceAll('{NAME}', name)
-          .replaceAll('{PARENT}', parent);
+          .replaceAll('{PARENT}', parent)
+          .replaceAll('{DESCRIPTION}', description);
       if (next == current) break;
       current = next;
     }
-    return current;
+
+    // Final literal substitution — contents treated as raw text, never re-evaluated.
+    return current
+        .replaceAll('{NOTES}', taskNotes ?? '')
+        .replaceAll('{CHECKLIST}', taskChecklist ?? '');
+  }
+
+  /// Resolves all prompt-tag values from the best available task context.
+  /// Priority: (1) live editor cache (build() push), (2) activeRequest snapshot,
+  /// (3) lastEditedTask (survives editor close), (4) bridge pipeline task, (5) empty.
+  ({
+    String taskName,
+    String parentName,
+    String taskSummary,
+    String taskDescription,
+    String taskNotes,
+    String taskChecklist,
+  }) tagsFromActiveTask() {
+    // Priority 1 — live values from the currently open task editor.
+    if (_hasEditorContext) {
+      return (
+        taskName: _editorTaskName,
+        parentName: _editorParentName,
+        taskSummary: _editorTaskSummary,
+        taskDescription: _editorTaskDescription,
+        taskNotes: _editorTaskNotes,
+        taskChecklist: _editorTaskChecklist,
+      );
+    }
+
+    final bridge = AiBridgeService.instance;
+
+    // Priority 2 — task snapshot held in the editor state (editor currently open).
+    AiTask? task = GlobalTaskEditorState.instance.activeRequest.value?.existingTask;
+
+    // Priority 3 — last task opened in the editor (survives editor close).
+    task ??= GlobalTaskEditorState.instance.lastEditedTask;
+
+    // Priority 4 — task currently being processed by the bridge pipeline.
+    if (task == null) {
+      final taskId = bridge.activeProcessingTaskId;
+      if (taskId != null) {
+        task = bridge.tasks.where((t) => t.id == taskId).firstOrNull;
+      }
+    }
+
+    if (task == null) {
+      return (
+        taskName: '',
+        parentName: '',
+        taskSummary: '',
+        taskDescription: '',
+        taskNotes: '',
+        taskChecklist: '',
+      );
+    }
+
+    final parentName = task.parentId != null
+        ? bridge.tasks
+              .where((t) => t.id == task!.parentId)
+              .firstOrNull
+              ?.name ??
+            ''
+        : '';
+
+    final checklist = task.verificationCriteria
+        .map((c) => c.description.trim())
+        .where((d) => d.isNotEmpty)
+        .map((d) => '- $d')
+        .join('\n');
+
+    return (
+      taskName: task.name,
+      parentName: parentName,
+      taskSummary: task.summary,
+      taskDescription: task.description,
+      taskNotes: task.notes,
+      taskChecklist: checklist,
+    );
   }
 
   /// Sends a simple prompt to the /api/generate endpoint
@@ -325,8 +451,12 @@ class LocalAiService extends ChangeNotifier {
     Map<String, dynamic>? format, // Ollama structured output schema
     String? taskName,
     String? parentName,
+    String? taskNotes,
+    String? taskDescription,
+    String? taskChecklist,
+    String? taskSummary,
   }) async {
-    final processedPrompt = applyPromptTags(prompt, taskName: taskName, parentName: parentName);
+    final processedPrompt = applyPromptTags(prompt, taskName: taskName, parentName: parentName, taskNotes: taskNotes, taskDescription: taskDescription, taskChecklist: taskChecklist, taskSummary: taskSummary);
     final usedModel = model ?? effectiveModel;
     SystemLogsService.instance.addLog(
       '[AI] generateText | prompt: ${processedPrompt.length > 120 ? '${processedPrompt.substring(0, 120)}…' : processedPrompt}',
@@ -538,13 +668,17 @@ class LocalAiService extends ChangeNotifier {
   /// Checks if a checklist item prompt is clear.
   /// Returns a record: (isUnclear, notes) where notes is an explanation when unclear.
   /// Uses Ollama structured output to guarantee the response schema.
-  Future<(bool, String?)?> checkClarity(String promptText, {String? taskName, String? parentName}) async {
+  Future<(bool, String?)?> checkClarity(String promptText, {String? taskName, String? parentName, String? taskNotes, String? taskDescription, String? taskChecklist, String? taskSummary}) async {
     final isBinary = clarityResponseFormat == 'binary';
 
-    final resolvedClarity = applyPromptTags(clarityPrompt, taskName: taskName, parentName: parentName);
-    final userPrompt = resolvedClarity.contains('{PROMPT}')
-        ? resolvedClarity.replaceAll('{PROMPT}', promptText)
-        : '$resolvedClarity $promptText';
+    // Substitute {PROMPT} into the raw template first, then resolve all tags in
+    // a single applyPromptTags pass. This means tags embedded inside the prompt
+    // text itself (e.g. {NAME} inside a checklist item) are also resolved,
+    // without the double-expansion crash that came from calling applyPromptTags twice.
+    final withPrompt = clarityPrompt.contains('{PROMPT}')
+        ? clarityPrompt.replaceAll('{PROMPT}', promptText)
+        : '$clarityPrompt $promptText';
+    final userPrompt = applyPromptTags(withPrompt, taskName: taskName, parentName: parentName, taskNotes: taskNotes, taskDescription: taskDescription, taskChecklist: taskChecklist, taskSummary: taskSummary);
 
     SystemLogsService.instance.addLog(
       '[AI] checkClarity | prompt: ${promptText.length > 80 ? '${promptText.substring(0, 80)}…' : promptText}',
@@ -614,7 +748,7 @@ class LocalAiService extends ChangeNotifier {
   /// Utility 1b: Task Generator
   /// Given a description, returns a structured task title + checklist items.
   /// Uses Ollama structured output to guarantee the response schema.
-  Future<({String title, List<String> checklistItems})?> generateTask(String description, {String? taskName, String? parentName}) async {
+  Future<({String title, List<String> checklistItems})?> generateTask(String description, {String? taskName, String? parentName, String? taskNotes, String? taskDescription, String? taskChecklist, String? taskSummary}) async {
     SystemLogsService.instance.addLog(
       '[AI] generateTask called | desc: ${description.length > 120 ? '${description.substring(0, 120)}…' : description}',
       category: LogCategory.AI,
@@ -636,6 +770,10 @@ class LocalAiService extends ChangeNotifier {
       generateTaskPrompt.replaceAll('{DESCRIPTION}', description),
       taskName: taskName,
       parentName: parentName,
+      taskNotes: taskNotes,
+      taskDescription: taskDescription,
+      taskChecklist: taskChecklist,
+      taskSummary: taskSummary,
     );
 
     final raw = await generateText(

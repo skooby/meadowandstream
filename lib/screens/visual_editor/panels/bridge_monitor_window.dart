@@ -2830,6 +2830,7 @@ class _AiAssistantTabState extends State<AiAssistantTab> {
   late final ScrollController _localAiPromptScrollController;
   late final ScrollController _localAiOutputScrollController;
   late final TextEditingController _promptController;
+  late final FocusNode _promptFocusNode;
 
   @override
   void initState() {
@@ -2837,6 +2838,7 @@ class _AiAssistantTabState extends State<AiAssistantTab> {
     _localAiPromptScrollController = ScrollController();
     _localAiOutputScrollController = ScrollController();
     _promptController = TextEditingController(text: LocalAiService.instance.lastPromptSent);
+    _promptFocusNode = FocusNode();
     // Seed immediately so the view isn't blank on first frame.
     _syncAiState();
     // Poll every 500 ms — safe because Timer callbacks run outside pointer dispatch.
@@ -2861,7 +2863,10 @@ class _AiAssistantTabState extends State<AiAssistantTab> {
         _aiResponse = response;
         _aiIsProcessing = processing;
         _aiModel = model;
-        if (_promptController.text != prompt) {
+        // Only auto-fill the prompt field when the user is NOT actively editing it.
+        // This keeps the field updated with the last sent prompt while preserving
+        // any tags ({NAME} etc.) the user is composing.
+        if (!_promptFocusNode.hasFocus && _promptController.text != prompt) {
           _promptController.text = prompt;
         }
       });
@@ -2873,6 +2878,7 @@ class _AiAssistantTabState extends State<AiAssistantTab> {
     _aiPollTimer?.cancel();
     _localAiPromptScrollController.dispose();
     _localAiOutputScrollController.dispose();
+    _promptFocusNode.dispose();
     _promptController.dispose();
     super.dispose();
   }
@@ -3187,7 +3193,16 @@ class _AiAssistantTabState extends State<AiAssistantTab> {
                             final promptText = _promptController.text.trim();
                             if (promptText.isEmpty) return;
                             try {
-                              await LocalAiService.instance.generateText(promptText);
+                              final tags = LocalAiService.instance.tagsFromActiveTask();
+                              await LocalAiService.instance.generateText(
+                                promptText,
+                                taskName: tags.taskName,
+                                parentName: tags.parentName,
+                                taskSummary: tags.taskSummary,
+                                taskDescription: tags.taskDescription,
+                                taskNotes: tags.taskNotes,
+                                taskChecklist: tags.taskChecklist,
+                              );
                             } catch (e) {
                               debugPrint('Failed to send prompt to AI Assistant: $e');
                             }
@@ -3231,6 +3246,7 @@ class _AiAssistantTabState extends State<AiAssistantTab> {
                   ),
                   child: TextField(
                     controller: _promptController,
+                    focusNode: _promptFocusNode,
                     maxLines: null,
                     keyboardType: TextInputType.multiline,
                     style: TextStyle(
