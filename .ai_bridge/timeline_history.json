@@ -1,5 +1,16 @@
 [
   {
+    "id": "d77a6fdef1b598e2986c57b6e208f675f5968dd6",
+    "taskIds": [
+      "1780020112821"
+    ],
+    "title": "LOGS",
+    "summary": "",
+    "commitHash": "d77a6fdef1b598e2986c57b6e208f675f5968dd6",
+    "commitDate": "2026-05-29T05:33:20Z",
+    "verifiedNotes": "- Clean up rules for config logs"
+  },
+  {
     "id": "761dbe39f707cbcc029125cdd4c3fbfaebe9d1d7",
     "taskIds": [
       "1780000846346",
@@ -324,16 +335,5 @@
     "commitHash": "66476dceb871e288d4f7900d5f8405be0a35ebf8",
     "commitDate": "2026-05-24T20:02:26Z",
     "verifiedNotes": "- Hot Restart changed and was crashing"
-  },
-  {
-    "id": "4a5fcdf95aa72c72e8ee8f8f8543afafc008c5b5",
-    "taskIds": [
-      "1778869915153"
-    ],
-    "title": "VERSION CONTROL [Isolate custom commit notes in SharedPreferences]",
-    "summary": "Version Control System improvements and tasks",
-    "commitHash": "4a5fcdf95aa72c72e8ee8f8f8543afafc008c5b5",
-    "commitDate": "2026-05-24T16:33:52Z",
-    "verifiedNotes": "- Lets add a Note to the Active Tasks to be appended to the commit name\n- Commit verification check implemented and auto-triggered\n- Resolve Conflict button notifies LLM to resolve the problem with full details\n- Git error detection in diagnostics window is case-insensitive\n- database dump sync does not block or deadlock status processing\n- SharedPreferences is pre-cached to prevent platform channel channel locks\n- When sending to ai bridge... only checklist items that are unchecked and not ignored are considered. The orange ones are in testing and don't need to be sent"
   }
 ]

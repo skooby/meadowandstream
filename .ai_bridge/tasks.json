@@ -7711,51 +7711,6 @@
       "commitHash": "761dbe39f707cbcc029125cdd4c3fbfaebe9d1d7",
       "commitDate": "2026-05-28T23:02:08.005959",
       "previewState": null
-    },
-    {
-      "id": "1780020112821",
-      "name": "LOGS",
-      "description": "",
-      "summary": "",
-      "notes": "",
-      "implementationQuestion": "",
-      "reviewQuestions": [],
-      "verificationCriteria": [
-        {
-          "description": "Clean up rules for config logs",
-          "goal": "",
-          "isVerified": true,
-          "status": "verified",
-          "proof": null,
-          "notes": "",
-          "requestClarification": false,
-          "tryCount": 0,
-          "attachments": [],
-          "isCommitted": false,
-          "isPreview": false
-        }
-      ],
-      "status": "inProgress",
-      "priority": "none",
-      "isFolder": false,
-      "isWorksheet": false,
-      "isWorksheetVisible": true,
-      "isNote": false,
-      "isKnowledgeSummary": false,
-      "isRead": true,
-      "preventDeletion": false,
-      "applyLocksToChildren": false,
-      "isReadOnly": false,
-      "isIgnored": false,
-      "isLocked": false,
-      "llmPromptStyleOverride": "Use Default",
-      "fileAttachments": [],
-      "hyperlinks": [],
-      "commitHash": "761dbe39f707cbcc029125cdd4c3fbfaebe9d1d7",
-      "commitDate": "2026-05-28T23:02:08.005959",
-      "previewState": null,
-      "parentId": "1780020088831",
-      "worksheetId": "1778268121185"
     }
   ]
 }
