@@ -1,6 +1,6 @@
 import '../../../state/global_task_editor_state.dart';
 import 'package:antigravity_sdk/antigravity_sdk.dart';
-import 'global_task_editor_window.dart';
+import 'global_task_editor_window.dart' hide print;
 import 'global_icon_picker_window.dart';
 import 'package:flutter/material.dart';
 import 'package:collection/collection.dart';
@@ -21,7 +21,7 @@ import '../../../services/backup_service.dart';
 import 'backup_manager_panel.dart';
 import '../../../services/version_control_service.dart';
 
-import '../../../services/ai_bridge_service.dart';
+import '../../../services/ai_bridge_service.dart' hide print;
 import '../../../services/sandbox_service.dart';
 import '../../../widgets/draggable_alert_dialog.dart';
 import '../../../services/macro_service.dart';
@@ -289,7 +289,7 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
       AiBridgeService.instance.notifyListeners();
     } catch (e) {
       if (kDebugMode) {
-        print('Sandbox Transition Error: $e');
+        debugPrint('Sandbox Transition Error: $e');
       }
     }
   }
@@ -4166,8 +4166,13 @@ class AiTaskManagerPanelState extends State<AiTaskManagerPanel> {
           }
         ),
 
-        // Pending Document Review Banner — shown when agent writes pending_review.json
-        const PendingDocumentReviewBanner(),
+        ListenableBuilder(
+          listenable: AiBridgeService.instance,
+          builder: (context, _) {
+            if (AiBridgeService.instance.pendingReview == null) return const SizedBox.shrink();
+            return const PendingDocumentReviewBanner();
+          },
+        ),
 
         // List View
         Expanded(

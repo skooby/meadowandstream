@@ -1,5 +1,16 @@
 [
   {
+    "id": "0eb604107487268409b0ac9f8c292df3a8da4af9",
+    "taskIds": [
+      "1779882820948"
+    ],
+    "title": "AI ASSISTANT [Added reference material files to custom context model with UI management.]",
+    "summary": "",
+    "commitHash": "0eb604107487268409b0ac9f8c292df3a8da4af9",
+    "commitDate": "2026-05-29T01:48:17Z",
+    "verifiedNotes": "- Add a input field for different areas that we will be using AI ASSISTANT for. First is \"Review this prompt for clarity and return YES or NO as an answer. The prompt is\"\n- Add reference material files to custom context model. browse to file button, delete. add file. Lets also show the size of the file. Include our project_summary.md file in this."
+  },
+  {
     "id": "6fe4456baed0458949862e979a40bf9ec52fe615",
     "taskIds": [
       "1779983671271"
@@ -321,16 +332,5 @@
     "commitHash": "400b2d4abc810c9b6086deb9824c267f30d33b0a",
     "commitDate": "2026-05-24T13:52:08Z",
     "verifiedNotes": ""
-  },
-  {
-    "id": "7383ff3699431bdae0fbff044c8f8ebdd83582f8",
-    "taskIds": [
-      "1779468603941"
-    ],
-    "title": "BRIDGE MONITOR",
-    "summary": "",
-    "commitHash": "7383ff3699431bdae0fbff044c8f8ebdd83582f8",
-    "commitDate": "2026-05-22T23:09:16Z",
-    "verifiedNotes": "- Add a tab to the Bridge Monitor for doing a dry run... we will want to see all of the commands and prompts that will be going out in a simulated environment."
   }
 ]

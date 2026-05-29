@@ -121,6 +121,11 @@ class SystemLogsService extends ChangeNotifier {
   }
 
   void addLog(String message, {LogCategory category = LogCategory.GENERAL}) {
+    if (message.toLowerCase().contains('[aibridge]') ||
+        message.toLowerCase().contains('[ai bridge]') ||
+        message.contains('[AntigravityStatusService]')) {
+      category = LogCategory.SYNC;
+    }
     // Ensure configs are loaded
     if (_categoryConfigs.isEmpty) {
       _setDefaultConfigs();
@@ -133,6 +138,10 @@ class SystemLogsService extends ChangeNotifier {
     // Always print AI logs to console so they're visible regardless of saved config.
     if (category == LogCategory.AI) {
       debugPrint('[AI] $message');
+    } else if (message.toLowerCase().contains('[aibridge]') ||
+        message.toLowerCase().contains('[ai bridge]') ||
+        message.contains('[AntigravityStatusService]')) {
+      debugPrint('[LogCategory.DIRECT] $message');
     } else if (config.console && category != LogCategory.GENERAL) {
       debugPrint('[$category] $message');
     }

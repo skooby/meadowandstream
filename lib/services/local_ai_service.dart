@@ -294,8 +294,8 @@ class LocalAiService extends ChangeNotifier {
     int? numPredict,
     Map<String, dynamic>? format, // Ollama structured output schema
   }) async {
-    final summaryContent = prompt.contains('{SUMMARY}') ? await _loadProjectSummary() : '';
-    final processedPrompt = prompt.replaceAll('{SUMMARY}', summaryContent);
+    final summaryLink = Uri.file(File('${AiBridgeService.instance.bridgeDirPath}/project_summary.md').absolute.path).toString();
+    final processedPrompt = prompt.replaceAll('{SUMMARY}', summaryLink);
     final usedModel = model ?? effectiveModel;
     SystemLogsService.instance.addLog(
       '[AI] generateText | prompt: ${processedPrompt.length > 120 ? '${processedPrompt.substring(0, 120)}…' : processedPrompt}',
@@ -391,30 +391,13 @@ class LocalAiService extends ChangeNotifier {
     int? numPredict,
     Map<String, dynamic>? format, // Ollama structured output schema
   }) async {
-    final needsSummary = messages.any((m) => (m['content'] ?? '').contains('{SUMMARY}'));
-    final summaryContent = needsSummary ? await _loadProjectSummary() : '';
-    // Build a system context message when summary content is available and not already present
-    final hasSystemMessage = messages.any((m) => m['role'] == 'system');
-    final List<Map<String, String>> processedMessages;
-    if (needsSummary && summaryContent.isNotEmpty && !hasSystemMessage) {
-      // Prepend a system message with the project context
-      processedMessages = [
-        {'role': 'system', 'content': 'You are working on the following project:\n\n$summaryContent'},
-        ...messages.map((m) {
-          final content = m['content'] ?? '';
-          return content.contains('{SUMMARY}')
-              ? {...m, 'content': content.replaceAll('{SUMMARY}', summaryContent)}
-              : m;
-        }),
-      ];
-    } else {
-      processedMessages = messages.map((m) {
-        final content = m['content'] ?? '';
-        return content.contains('{SUMMARY}')
-            ? {...m, 'content': content.replaceAll('{SUMMARY}', summaryContent)}
-            : m;
-      }).toList();
-    }
+    final summaryLink = Uri.file(File('${AiBridgeService.instance.bridgeDirPath}/project_summary.md').absolute.path).toString();
+    final processedMessages = messages.map((m) {
+      final content = m['content'] ?? '';
+      return content.contains('{SUMMARY}')
+          ? {...m, 'content': content.replaceAll('{SUMMARY}', summaryLink)}
+          : m;
+    }).toList();
     final usedModel = model ?? effectiveModel;
     final userMsg = processedMessages.lastWhere((m) => m['role'] == 'user', orElse: () => {})['content'] ?? '';
     SystemLogsService.instance.addLog(
@@ -683,7 +666,10 @@ Keep the output brief, highly structured, and strictly derived from the provided
   }
 
   Future<String?> _fallbackToOpenAI(List<Map<String, String>> messages, {double? temperature}) async {
-    final apiKey = dotenv.env['OPENAI_API_KEY'];
+    String? apiKey;
+    try {
+      apiKey = dotenv.env['OPENAI_API_KEY'];
+    } catch (_) {}
     if (apiKey == null || apiKey.isEmpty) {
       _lastError = '$_lastError (OpenAI fallback failed: No API Key found in .env)';
       SystemLogsService.instance.addLog(
@@ -805,7 +791,10 @@ Keep the output brief, highly structured, and strictly derived from the provided
   }
 
   Future<List<double>?> _fallbackToOpenAIEmbeddings(String text) async {
-    final apiKey = dotenv.env['OPENAI_API_KEY'];
+    String? apiKey;
+    try {
+      apiKey = dotenv.env['OPENAI_API_KEY'];
+    } catch (_) {}
     if (apiKey == null || apiKey.isEmpty) {
       _lastError = '$_lastError (OpenAI embeddings fallback failed: No API Key found in .env)';
       return null;
@@ -841,6 +830,12 @@ Keep the output brief, highly structured, and strictly derived from the provided
   }
 
   void _setProcessing(bool processing) {
+    _isProcessing = processing;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void setProcessingForTesting(bool processing) {
     _isProcessing = processing;
     notifyListeners();
   }

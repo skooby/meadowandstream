@@ -482,8 +482,8 @@ void main() {
     service.antigravityLastChangeObservedAtForTesting = DateTime.now().subtract(const Duration(seconds: 5));
     expect(service.isThinking, isTrue);
 
-    // Update last activity to 25 seconds ago (exceeding 20s threshold)
-    service.antigravityLastChangeObservedAtForTesting = DateTime.now().subtract(const Duration(seconds: 25));
+    // Update last activity to 100 seconds ago (exceeding 90s threshold)
+    service.antigravityLastChangeObservedAtForTesting = DateTime.now().subtract(const Duration(seconds: 100));
     expect(service.isThinking, isFalse);
 
     // Clean up

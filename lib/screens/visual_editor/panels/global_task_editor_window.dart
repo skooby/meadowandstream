@@ -31,6 +31,10 @@ import 'version_control_window.dart';
 import '../../../services/sandbox_service.dart';
 import '../../../services/local_ai_service.dart';
 
+void print(Object? object) {
+  debugPrint(object?.toString());
+}
+
 final ValueNotifier<bool> showTaskEditorNotifier = ValueNotifier(false);
 
 void showTaskEditorWindow(BuildContext context) {
@@ -2897,7 +2901,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                           color: Colors.greenAccent,
                                                           padding: EdgeInsets.zero,
                                                           constraints: const BoxConstraints(),
-                                                          tooltip: isProcessingGen ? 'Generating...' : 'Generate Task with AI',
+                                                          tooltip: isProcessingGen ? 'Generating Task...' : 'Generate Task with AI',
                                                         );
                                                       },
                                                     ),

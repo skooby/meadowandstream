@@ -61,7 +61,11 @@ Future<void> main(List<String> args) async {
           message.contains('The document is empty') ||
           message.contains('Unable to parse JSON message')) return;
       if (isLogging || message.startsWith('[LogCategory.')) {
-        originalDebugPrint(message, wrapWidth: wrapWidth);
+        if (message.startsWith('[LogCategory.DIRECT] ')) {
+          originalDebugPrint(message.substring('[LogCategory.DIRECT] '.length), wrapWidth: wrapWidth);
+        } else {
+          originalDebugPrint(message, wrapWidth: wrapWidth);
+        }
         return;
       }
       isLogging = true;

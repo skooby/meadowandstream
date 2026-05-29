@@ -190,10 +190,12 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       dotenv.testLoad(fileInput: 'OPENAI_API_KEY=mock_key_for_testing');
       HttpOverrides.global = MockHttpOverrides(mockResponseText);
+      LocalAiService.instance.setProcessingForTesting(false);
     });
 
     tearDown(() {
       HttpOverrides.global = null;
+      LocalAiService.instance.setProcessingForTesting(false);
     });
 
     testWidgets('GlobalTaskEditorWindow task summarization flow works end-to-end', (WidgetTester tester) async {
@@ -253,7 +255,7 @@ void main() {
       await tester.pump();
       
       // Verify processing state shows loading indicators on both AI action buttons
-      expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
+      expect(find.byType(CircularProgressIndicator), findsNWidgets(3));
       expect(find.byTooltip('Generating...'), findsOneWidget);
       expect(find.byTooltip('Reviewing...'), findsOneWidget);
 
