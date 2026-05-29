@@ -137,13 +137,13 @@ class SystemLogsService extends ChangeNotifier {
 
     if (config.console) {
       if (category == LogCategory.AI) {
-        debugPrint('[LogCategory.DIRECT] [AI] $message');
+        debugPrint('[LogCategory.DIRECT] $message');
       } else if (message.toLowerCase().contains('[aibridge]') ||
           message.toLowerCase().contains('[ai bridge]') ||
           message.contains('[SYNC]')) {
         debugPrint('[LogCategory.DIRECT] $message');
       } else if (category != LogCategory.GENERAL) {
-        debugPrint('[LogCategory.DIRECT] [$category] $message');
+        debugPrint('[LogCategory.DIRECT] [${category.name}] $message');
       }
     }
 

@@ -1,5 +1,16 @@
 [
   {
+    "id": "29bce3d07f80d30cb4642e85bff96da9deb681d8",
+    "taskIds": [
+      "1780020112821"
+    ],
+    "title": "LOGS",
+    "summary": "",
+    "commitHash": "29bce3d07f80d30cb4642e85bff96da9deb681d8",
+    "commitDate": "2026-05-29T05:33:27Z",
+    "verifiedNotes": "- Clean up rules for config logs"
+  },
+  {
     "id": "d77a6fdef1b598e2986c57b6e208f675f5968dd6",
     "taskIds": [
       "1780020112821"
@@ -324,16 +335,5 @@
     "commitHash": "946f99b49e5fc39cdd03a2c68c688e316f05dcf6",
     "commitDate": "2026-05-25T05:15:13Z",
     "verifiedNotes": "- Remove checklists from Folders\n- Disable ability to hit enter for Name in Task Editor, one line only\n- Test 2, return immediately\n- Test 3, return immediately\n- Test 4, return immediately\n- Clear sync error status when sending anything to the LLM\n- Append the ENDING INSTRUCTION HELPER to the LLM Prompt\n- Expose static AudioPlayerService.instance and clean up native audio C++ drivers context-free on hot reload/restart"
-  },
-  {
-    "id": "66476dceb871e288d4f7900d5f8405be0a35ebf8",
-    "taskIds": [
-      "1779652852607"
-    ],
-    "title": "SYSTEM",
-    "summary": "General system bugs",
-    "commitHash": "66476dceb871e288d4f7900d5f8405be0a35ebf8",
-    "commitDate": "2026-05-24T20:02:26Z",
-    "verifiedNotes": "- Hot Restart changed and was crashing"
   }
 ]

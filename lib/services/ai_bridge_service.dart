@@ -714,14 +714,14 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
       
       await Future.wait(subdirChecks).timeout(const Duration(milliseconds: 1500), onTimeout: () => []);
     } catch (e) {
-      debugPrint('[AiBridgeService] Error getting brain files: $e');
+      debugPrint('[AI] Error getting brain files: $e');
     }
     return files;
   }
 
   Future<void> syncDatabaseDump() async {
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
-      debugPrint('[AiBridgeService] Skipping database dump sync in unit test environment.');
+      debugPrint('[AI] Skipping database dump sync in unit test environment.');
       return;
     }
     final db = _db;
@@ -752,9 +752,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
         }
       }
       await dumpFile.writeAsString(newContent, flush: true);
-      debugPrint('[AiBridgeService] Synced database dump to .ai_bridge/db_dump.json');
+      debugPrint('[AI] Synced database dump to .ai_bridge/db_dump.json');
     } catch (e) {
-      debugPrint('[AiBridgeService] Error syncing database dump: $e');
+      debugPrint('[AI] Error syncing database dump: $e');
     }
   }
 
@@ -972,16 +972,16 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
         destFile.parent.createSync(recursive: true);
       }
       await destFile.writeAsString(sb.toString(), flush: true);
-      debugPrint('[AiBridgeService] Synced conversation history to .ai_bridge/conversation_history.md');
+      debugPrint('[AI] Synced conversation history to .ai_bridge/conversation_history.md');
       */
     } catch (e) {
-      debugPrint('[AiBridgeService] Error syncing conversation history: $e');
+      debugPrint('[AI] Error syncing conversation history: $e');
     }
   }
 
   Future<void> _ensureBackendRunning() async {
     if (_sendViaClipboard) {
-      debugPrint('[AiBridgeService] Skipping background HTTP daemon startup because Send via clipboard paste to the CLI is enabled.');
+      debugPrint('[AI] Skipping background HTTP daemon startup because Send via clipboard paste to the CLI is enabled.');
       return;
     }
     final prefs = await SharedPreferences.getInstance();
@@ -998,14 +998,14 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
     try {
       final socket = await Socket.connect('127.0.0.1', port, timeout: const Duration(seconds: 1));
       socket.destroy();
-      debugPrint('[AiBridgeService] Antigravity daemon is already running on port $port.');
+      debugPrint('[AI] Antigravity daemon is already running on port $port.');
     } catch (e) {
-      debugPrint('[AiBridgeService] Antigravity daemon unreachable on port $port. Attempting auto-spawn...');
+      debugPrint('[AI] Antigravity daemon unreachable on port $port. Attempting auto-spawn...');
       try {
         await BackendProcessManager().spawnBackend(startupCmd);
         await Future.delayed(const Duration(seconds: 4)); // Wait for server to bind
       } catch (spawnErr) {
-        debugPrint('[AiBridgeService] Auto-spawn failed: $spawnErr');
+        debugPrint('[AI] Auto-spawn failed: $spawnErr');
       }
     }
   }
@@ -1081,13 +1081,13 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
             }
           }
         } catch (e) {
-          debugPrint('[AiBridgeService] Error scanning projects configuration directory: $e');
+          debugPrint('[AI] Error scanning projects configuration directory: $e');
         }
       }
 
       final targetModel = prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
 
-      debugPrint('[AiBridgeService] Configured Antigravity SDK with address: $lsAddress, token: $csrfToken, projectId: $projectId, model: $targetModel');
+      debugPrint('[AI] Configured Antigravity SDK with address: $lsAddress, token: $csrfToken, projectId: $projectId, model: $targetModel');
 
       final apiKey = prefs.getString('antigravity_api_key') ?? '';
 
@@ -1133,16 +1133,16 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
             sb.writeln('  - ${m.id} (${m.displayName}) [reasoning: ${m.supportsReasoning}]');
           }
           final logMsg = sb.toString();
-          debugPrint('[AiBridgeService] $logMsg');
-          SystemLogsService.instance.addLog('[AiBridgeService] $logMsg', category: LogCategory.AI);
+          debugPrint('[AI] $logMsg');
+          SystemLogsService.instance.addLog('[AI] $logMsg', category: LogCategory.AI);
         } catch (e) {
           final errMsg = 'Error listing models at startup: $e';
-          debugPrint('[AiBridgeService] $errMsg');
-          SystemLogsService.instance.addLog('[AiBridgeService] $errMsg', category: LogCategory.AI);
+          debugPrint('[AI] $errMsg');
+          SystemLogsService.instance.addLog('[AI] $errMsg', category: LogCategory.AI);
         }
       });
     } catch (e) {
-      debugPrint('[AiBridgeService] Error initializing client: $e');
+      debugPrint('[AI] Error initializing client: $e');
       if (Platform.environment.containsKey('FLUTTER_TEST')) {
         try {
           antigravityClient;
@@ -1314,13 +1314,13 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
           }
         }
       } catch (e) {
-        debugPrint('[AiBridgeService] Error scanning projects configuration directory: $e');
+        debugPrint('[AI] Error scanning projects configuration directory: $e');
       }
     }
 
     final targetModel = prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
 
-    debugPrint('[AiBridgeService] Updating Antigravity SDK Config with address: $lsAddress, token: $csrfToken, projectId: $projectId, model: $targetModel');
+    debugPrint('[AI] Updating Antigravity SDK Config with address: $lsAddress, token: $csrfToken, projectId: $projectId, model: $targetModel');
 
     final apiKey = prefs.getString('antigravity_api_key') ?? '';
 
@@ -1361,9 +1361,9 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
         const JsonEncoder.withIndent('  ').convert(settingsJson),
         flush: true,
       );
-      debugPrint('[AiBridgeService] Wrote model "$modelToUse" to antigravity-cli settings.json');
+      debugPrint('[AI] Wrote model "$modelToUse" to antigravity-cli settings.json');
     } catch (e) {
-      debugPrint('[AiBridgeService] Failed to write model to antigravity-cli settings.json: $e');
+      debugPrint('[AI] Failed to write model to antigravity-cli settings.json: $e');
     }
   }
 
@@ -1778,8 +1778,8 @@ class AiBridgeService extends ChangeNotifier with WindowListener {
           await updateAntigravityConfig();
           
           final logMsg = 'Routed harness to model: $model based on rule trigger: ${triggeredRule.trigger}';
-          debugPrint('[AiBridgeService] $logMsg');
-          SystemLogsService.instance.addLog('[AiBridgeService] $logMsg', category: LogCategory.AI);
+          debugPrint('[AI] $logMsg');
+          SystemLogsService.instance.addLog('[AI] $logMsg', category: LogCategory.AI);
           
           if (_isDryRunMode) {
             logSimulatedAction('RULE_TRIGGERED', triggeredRule.trigger, logMsg);
@@ -1959,7 +1959,7 @@ wshShell.AppActivate $myPid
           final isRunning = await AntigravityStatusService.instance.isProcessRunning();
           if (!isRunning) {
             logSimulatedAction('STATE', 'CLI Process Offline', 'Launching terminal window...');
-            debugPrint('[AiBridgeService] CLI terminal process is offline. Launching terminal window...');
+            debugPrint('[AI] CLI terminal process is offline. Launching terminal window...');
             await AntigravityStatusService.instance.ensureTerminalDaemonRunning();
             await Future.delayed(const Duration(milliseconds: 2000));
           }
@@ -1968,7 +1968,7 @@ wshShell.AppActivate $myPid
         try {
           await MacroService.instance.executeTrigger('BridgeConnect');
         } catch (e) {
-          debugPrint('[AiBridgeService] Error executing BridgeConnect macro: $e');
+          debugPrint('[AI] Error executing BridgeConnect macro: $e');
         }
 
         final vbsFile = File('$_dirPath/paste.vbs');
@@ -1979,7 +1979,7 @@ wshShell.AppActivate $myPid
         await Process.run('wscript', [vbsFile.path]).timeout(
           const Duration(seconds: 5),
           onTimeout: () {
-            debugPrint('[AiBridgeService] wscript paste.vbs execution timed out after 5 seconds.');
+            debugPrint('[AI] wscript paste.vbs execution timed out after 5 seconds.');
             return ProcessResult(0, -1, '', 'wscript execution timeout');
           },
         );
@@ -1987,7 +1987,7 @@ wshShell.AppActivate $myPid
     } else if (_bridgeMode == AntigravityBridgeMode.handsfree) {
       logSimulatedAction('STATE', 'Handsfree mode transition', 'Writing task context to current_task.json.');
       if (!_isDryRunMode) {
-        debugPrint('[AiBridgeService] Handsfree mode: context written to current_task.json.');
+        debugPrint('[AI] Handsfree mode: context written to current_task.json.');
       }
     }
 
@@ -4196,7 +4196,7 @@ wshShell.AppActivate $myPid
       if (content == 'IDLE') {
         bool hasCompileError = false;
         if (Platform.environment.containsKey('FLUTTER_TEST')) {
-          print('[AiBridgeService] Skipping dart analyze build check in unit test environment.');
+          print('[AI] Skipping dart analyze build check in unit test environment.');
           logSimulatedAction('STATE', 'Dart Analyze: Skipped', 'Skipping build check in test environment.');
           stateMachine.enterSynchronizing();
         } else {
@@ -5525,9 +5525,9 @@ wshShell.AppActivate $myPid
 
       // Database dump sync is independent of task list save. Run with a safety timeout in background to prevent deadlock/hangs.
       syncDatabaseDump().timeout(const Duration(seconds: 1), onTimeout: () {
-        debugPrint('[AiBridgeService] syncDatabaseDump timed out during task save.');
+        debugPrint('[AI] syncDatabaseDump timed out during task save.');
       }).catchError((e) {
-        debugPrint('[AiBridgeService] syncDatabaseDump failed during task save: $e');
+        debugPrint('[AI] syncDatabaseDump failed during task save: $e');
       });
 
       notifyListeners();
@@ -6450,5 +6450,6 @@ String? extractModelFromRuleBody(String body) {
   }
   return null;
 }
+
 
 
