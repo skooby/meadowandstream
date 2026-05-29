@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:path/path.dart' as path;
 import 'system_logs_service.dart';
 import 'ai_bridge_service.dart';
 
@@ -53,6 +54,16 @@ class LocalAiService extends ChangeNotifier {
       generateTaskPrompt = prefs.getString('ollamaGenerateTaskPrompt') ?? 'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"';
       customModelName = prefs.getString('ollamaCustomModelName') ?? '';
       customModelBase = prefs.getString('ollamaCustomModelBase') ?? '';
+      customModelContextLength = prefs.getInt('ollamaCustomModelContextLength') ?? 4096;
+      customModelSummaryTrimLength = prefs.getInt('ollamaCustomModelSummaryTrimLength') ?? 3000;
+      final referenceFilesRaw = prefs.getStringList('ollamaCustomModelReferenceFiles');
+      if (referenceFilesRaw != null) {
+        customModelReferenceFiles = referenceFilesRaw;
+      } else {
+        // Default to including project_summary.md
+        final defaultSummaryPath = '${AiBridgeService.instance.bridgeDirPath}/project_summary.md';
+        customModelReferenceFiles = [defaultSummaryPath];
+      }
       notifyListeners();
     } catch (_) {}
   }
@@ -103,19 +114,83 @@ class LocalAiService extends ChangeNotifier {
   /// The base model the custom model was derived from (e.g. "qwen2.5:3b").
   String customModelBase = '';
 
-  /// Generates a Modelfile from the current project_summary.md and runs
+  /// The num_ctx (context window size in tokens) baked into the custom model.
+  /// Defaults to 4096. Set before building to change it.
+  int customModelContextLength = 4096;
+
+  /// Max characters of project_summary.md to include in the Modelfile system prompt.
+  /// ~4 chars per token: 3000 chars ≈ 750 tokens. Defaults to 3000.
+  int customModelSummaryTrimLength = 3000;
+
+  List<String> customModelReferenceFiles = [];
+
+  Future<void> addReferenceFile(String filePath) async {
+    if (!customModelReferenceFiles.contains(filePath)) {
+      customModelReferenceFiles.add(filePath);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('ollamaCustomModelReferenceFiles', customModelReferenceFiles);
+      notifyListeners();
+    }
+  }
+
+  Future<void> removeReferenceFile(String filePath) async {
+    if (customModelReferenceFiles.contains(filePath)) {
+      customModelReferenceFiles.remove(filePath);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('ollamaCustomModelReferenceFiles', customModelReferenceFiles);
+      notifyListeners();
+    }
+  }
+
+  String getFileSizeString(String filePath) {
+    try {
+      final file = File(filePath);
+      if (file.existsSync()) {
+        final bytes = file.lengthSync();
+        if (bytes < 1024) return '$bytes B';
+        if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+        return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+      }
+      return 'File not found';
+    } catch (_) {
+      return 'Unknown size';
+    }
+  }
+
+  /// Generates a Modelfile from the current customModelReferenceFiles and runs
   /// `ollama create <name>` to bake the project context into a persistent model.
   /// Returns null on success, or an error message string on failure.
   Future<String?> buildAndInstallModelfile(String modelName, String baseModel) async {
-    final summary = await _loadProjectSummary();
+    final buffer = StringBuffer();
+    for (final filePath in customModelReferenceFiles) {
+      try {
+        final file = File(filePath);
+        if (await file.exists()) {
+          final content = await file.readAsString();
+          final fileName = path.basename(filePath);
+          buffer.writeln('### Reference File: $fileName');
+          buffer.writeln(content);
+          buffer.writeln();
+        }
+      } catch (e) {
+        SystemLogsService.instance.addLog(
+          '[AI] Failed to read reference file $filePath: $e',
+          category: LogCategory.ERROR,
+        );
+      }
+    }
 
-    // Build a concise system prompt — trim to ~800 chars to stay within limits
-    final trimmedSummary = summary.length > 800 ? '${summary.substring(0, 800)}…' : summary;
+    final combinedContent = buffer.toString();
+
+    // Trim summary to the configured character limit
+    final trimmedSummary = combinedContent.length > customModelSummaryTrimLength
+        ? '${combinedContent.substring(0, customModelSummaryTrimLength)}…'
+        : combinedContent;
     final systemPrompt = trimmedSummary.isNotEmpty
         ? 'You are a project assistant for the following project. Use this context when evaluating tasks and checklist items:\n\n$trimmedSummary'
         : 'You are a helpful project assistant specializing in software development task management.';
 
-    final modelfileContent = 'FROM $baseModel\nSYSTEM """\n$systemPrompt\n"""\n';
+    final modelfileContent = 'FROM $baseModel\nPARAMETER num_ctx $customModelContextLength\nSYSTEM """\n$systemPrompt\n"""\n';
     final modelfilePath = '${AiBridgeService.instance.bridgeDirPath}/Modelfile';
 
     try {
@@ -139,6 +214,8 @@ class LocalAiService extends ChangeNotifier {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('ollamaCustomModelName', modelName);
         await prefs.setString('ollamaCustomModelBase', baseModel);
+        await prefs.setInt('ollamaCustomModelContextLength', customModelContextLength);
+        await prefs.setInt('ollamaCustomModelSummaryTrimLength', customModelSummaryTrimLength);
         // Invalidate the model list so the new model appears in the dropdown
         notifyListeners();
         SystemLogsService.instance.addLog(

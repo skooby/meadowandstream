@@ -19,6 +19,8 @@ import '../../../services/ai_bridge_service.dart';
 import '../../../services/antigravity_status_service.dart';
 import '../../../services/local_ai_service.dart';
 import 'package:antigravity_sdk/antigravity_sdk.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as path;
 import '../visual_editor_screen.dart';
 import '../../../constants.dart';
 import '../../../services/version_control_service.dart';
@@ -32,28 +34,31 @@ final ValueNotifier<bool> showProjectConfigNotifier = ValueNotifier(false);
 
 void showProjectConfigWindow(BuildContext context) {
   if (showProjectConfigNotifier.value) return;
-  SharedPreferences.getInstance()
-      .then((prefs) => prefs.setBool(VisualEditorScreen.getPrefKey('showProjectConfig'), true));
+  SharedPreferences.getInstance().then((prefs) =>
+      prefs.setBool(VisualEditorScreen.getPrefKey('showProjectConfig'), true));
   showProjectConfigNotifier.value = true;
 }
 
 void hideProjectConfigWindow() {
   showProjectConfigNotifier.value = false;
-  SharedPreferences.getInstance()
-      .then((prefs) => prefs.setBool(VisualEditorScreen.getPrefKey('showProjectConfig'), false));
+  SharedPreferences.getInstance().then((prefs) =>
+      prefs.setBool(VisualEditorScreen.getPrefKey('showProjectConfig'), false));
 }
-
 
 class ProjectConfigurationWindow extends StatefulWidget {
   final bool isDocked;
   final VoidCallback onClose;
   final VoidCallback? onFocus;
-  const ProjectConfigurationWindow({super.key, required this.onClose, this.onFocus, this.isDocked = false});
+  const ProjectConfigurationWindow(
+      {super.key, required this.onClose, this.onFocus, this.isDocked = false});
 
   @override
-  State<ProjectConfigurationWindow> createState() => _ProjectConfigurationWindowState();
+  State<ProjectConfigurationWindow> createState() =>
+      _ProjectConfigurationWindowState();
 }
-class _ProjectConfigurationWindowState extends State<ProjectConfigurationWindow> {
+
+class _ProjectConfigurationWindowState
+    extends State<ProjectConfigurationWindow> {
   final GlobalKey _panelKey = GlobalKey();
   bool _isLoaded = false;
 
@@ -75,24 +80,32 @@ class _ProjectConfigurationWindowState extends State<ProjectConfigurationWindow>
   void dispose() {
     VisualEditorScreen.currentWorkspace.removeListener(_loadPreferences);
     VisualEditorScreen.configRefreshNotifier.removeListener(_loadPreferences);
-    VisualEditorScreen.activeWindowNotifier.removeListener(_onActiveWindowChanged);
+    VisualEditorScreen.activeWindowNotifier
+        .removeListener(_onActiveWindowChanged);
     super.dispose();
   }
 
   void _onActiveWindowChanged() {
     if (mounted) setState(() {});
   }
+
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
         _isLoaded = true;
 
-        _width = prefs.getDouble(VisualEditorScreen.getPrefKey('config_width')) ?? 800;
-        _height = prefs.getDouble(VisualEditorScreen.getPrefKey('config_height')) ?? 600;
+        _width =
+            prefs.getDouble(VisualEditorScreen.getPrefKey('config_width')) ??
+                800;
+        _height =
+            prefs.getDouble(VisualEditorScreen.getPrefKey('config_height')) ??
+                600;
         _bgOpacity = prefs.getDouble('ve_toolWindowOpacity') ?? 0.8;
-        double dx = prefs.getDouble(VisualEditorScreen.getPrefKey('config_dx')) ?? 100;
-        double dy = prefs.getDouble(VisualEditorScreen.getPrefKey('config_dy')) ?? 100;
+        double dx =
+            prefs.getDouble(VisualEditorScreen.getPrefKey('config_dx')) ?? 100;
+        double dy =
+            prefs.getDouble(VisualEditorScreen.getPrefKey('config_dy')) ?? 100;
         _offset = Offset(dx, dy);
       });
     }
@@ -100,34 +113,59 @@ class _ProjectConfigurationWindowState extends State<ProjectConfigurationWindow>
 
   Future<void> _savePreferences() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(VisualEditorScreen.getPrefKey('config_width'), _width);
-    await prefs.setDouble(VisualEditorScreen.getPrefKey('config_height'), _height);
-    await prefs.setDouble(VisualEditorScreen.getPrefKey('config_dx'), _offset.dx);
-    await prefs.setDouble(VisualEditorScreen.getPrefKey('config_dy'), _offset.dy);
+    await prefs.setDouble(
+        VisualEditorScreen.getPrefKey('config_width'), _width);
+    await prefs.setDouble(
+        VisualEditorScreen.getPrefKey('config_height'), _height);
+    await prefs.setDouble(
+        VisualEditorScreen.getPrefKey('config_dx'), _offset.dx);
+    await prefs.setDouble(
+        VisualEditorScreen.getPrefKey('config_dy'), _offset.dy);
   }
-
 
   @override
   Widget build(BuildContext context) {
     if (!_isLoaded) return const SizedBox.shrink();
 
-    if (widget.isDocked) return Material(color: Colors.transparent, child: ProjectConfigurationPanel(key: _panelKey, onDimensionsChanged: widget.onClose));
+    if (widget.isDocked)
+      return Material(
+          color: Colors.transparent,
+          child: ProjectConfigurationPanel(
+              key: _panelKey, onDimensionsChanged: widget.onClose));
     Widget rz({
-      double? t, double? b, double? l, double? r, double? w, double? h,
+      double? t,
+      double? b,
+      double? l,
+      double? r,
+      double? w,
+      double? h,
       required SystemMouseCursor cursor,
       required void Function(DragUpdateDetails) pan,
-    }) => Positioned(
-      top: t, bottom: b, left: l, right: r, width: w, height: h,
-      child: MouseRegion(cursor: cursor, child: GestureDetector(behavior: HitTestBehavior.opaque, onPanUpdate: pan, onPanEnd: (_) => _savePreferences(), child: Container(color: Colors.transparent)))
-    );
+    }) =>
+        Positioned(
+            top: t,
+            bottom: b,
+            left: l,
+            right: r,
+            width: w,
+            height: h,
+            child: MouseRegion(
+                cursor: cursor,
+                child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onPanUpdate: pan,
+                    onPanEnd: (_) => _savePreferences(),
+                    child: Container(color: Colors.transparent))));
 
     return Positioned(
       left: _offset.dx,
       top: _offset.dy,
       child: ValueListenableBuilder<double>(
-          valueListenable: VisualEditorScreen.globalUiScale,
+        valueListenable: VisualEditorScreen.globalUiScale,
         builder: (context, scale, child) {
-          return Transform.scale(scale: 1.0, alignment: Alignment.topLeft,
+          return Transform.scale(
+            scale: 1.0,
+            alignment: Alignment.topLeft,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -136,91 +174,194 @@ class _ProjectConfigurationWindowState extends State<ProjectConfigurationWindow>
                   behavior: HitTestBehavior.deferToChild,
                   child: Material(
                     color: Colors.transparent,
-                  elevation: 8,
-                  child: Container(
-                    width: _width,
-                    height: _height,
-                    clipBehavior: Clip.antiAlias, decoration: BoxDecoration(
-                      border: AppUIConfig.windowBorderWidth > 0 ? Border.all(color: VisualEditorScreen.activeWindowNotifier.value == 'project_config' ? AppColors.activeWindowBorder : AppColors.border, width: AppUIConfig.windowBorderWidth) : null,
-                      color: AppColors.windowBackground.withValues(alpha: _bgOpacity),
-                      borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius),
-                      
-                    ),
-                    child: Column(children: [
-                      GestureDetector(
-                        onPanUpdate: (details) {
-                          setState(() => _offset += details.delta);
-                        },
-                        onPanEnd: (_) => _savePreferences(),
-                        child: Container(
-                          height: AppUIConfig.titleBarHeight,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                              color: AppColors.titleBarBackground.withValues(alpha: _bgOpacity),
-                              borderRadius: BorderRadius.vertical(
-                                  top: Radius.circular(AppUIConfig.windowBorderRadius))),
-                          child: Row(
-                            children: [
-                              Icon(Icons.settings,
-                                  size: 16, color: AppColors.accent),
-                              const SizedBox(width: 8),
-                              Text(AppUIConfig.formatWindowTitle('Project Configuration'), style: TextStyle(
-                                      color: AppColors.titleBarTextPrimary,
-                                      fontSize: AppUIConfig.windowTitleFontSize,
-                                      fontWeight: AppUIConfig.windowTitleFontWeight)),
-                              const Spacer(),
-                              IconButton(
-                                icon: Icon(Icons.close,
-                                    size: 18, color: AppColors.titleBarTextSecondary),
-                                onPressed: widget.onClose,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              )
-                            ],
-                          ),
+                    elevation: 8,
+                    child: Container(
+                        width: _width,
+                        height: _height,
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          border: AppUIConfig.windowBorderWidth > 0
+                              ? Border.all(
+                                  color: VisualEditorScreen
+                                              .activeWindowNotifier.value ==
+                                          'project_config'
+                                      ? AppColors.activeWindowBorder
+                                      : AppColors.border,
+                                  width: AppUIConfig.windowBorderWidth)
+                              : null,
+                          color: AppColors.windowBackground
+                              .withValues(alpha: _bgOpacity),
+                          borderRadius: BorderRadius.circular(
+                              AppUIConfig.windowBorderRadius),
                         ),
-                      ),
-                      Expanded(child: ProjectConfigurationPanel(key: _panelKey, onDimensionsChanged: widget.onClose)),
-                    ])
+                        child: Column(children: [
+                          GestureDetector(
+                            onPanUpdate: (details) {
+                              setState(() => _offset += details.delta);
+                            },
+                            onPanEnd: (_) => _savePreferences(),
+                            child: Container(
+                              height: AppUIConfig.titleBarHeight,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              decoration: BoxDecoration(
+                                  color: AppColors.titleBarBackground
+                                      .withValues(alpha: _bgOpacity),
+                                  borderRadius: BorderRadius.vertical(
+                                      top: Radius.circular(
+                                          AppUIConfig.windowBorderRadius))),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.settings,
+                                      size: 16, color: AppColors.accent),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                      AppUIConfig.formatWindowTitle(
+                                          'Project Configuration'),
+                                      style: TextStyle(
+                                          color: AppColors.titleBarTextPrimary,
+                                          fontSize:
+                                              AppUIConfig.windowTitleFontSize,
+                                          fontWeight: AppUIConfig
+                                              .windowTitleFontWeight)),
+                                  const Spacer(),
+                                  IconButton(
+                                    icon: Icon(Icons.close,
+                                        size: 18,
+                                        color: AppColors.titleBarTextSecondary),
+                                    onPressed: widget.onClose,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  )
+                                ],
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                              child: ProjectConfigurationPanel(
+                                  key: _panelKey,
+                                  onDimensionsChanged: widget.onClose)),
+                        ])),
                   ),
                 ),
-              ),
-                rz(t: 0, l: 12, r: 12, h: 12, cursor: SystemMouseCursors.resizeUpDown, pan: (d) => setState((){
-                    double nH = _height - d.delta.dy;
-                    if (nH >= 300 && nH <= 1200) { _height = nH; _offset += Offset(0, d.delta.dy); }
-                })),
-                rz(b: 0, l: 12, r: 12, h: 12, cursor: SystemMouseCursors.resizeUpDown, pan: (d) => setState((){
-                    double nH = _height + d.delta.dy;
-                    if (nH >= 300 && nH <= 1200) { _height = nH; }
-                })),
-                rz(l: 0, t: 12, b: 12, w: 12, cursor: SystemMouseCursors.resizeLeftRight, pan: (d) => setState((){
-                    double nW = _width - d.delta.dx;
-                    if (nW >= 300 && nW <= 1600) { _width = nW; _offset += Offset(d.delta.dx, 0); }
-                })),
-                rz(r: 0, t: 12, b: 12, w: 12, cursor: SystemMouseCursors.resizeLeftRight, pan: (d) => setState((){
-                    double nW = _width + d.delta.dx;
-                    if (nW >= 300 && nW <= 1600) { _width = nW; }
-                })),
-                rz(t: 0, l: 0, w: 16, h: 16, cursor: SystemMouseCursors.resizeUpLeftDownRight, pan: (d) => setState((){
-                    double nW = _width - d.delta.dx; double nH = _height - d.delta.dy;
-                    if (nW >= 300 && nW <= 1600) { _width = nW; _offset += Offset(d.delta.dx, 0); }
-                    if (nH >= 300 && nH <= 1200) { _height = nH; _offset += Offset(0, d.delta.dy); }
-                })),
-                rz(t: 0, r: 0, w: 16, h: 16, cursor: SystemMouseCursors.resizeUpRightDownLeft, pan: (d) => setState((){
-                    double nW = _width + d.delta.dx; double nH = _height - d.delta.dy;
-                    if (nW >= 300 && nW <= 1600) { _width = nW; }
-                    if (nH >= 300 && nH <= 1200) { _height = nH; _offset += Offset(0, d.delta.dy); }
-                })),
-                rz(b: 0, l: 0, w: 16, h: 16, cursor: SystemMouseCursors.resizeUpRightDownLeft, pan: (d) => setState((){
-                    double nW = _width - d.delta.dx; double nH = _height + d.delta.dy;
-                    if (nW >= 300 && nW <= 1600) { _width = nW; _offset += Offset(d.delta.dx, 0); }
-                    if (nH >= 300 && nH <= 1200) { _height = nH; }
-                })),
-                rz(b: 0, r: 0, w: 16, h: 16, cursor: SystemMouseCursors.resizeUpLeftDownRight, pan: (d) => setState((){
-                    double nW = _width + d.delta.dx; double nH = _height + d.delta.dy;
-                    if (nW >= 300 && nW <= 1600) { _width = nW; }
-                    if (nH >= 300 && nH <= 1200) { _height = nH; }
-                })),
+                rz(
+                    t: 0,
+                    l: 12,
+                    r: 12,
+                    h: 12,
+                    cursor: SystemMouseCursors.resizeUpDown,
+                    pan: (d) => setState(() {
+                          double nH = _height - d.delta.dy;
+                          if (nH >= 300 && nH <= 1200) {
+                            _height = nH;
+                            _offset += Offset(0, d.delta.dy);
+                          }
+                        })),
+                rz(
+                    b: 0,
+                    l: 12,
+                    r: 12,
+                    h: 12,
+                    cursor: SystemMouseCursors.resizeUpDown,
+                    pan: (d) => setState(() {
+                          double nH = _height + d.delta.dy;
+                          if (nH >= 300 && nH <= 1200) {
+                            _height = nH;
+                          }
+                        })),
+                rz(
+                    l: 0,
+                    t: 12,
+                    b: 12,
+                    w: 12,
+                    cursor: SystemMouseCursors.resizeLeftRight,
+                    pan: (d) => setState(() {
+                          double nW = _width - d.delta.dx;
+                          if (nW >= 300 && nW <= 1600) {
+                            _width = nW;
+                            _offset += Offset(d.delta.dx, 0);
+                          }
+                        })),
+                rz(
+                    r: 0,
+                    t: 12,
+                    b: 12,
+                    w: 12,
+                    cursor: SystemMouseCursors.resizeLeftRight,
+                    pan: (d) => setState(() {
+                          double nW = _width + d.delta.dx;
+                          if (nW >= 300 && nW <= 1600) {
+                            _width = nW;
+                          }
+                        })),
+                rz(
+                    t: 0,
+                    l: 0,
+                    w: 16,
+                    h: 16,
+                    cursor: SystemMouseCursors.resizeUpLeftDownRight,
+                    pan: (d) => setState(() {
+                          double nW = _width - d.delta.dx;
+                          double nH = _height - d.delta.dy;
+                          if (nW >= 300 && nW <= 1600) {
+                            _width = nW;
+                            _offset += Offset(d.delta.dx, 0);
+                          }
+                          if (nH >= 300 && nH <= 1200) {
+                            _height = nH;
+                            _offset += Offset(0, d.delta.dy);
+                          }
+                        })),
+                rz(
+                    t: 0,
+                    r: 0,
+                    w: 16,
+                    h: 16,
+                    cursor: SystemMouseCursors.resizeUpRightDownLeft,
+                    pan: (d) => setState(() {
+                          double nW = _width + d.delta.dx;
+                          double nH = _height - d.delta.dy;
+                          if (nW >= 300 && nW <= 1600) {
+                            _width = nW;
+                          }
+                          if (nH >= 300 && nH <= 1200) {
+                            _height = nH;
+                            _offset += Offset(0, d.delta.dy);
+                          }
+                        })),
+                rz(
+                    b: 0,
+                    l: 0,
+                    w: 16,
+                    h: 16,
+                    cursor: SystemMouseCursors.resizeUpRightDownLeft,
+                    pan: (d) => setState(() {
+                          double nW = _width - d.delta.dx;
+                          double nH = _height + d.delta.dy;
+                          if (nW >= 300 && nW <= 1600) {
+                            _width = nW;
+                            _offset += Offset(d.delta.dx, 0);
+                          }
+                          if (nH >= 300 && nH <= 1200) {
+                            _height = nH;
+                          }
+                        })),
+                rz(
+                    b: 0,
+                    r: 0,
+                    w: 16,
+                    h: 16,
+                    cursor: SystemMouseCursors.resizeUpLeftDownRight,
+                    pan: (d) => setState(() {
+                          double nW = _width + d.delta.dx;
+                          double nH = _height + d.delta.dy;
+                          if (nW >= 300 && nW <= 1600) {
+                            _width = nW;
+                          }
+                          if (nH >= 300 && nH <= 1200) {
+                            _height = nH;
+                          }
+                        })),
               ],
             ),
           );
@@ -235,7 +376,8 @@ class ProjectConfigurationPanel extends StatefulWidget {
   const ProjectConfigurationPanel({super.key, this.onDimensionsChanged});
 
   @override
-  State<ProjectConfigurationPanel> createState() => _ProjectConfigurationPanelState();
+  State<ProjectConfigurationPanel> createState() =>
+      _ProjectConfigurationPanelState();
 }
 
 class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
@@ -257,7 +399,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   String? _openAiApiKey;
   String? _githubToken;
   double _toolWindowOpacity = 0.8;
-    int? _customDesktopColor;
+  int? _customDesktopColor;
   int? _customTitleBarColor;
   int? _customWindowColor;
   int? _customToolbarColor;
@@ -313,6 +455,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   String? _versionControlRepoUrl;
   String? _ollamaBaseUrl;
   String? _ollamaModel;
+  String _ollamaCustomModelName = '';
   int _ollamaTimeoutMs = 120000;
   String? _ollamaClarityPrompt;
   String? _ollamaRewritePrompt;
@@ -328,23 +471,22 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   int _syncTotal = 0;
   int _syncProgress = 0;
   String _syncCurrentFile = '';
-  
+
   Timer? _debounceTimer;
 
   void _onFormChanged() {
-      _debounceTimer?.cancel();
-      _debounceTimer = Timer(const Duration(milliseconds: 1500), () {
-          if (mounted) {
-              _saveConfiguration();
-          }
-      });
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        _saveConfiguration();
+      }
+    });
   }
 
   @override
   void dispose() {
-      
-      _debounceTimer?.cancel();
-      super.dispose();
+    _debounceTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -362,66 +504,68 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
     final languagesFolderStr = prefs.getString('project_languages_folder_id');
     final simW = prefs.getDouble('project_simulator_width');
     final simH = prefs.getDouble('project_simulator_height');
-      String? extractedKey;
-      String? extractedGithubKey;
-      final desktopLight = prefs.getInt('ve_desktop_light');
-      final desktopDark = prefs.getInt('ve_desktop_dark');
-      final desktopDracula = prefs.getInt('ve_desktop_dracula');
-      final titlebarLight = prefs.getInt('ve_titlebar_light');
-      final titlebarDark = prefs.getInt('ve_titlebar_dark');
-      final titlebarDracula = prefs.getInt('ve_titlebar_dracula');
-      final windowLight = prefs.getInt('ve_window_light');
-      final windowDark = prefs.getInt('ve_window_dark');
-      final windowDracula = prefs.getInt('ve_window_dracula');
-      final panelLight = prefs.getInt('ve_panel_light');
-      final panelDark = prefs.getInt('ve_panel_dark');
-      final panelDracula = prefs.getInt('ve_panel_dracula');
+    String? extractedKey;
+    String? extractedGithubKey;
+    final desktopLight = prefs.getInt('ve_desktop_light');
+    final desktopDark = prefs.getInt('ve_desktop_dark');
+    final desktopDracula = prefs.getInt('ve_desktop_dracula');
+    final titlebarLight = prefs.getInt('ve_titlebar_light');
+    final titlebarDark = prefs.getInt('ve_titlebar_dark');
+    final titlebarDracula = prefs.getInt('ve_titlebar_dracula');
+    final windowLight = prefs.getInt('ve_window_light');
+    final windowDark = prefs.getInt('ve_window_dark');
+    final windowDracula = prefs.getInt('ve_window_dracula');
+    final panelLight = prefs.getInt('ve_panel_light');
+    final panelDark = prefs.getInt('ve_panel_dark');
+    final panelDracula = prefs.getInt('ve_panel_dracula');
 
-      final envFile = File('.env');
-      if (await envFile.exists()) {
-          final lines = await envFile.readAsLines();
-          for (var line in lines) {
-              if (line.trim().startsWith('OPENAI_API_KEY=')) {
-                  extractedKey = line.substring(line.indexOf('=') + 1).trim();
-              }
-              if (line.trim().startsWith('GITHUB_TOKEN=')) {
-                  extractedGithubKey = line.substring(line.indexOf('=') + 1).trim();
-              }
-          }
-      } else {
-          extractedKey = dotenv.env['OPENAI_API_KEY'];
-          extractedGithubKey = dotenv.env['GITHUB_TOKEN'];
-      }
-
-      final availStr = prefs.getString('ve_windowAvailability');
-      Map<String, List<String>> loadedAvail = {};
-      if (availStr != null) {
-          try {
-              final Map<String, dynamic> parsed = jsonDecode(availStr);
-              loadedAvail = parsed.map((k, v) => MapEntry(k, List<String>.from(v)));
-          } catch (_) {}
-      }
-      bool needsSaveAvail = false;
-      for (final w in AppToolWindows.available) {
-        if (!loadedAvail.containsKey(w.id)) {
-          loadedAvail[w.id] = ['all'];
-          needsSaveAvail = true;
+    final envFile = File('.env');
+    if (await envFile.exists()) {
+      final lines = await envFile.readAsLines();
+      for (var line in lines) {
+        if (line.trim().startsWith('OPENAI_API_KEY=')) {
+          extractedKey = line.substring(line.indexOf('=') + 1).trim();
+        }
+        if (line.trim().startsWith('GITHUB_TOKEN=')) {
+          extractedGithubKey = line.substring(line.indexOf('=') + 1).trim();
         }
       }
-      if (needsSaveAvail) {
-          await prefs.setString('ve_windowAvailability', jsonEncode(loadedAvail));
-      }
+    } else {
+      extractedKey = dotenv.env['OPENAI_API_KEY'];
+      extractedGithubKey = dotenv.env['GITHUB_TOKEN'];
+    }
 
-      setState(() {
+    final availStr = prefs.getString('ve_windowAvailability');
+    Map<String, List<String>> loadedAvail = {};
+    if (availStr != null) {
+      try {
+        final Map<String, dynamic> parsed = jsonDecode(availStr);
+        loadedAvail = parsed.map((k, v) => MapEntry(k, List<String>.from(v)));
+      } catch (_) {}
+    }
+    bool needsSaveAvail = false;
+    for (final w in AppToolWindows.available) {
+      if (!loadedAvail.containsKey(w.id)) {
+        loadedAvail[w.id] = ['all'];
+        needsSaveAvail = true;
+      }
+    }
+    if (needsSaveAvail) {
+      await prefs.setString('ve_windowAvailability', jsonEncode(loadedAvail));
+    }
+
+    setState(() {
       _primaryStorageUrl = prefs.getString('project_primary_storage_url');
       _localRepositoryPath = prefs.getString('project_local_repository_path');
       _backupDirectoryPath = prefs.getString('project_backup_directory_path');
       _albumFolderIds = albumStr.map(int.parse).toList();
-      _tagsFolderId = tagsFolderStr != null ? int.tryParse(tagsFolderStr) : null;
-      _languagesFolderId = languagesFolderStr != null ? int.tryParse(languagesFolderStr) : null;
+      _tagsFolderId =
+          tagsFolderStr != null ? int.tryParse(tagsFolderStr) : null;
+      _languagesFolderId =
+          languagesFolderStr != null ? int.tryParse(languagesFolderStr) : null;
       if (simW != null) _simulatorWidth = simW;
       if (simH != null) _simulatorHeight = simH;
-      
+
       final pW = prefs.getDouble('ve_previewWidth');
       final pH = prefs.getDouble('ve_previewHeight');
       final pAR = prefs.getString('ve_previewAspectRatio');
@@ -435,7 +579,8 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
 
       _rootFontSize = prefs.getDouble('ve_rootFontSize') ?? 12.0;
       _iconFontSize = prefs.getDouble('ve_iconFontSize') ?? 10.0;
-      _globalActionIconSize = prefs.getDouble('ve_globalActionIconSize') ?? 20.0;
+      _globalActionIconSize =
+          prefs.getDouble('ve_globalActionIconSize') ?? 20.0;
       _iconFontBold = prefs.getBool('ve_iconFontBold') ?? false;
       _windowTitleUppercase = prefs.getBool('ve_windowTitleUppercase') ?? true;
       _windowTitleBold = prefs.getBool('ve_windowTitleBold') ?? true;
@@ -447,33 +592,50 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _windowBorderWidth = prefs.getDouble('ve_windowBorderWidth') ?? 1.0;
       _customWindowBorderColor = prefs.getInt('ve_windowBorderColor');
       _customControlBorderColor = prefs.getInt('ve_controlBorderColor');
-      _customActiveWindowBorderColor = prefs.getInt('ve_activeWindowBorderColor');
-      _customActiveTaskHighlightColor = prefs.getInt('ve_activeTaskHighlightColor');
-      _queueClearCompletedMinutes = prefs.getInt('queueClearCompletedMinutes') ?? -1;
+      _customActiveWindowBorderColor =
+          prefs.getInt('ve_activeWindowBorderColor');
+      _customActiveTaskHighlightColor =
+          prefs.getInt('ve_activeTaskHighlightColor');
+      _queueClearCompletedMinutes =
+          prefs.getInt('queueClearCompletedMinutes') ?? -1;
       _agentRules = prefs.getString('project_agent_rules');
       _projectSummary = prefs.getString('project_summary');
       _antigravityBaseUrl = prefs.getString('antigravity_base_url');
-      _antigravityBridgeMode = prefs.getString('antigravity_bridge_mode') ?? 'sdk';
-      _antigravityInvokeEndpoint = prefs.getString('antigravity_invoke_endpoint');
-      _antigravityPromptEndpoint = prefs.getString('antigravity_prompt_endpoint');
-      _antigravityStartupCommand = prefs.getString('antigravity_startup_command');
+      _antigravityBridgeMode =
+          prefs.getString('antigravity_bridge_mode') ?? 'sdk';
+      _antigravityInvokeEndpoint =
+          prefs.getString('antigravity_invoke_endpoint');
+      _antigravityPromptEndpoint =
+          prefs.getString('antigravity_prompt_endpoint');
+      _antigravityStartupCommand =
+          prefs.getString('antigravity_startup_command');
       _antigravityApiKey = prefs.getString('antigravity_api_key');
-      _antigravityStatusDebug = prefs.getBool('antigravity_status_debug') ?? false;
-      _antigravitySendViaClipboard = prefs.getBool('antigravity_send_via_clipboard') ?? true;
-      _antigravityTargetWindowTitle = prefs.getString('antigravity_target_window_title') ?? 'Antigravity CLI';
-      _antigravityFocusMacroName = prefs.getString('antigravity_focus_macro_name') ?? 'SetWindowAntigravity';
-      _antigravityHandsfreeAutoExecute = prefs.getBool('antigravity_handsfree_auto_execute') ?? false;
-      _aiTasksDelaySeconds = (prefs.get('ai_tasks_delay_seconds') as num?)?.toDouble() ?? 5.0;
+      _antigravityStatusDebug =
+          prefs.getBool('antigravity_status_debug') ?? false;
+      _antigravitySendViaClipboard =
+          prefs.getBool('antigravity_send_via_clipboard') ?? true;
+      _antigravityTargetWindowTitle =
+          prefs.getString('antigravity_target_window_title') ??
+              'Antigravity CLI';
+      _antigravityFocusMacroName =
+          prefs.getString('antigravity_focus_macro_name') ??
+              'SetWindowAntigravity';
+      _antigravityHandsfreeAutoExecute =
+          prefs.getBool('antigravity_handsfree_auto_execute') ?? false;
+      _aiTasksDelaySeconds =
+          (prefs.get('ai_tasks_delay_seconds') as num?)?.toDouble() ?? 5.0;
       if (_antigravityBridgeMode == 'sdk') {
         _aiBridgeSubTabIndex = 0;
       } else if (_antigravityBridgeMode == 'desktop') {
         _aiBridgeSubTabIndex = 1;
-      } else if (_antigravityBridgeMode == 'cli' || _antigravityBridgeMode == 'handsfree') {
+      } else if (_antigravityBridgeMode == 'cli' ||
+          _antigravityBridgeMode == 'handsfree') {
         _aiBridgeSubTabIndex = 2;
       } else {
         _aiBridgeSubTabIndex = 0;
       }
-      final savedModel = prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
+      final savedModel =
+          prefs.getString('antigravity_model') ?? 'gemini-2.0-flash';
       if (savedModel == 'flash_lite') {
         _antigravityModel = 'gemini-2.0-flash-lite';
       } else if (savedModel == 'flash') {
@@ -483,132 +645,145 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       } else {
         _antigravityModel = savedModel;
       }
-      _antigravityLoModel = prefs.getString('antigravity_lo_model') ?? 'gemini-2.0-flash-lite';
-      _antigravityHiModel = prefs.getString('antigravity_hi_model') ?? 'gemini-2.0-flash';
-      _antigravityAvailableModels = prefs.getString('antigravity_available_models') ?? 'gemini-2.0-flash-lite, gemini-2.0-flash, gemini-2.0-pro, gemini-3.5-flash';
-      _versionControlRepoUrl = prefs.getString('project_version_control_repo_url');
+      _antigravityLoModel =
+          prefs.getString('antigravity_lo_model') ?? 'gemini-2.0-flash-lite';
+      _antigravityHiModel =
+          prefs.getString('antigravity_hi_model') ?? 'gemini-2.0-flash';
+      _antigravityAvailableModels = prefs
+              .getString('antigravity_available_models') ??
+          'gemini-2.0-flash-lite, gemini-2.0-flash, gemini-2.0-pro, gemini-3.5-flash';
+      _versionControlRepoUrl =
+          prefs.getString('project_version_control_repo_url');
       _ollamaBaseUrl = prefs.getString('ollamaBaseUrl');
       _ollamaModel = prefs.getString('ollamaModel');
+      _ollamaCustomModelName = prefs.getString('ollamaCustomModelName') ?? '';
+      // If _ollamaModel was previously saved as the custom alias, reset to the base model
+      if (_ollamaCustomModelName.isNotEmpty &&
+          (_ollamaModel ?? '').toLowerCase() == _ollamaCustomModelName.toLowerCase()) {
+        final base = prefs.getString('ollamaCustomModelBase') ?? '';
+        _ollamaModel = base.isNotEmpty ? base : null;
+      }
       _ollamaTimeoutMs = prefs.getInt('ollamaTimeoutMs') ?? 120000;
-      _ollamaClarityPrompt = prefs.getString('ollamaClarityPrompt') ?? 'Determine if the following prompt is clear? "{PROMPT}"';
-      _ollamaRewritePrompt = prefs.getString('ollamaRewritePrompt') ?? 'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: {PROMPT}';
-      _ollamaGenerateTaskPrompt = prefs.getString('ollamaGenerateTaskPrompt') ?? 'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"';
+      _ollamaClarityPrompt = prefs.getString('ollamaClarityPrompt') ??
+          'Determine if the following prompt is clear? "{PROMPT}"';
+      _ollamaRewritePrompt = prefs.getString('ollamaRewritePrompt') ??
+          'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: {PROMPT}';
+      _ollamaGenerateTaskPrompt = prefs.getString('ollamaGenerateTaskPrompt') ??
+          'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"';
 
       _windowAvailability = loadedAvail;
 
       _isLoading = false;
       if (AppUIConfig.activeTheme != null) {
-          _applyTheme(AppUIConfig.activeTheme!);
+        _applyTheme(AppUIConfig.activeTheme!);
       }
       _modelsFuture = AntigravityClient().models.list();
       _ollamaModelsFuture = _fetchOllamaModels();
     });
   }
 
-
-
-
-
-
   Future<void> _updateActiveThemeAndSave() async {
-      final baseTheme = AppUIConfig.activeTheme ?? CustomColorTheme(
-        id: 'custom_runtime',
-        name: 'Custom Theme',
-      );
-      final newTheme = baseTheme.copyWith(
-         desktopColor: _customDesktopColor,
-         titleBarColor: _customTitleBarColor,
-         windowColor: _customWindowColor,
-         toolbarColor: _customToolbarColor,
-         panelColor: _customPanelColor,
-         accentColor: _customAccentColor,
-         rootFontSize: _rootFontSize,
-         iconFontSize: _iconFontSize,
-         globalActionIconSize: _globalActionIconSize,
-         iconFontBold: _iconFontBold,
-         windowTitleUppercase: _windowTitleUppercase,
-         windowTitleBold: _windowTitleBold,
-         toolWindowOpacity: _toolWindowOpacity,
-         iconOutlineWidth: _iconOutlineWidth,
-         textOutlineWidth: _textOutlineWidth,
-         outlineColor: _customOutlineColor,
-         markupBackgroundColor: _customMarkupBackgroundColor,
-         markupHeaderColor: _customMarkupHeaderColor,
-         markupBlockBackgroundColor: _customMarkupBlockBackgroundColor,
-         markupInlineCodeColor: _customMarkupInlineCodeColor,
-         markupCodeBlockBackgroundColor: _customMarkupCodeBlockBackgroundColor,
-         markupBlockTextColor: _customMarkupBlockTextColor,
-         markupInlineTextColor: _customMarkupInlineTextColor,
-         markupCodeBlockTextColor: _customMarkupCodeBlockTextColor,
-         titleBarHeight: _titleBarHeight,
-         windowBorderRadius: _windowBorderRadius,
-         windowBorderWidth: _windowBorderWidth,
-         windowBorderColor: _customWindowBorderColor,
-         controlBorderColor: _customControlBorderColor,
-         activeWindowBorderColor: _customActiveWindowBorderColor,
-         activeTaskHighlightColor: _customActiveTaskHighlightColor,
-      );
-      
-      AppUIConfig.activeTheme = newTheme;
-      
-      AppUIConfig.rootFontSize = _rootFontSize;
-      AppUIConfig.iconFontSize = _iconFontSize;
-      AppUIConfig.globalActionIconSize = _globalActionIconSize;
-      AppUIConfig.iconFontBold = _iconFontBold;
-      AppUIConfig.iconOutlineWidth = _iconOutlineWidth;
-      AppUIConfig.textOutlineWidth = _textOutlineWidth;
-      AppUIConfig.titleBarHeight = _titleBarHeight;
-      AppUIConfig.windowBorderRadius = _windowBorderRadius;
-      AppUIConfig.windowBorderWidth = _windowBorderWidth;
-      
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('ve_activeThemeId', newTheme.id);
-      await prefs.setDouble('ve_rootFontSize', _rootFontSize);
-      await prefs.setDouble('ve_iconFontSize', _iconFontSize);
-      await prefs.setDouble('ve_globalActionIconSize', _globalActionIconSize);
-      await prefs.setBool('ve_iconFontBold', _iconFontBold);
-      await prefs.setBool('ve_windowTitleUppercase', _windowTitleUppercase);
-      await prefs.setBool('ve_windowTitleBold', _windowTitleBold);
-      await prefs.setDouble('ve_iconOutlineWidth', _iconOutlineWidth);
-      await prefs.setDouble('ve_textOutlineWidth', _textOutlineWidth);
-      await prefs.setDouble('toolWindowOpacity', _toolWindowOpacity);
-      await prefs.setDouble('ve_titleBarHeight', _titleBarHeight);
-      await prefs.setDouble('ve_windowBorderRadius', _windowBorderRadius);
-      await prefs.setDouble('ve_windowBorderWidth', _windowBorderWidth);
-      if (_customWindowBorderColor != null) {
-          await prefs.setInt('ve_windowBorderColor', _customWindowBorderColor!);
-      } else {
-          await prefs.remove('ve_windowBorderColor');
-      }
-      if (_customControlBorderColor != null) {
-          await prefs.setInt('ve_controlBorderColor', _customControlBorderColor!);
-      } else {
-          await prefs.remove('ve_controlBorderColor');
-      }
-      if (_customActiveWindowBorderColor != null) {
-          await prefs.setInt('ve_activeWindowBorderColor', _customActiveWindowBorderColor!);
-      } else {
-          await prefs.remove('ve_activeWindowBorderColor');
-      }
-      if (_customActiveTaskHighlightColor != null) {
-          await prefs.setInt('ve_activeTaskHighlightColor', _customActiveTaskHighlightColor!);
-      } else {
-          await prefs.remove('ve_activeTaskHighlightColor');
-      }
-      
-      final idx = AppUIConfig.savedThemes.indexWhere((t) => t.id == newTheme.id);
-      if (idx >= 0) {
-          AppUIConfig.savedThemes[idx] = newTheme;
-      } else {
-          AppUIConfig.savedThemes.add(newTheme);
-      }
-      await AppUIConfig.saveCustomThemes();
-      VisualEditorScreen.configRefreshNotifier.value++;
+    final baseTheme = AppUIConfig.activeTheme ??
+        CustomColorTheme(
+          id: 'custom_runtime',
+          name: 'Custom Theme',
+        );
+    final newTheme = baseTheme.copyWith(
+      desktopColor: _customDesktopColor,
+      titleBarColor: _customTitleBarColor,
+      windowColor: _customWindowColor,
+      toolbarColor: _customToolbarColor,
+      panelColor: _customPanelColor,
+      accentColor: _customAccentColor,
+      rootFontSize: _rootFontSize,
+      iconFontSize: _iconFontSize,
+      globalActionIconSize: _globalActionIconSize,
+      iconFontBold: _iconFontBold,
+      windowTitleUppercase: _windowTitleUppercase,
+      windowTitleBold: _windowTitleBold,
+      toolWindowOpacity: _toolWindowOpacity,
+      iconOutlineWidth: _iconOutlineWidth,
+      textOutlineWidth: _textOutlineWidth,
+      outlineColor: _customOutlineColor,
+      markupBackgroundColor: _customMarkupBackgroundColor,
+      markupHeaderColor: _customMarkupHeaderColor,
+      markupBlockBackgroundColor: _customMarkupBlockBackgroundColor,
+      markupInlineCodeColor: _customMarkupInlineCodeColor,
+      markupCodeBlockBackgroundColor: _customMarkupCodeBlockBackgroundColor,
+      markupBlockTextColor: _customMarkupBlockTextColor,
+      markupInlineTextColor: _customMarkupInlineTextColor,
+      markupCodeBlockTextColor: _customMarkupCodeBlockTextColor,
+      titleBarHeight: _titleBarHeight,
+      windowBorderRadius: _windowBorderRadius,
+      windowBorderWidth: _windowBorderWidth,
+      windowBorderColor: _customWindowBorderColor,
+      controlBorderColor: _customControlBorderColor,
+      activeWindowBorderColor: _customActiveWindowBorderColor,
+      activeTaskHighlightColor: _customActiveTaskHighlightColor,
+    );
+
+    AppUIConfig.activeTheme = newTheme;
+
+    AppUIConfig.rootFontSize = _rootFontSize;
+    AppUIConfig.iconFontSize = _iconFontSize;
+    AppUIConfig.globalActionIconSize = _globalActionIconSize;
+    AppUIConfig.iconFontBold = _iconFontBold;
+    AppUIConfig.iconOutlineWidth = _iconOutlineWidth;
+    AppUIConfig.textOutlineWidth = _textOutlineWidth;
+    AppUIConfig.titleBarHeight = _titleBarHeight;
+    AppUIConfig.windowBorderRadius = _windowBorderRadius;
+    AppUIConfig.windowBorderWidth = _windowBorderWidth;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('ve_activeThemeId', newTheme.id);
+    await prefs.setDouble('ve_rootFontSize', _rootFontSize);
+    await prefs.setDouble('ve_iconFontSize', _iconFontSize);
+    await prefs.setDouble('ve_globalActionIconSize', _globalActionIconSize);
+    await prefs.setBool('ve_iconFontBold', _iconFontBold);
+    await prefs.setBool('ve_windowTitleUppercase', _windowTitleUppercase);
+    await prefs.setBool('ve_windowTitleBold', _windowTitleBold);
+    await prefs.setDouble('ve_iconOutlineWidth', _iconOutlineWidth);
+    await prefs.setDouble('ve_textOutlineWidth', _textOutlineWidth);
+    await prefs.setDouble('toolWindowOpacity', _toolWindowOpacity);
+    await prefs.setDouble('ve_titleBarHeight', _titleBarHeight);
+    await prefs.setDouble('ve_windowBorderRadius', _windowBorderRadius);
+    await prefs.setDouble('ve_windowBorderWidth', _windowBorderWidth);
+    if (_customWindowBorderColor != null) {
+      await prefs.setInt('ve_windowBorderColor', _customWindowBorderColor!);
+    } else {
+      await prefs.remove('ve_windowBorderColor');
+    }
+    if (_customControlBorderColor != null) {
+      await prefs.setInt('ve_controlBorderColor', _customControlBorderColor!);
+    } else {
+      await prefs.remove('ve_controlBorderColor');
+    }
+    if (_customActiveWindowBorderColor != null) {
+      await prefs.setInt(
+          've_activeWindowBorderColor', _customActiveWindowBorderColor!);
+    } else {
+      await prefs.remove('ve_activeWindowBorderColor');
+    }
+    if (_customActiveTaskHighlightColor != null) {
+      await prefs.setInt(
+          've_activeTaskHighlightColor', _customActiveTaskHighlightColor!);
+    } else {
+      await prefs.remove('ve_activeTaskHighlightColor');
+    }
+
+    final idx = AppUIConfig.savedThemes.indexWhere((t) => t.id == newTheme.id);
+    if (idx >= 0) {
+      AppUIConfig.savedThemes[idx] = newTheme;
+    } else {
+      AppUIConfig.savedThemes.add(newTheme);
+    }
+    await AppUIConfig.saveCustomThemes();
+    VisualEditorScreen.configRefreshNotifier.value++;
   }
 
   Future<void> _applyTheme(CustomColorTheme theme) async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     AppUIConfig.activeTheme = theme;
     await prefs.setString('ve_activeThemeId', theme.id);
     _themeNameController.text = theme.name;
@@ -624,7 +799,8 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
     _customMarkupHeaderColor = theme.markupHeaderColor;
     _customMarkupBlockBackgroundColor = theme.markupBlockBackgroundColor;
     _customMarkupInlineCodeColor = theme.markupInlineCodeColor;
-    _customMarkupCodeBlockBackgroundColor = theme.markupCodeBlockBackgroundColor;
+    _customMarkupCodeBlockBackgroundColor =
+        theme.markupCodeBlockBackgroundColor;
     _customMarkupBlockTextColor = theme.markupBlockTextColor;
     _customMarkupInlineTextColor = theme.markupInlineTextColor;
     _customMarkupCodeBlockTextColor = theme.markupCodeBlockTextColor;
@@ -679,13 +855,15 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
     }
     _customActiveWindowBorderColor = theme.activeWindowBorderColor;
     if (_customActiveWindowBorderColor != null) {
-      await prefs.setInt('ve_activeWindowBorderColor', _customActiveWindowBorderColor!);
+      await prefs.setInt(
+          've_activeWindowBorderColor', _customActiveWindowBorderColor!);
     } else {
       await prefs.remove('ve_activeWindowBorderColor');
     }
     _customActiveTaskHighlightColor = theme.activeTaskHighlightColor;
     if (_customActiveTaskHighlightColor != null) {
-      await prefs.setInt('ve_activeTaskHighlightColor', _customActiveTaskHighlightColor!);
+      await prefs.setInt(
+          've_activeTaskHighlightColor', _customActiveTaskHighlightColor!);
     } else {
       await prefs.remove('ve_activeTaskHighlightColor');
     }
@@ -711,59 +889,148 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
     if (mounted) {
       setState(() {});
       VisualEditorScreen.configRefreshNotifier.value++;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Applied theme: '), backgroundColor: Colors.green, duration: const Duration(seconds: 2)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Applied theme: '),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2)));
     }
   }
 
   Future<void> _saveConfiguration() async {
-
     if (_formKey.currentState?.saveAndValidate() ?? false) {
       final values = _formKey.currentState!.value;
-      final newUrl = values.containsKey('primaryStorageUrl') ? values['primaryStorageUrl'] as String? : _primaryStorageUrl;
-      final newLocalRepo = values.containsKey('localRepositoryPath') ? values['localRepositoryPath'] as String? : _localRepositoryPath;
-      final newBackupDir = values.containsKey('backupDirectoryPath') ? values['backupDirectoryPath'] as String? : _backupDirectoryPath;
-      final newSimWidth = double.tryParse((values['simulatorWidth'] ?? _simulatorWidth).toString()) ?? _simulatorWidth;
-      final newSimHeight = double.tryParse((values['simulatorHeight'] ?? _simulatorHeight).toString()) ?? _simulatorHeight;
-      final newPreviewWidth = double.tryParse((values['previewWidth'] ?? _previewWidth).toString()) ?? _previewWidth;
-      final newPreviewHeight = double.tryParse((values['previewHeight'] ?? _previewHeight).toString()) ?? _previewHeight;
-      final newPreviewAspectRatio = values.containsKey('previewAspectRatio') ? values['previewAspectRatio'] as String? ?? 'FREE' : _previewAspectRatio;
-      final newOpacity = double.tryParse((values['toolWindowOpacity'] ?? _toolWindowOpacity).toString()) ?? _toolWindowOpacity;
+      final newUrl = values.containsKey('primaryStorageUrl')
+          ? values['primaryStorageUrl'] as String?
+          : _primaryStorageUrl;
+      final newLocalRepo = values.containsKey('localRepositoryPath')
+          ? values['localRepositoryPath'] as String?
+          : _localRepositoryPath;
+      final newBackupDir = values.containsKey('backupDirectoryPath')
+          ? values['backupDirectoryPath'] as String?
+          : _backupDirectoryPath;
+      final newSimWidth = double.tryParse(
+              (values['simulatorWidth'] ?? _simulatorWidth).toString()) ??
+          _simulatorWidth;
+      final newSimHeight = double.tryParse(
+              (values['simulatorHeight'] ?? _simulatorHeight).toString()) ??
+          _simulatorHeight;
+      final newPreviewWidth = double.tryParse(
+              (values['previewWidth'] ?? _previewWidth).toString()) ??
+          _previewWidth;
+      final newPreviewHeight = double.tryParse(
+              (values['previewHeight'] ?? _previewHeight).toString()) ??
+          _previewHeight;
+      final newPreviewAspectRatio = values.containsKey('previewAspectRatio')
+          ? values['previewAspectRatio'] as String? ?? 'FREE'
+          : _previewAspectRatio;
+      final newOpacity = double.tryParse(
+              (values['toolWindowOpacity'] ?? _toolWindowOpacity).toString()) ??
+          _toolWindowOpacity;
 
-        final newBorderRadius = double.tryParse((values['windowBorderRadius'] ?? AppUIConfig.windowBorderRadius).toString()) ?? AppUIConfig.windowBorderRadius;
-        final newBorderWidth = double.tryParse((values['windowBorderWidth'] ?? AppUIConfig.windowBorderWidth).toString()) ?? AppUIConfig.windowBorderWidth;
-      final newRootFontSize = double.tryParse((values['rootFontSize'] ?? _rootFontSize).toString()) ?? _rootFontSize;
-      final newIconFontSize = double.tryParse((values['iconFontSize'] ?? _iconFontSize).toString()) ?? _iconFontSize;
-      final newGlobalActionIconSize = double.tryParse((values['globalActionIconSize'] ?? _globalActionIconSize).toString()) ?? _globalActionIconSize;
-      final newIconFontBold = values.containsKey('iconFontBold') ? values['iconFontBold'] == true : _iconFontBold;
-      final newWindowTitleUppercase = values.containsKey('windowTitleUppercase') ? values['windowTitleUppercase'] == true : _windowTitleUppercase;
-      final newWindowTitleBold = values.containsKey('windowTitleBold') ? values['windowTitleBold'] == true : _windowTitleBold;
-      final newIconOutlineWidth = double.tryParse((values['iconOutlineWidth'] ?? _iconOutlineWidth).toString()) ?? _iconOutlineWidth;
-      final newTextOutlineWidth = double.tryParse((values['textOutlineWidth'] ?? _textOutlineWidth).toString()) ?? _textOutlineWidth;
-      final newTitleBarHeight = double.tryParse((values['titleBarHeight'] ?? _titleBarHeight).toString()) ?? _titleBarHeight;
-      final newClearCompleted = int.tryParse((values['queueClearCompletedMinutes'] ?? _queueClearCompletedMinutes).toString()) ?? _queueClearCompletedMinutes;
+      final newBorderRadius = double.tryParse(
+              (values['windowBorderRadius'] ?? AppUIConfig.windowBorderRadius)
+                  .toString()) ??
+          AppUIConfig.windowBorderRadius;
+      final newBorderWidth = double.tryParse(
+              (values['windowBorderWidth'] ?? AppUIConfig.windowBorderWidth)
+                  .toString()) ??
+          AppUIConfig.windowBorderWidth;
+      final newRootFontSize = double.tryParse(
+              (values['rootFontSize'] ?? _rootFontSize).toString()) ??
+          _rootFontSize;
+      final newIconFontSize = double.tryParse(
+              (values['iconFontSize'] ?? _iconFontSize).toString()) ??
+          _iconFontSize;
+      final newGlobalActionIconSize = double.tryParse(
+              (values['globalActionIconSize'] ?? _globalActionIconSize)
+                  .toString()) ??
+          _globalActionIconSize;
+      final newIconFontBold = values.containsKey('iconFontBold')
+          ? values['iconFontBold'] == true
+          : _iconFontBold;
+      final newWindowTitleUppercase = values.containsKey('windowTitleUppercase')
+          ? values['windowTitleUppercase'] == true
+          : _windowTitleUppercase;
+      final newWindowTitleBold = values.containsKey('windowTitleBold')
+          ? values['windowTitleBold'] == true
+          : _windowTitleBold;
+      final newIconOutlineWidth = double.tryParse(
+              (values['iconOutlineWidth'] ?? _iconOutlineWidth).toString()) ??
+          _iconOutlineWidth;
+      final newTextOutlineWidth = double.tryParse(
+              (values['textOutlineWidth'] ?? _textOutlineWidth).toString()) ??
+          _textOutlineWidth;
+      final newTitleBarHeight = double.tryParse(
+              (values['titleBarHeight'] ?? _titleBarHeight).toString()) ??
+          _titleBarHeight;
+      final newClearCompleted = int.tryParse(
+              (values['queueClearCompletedMinutes'] ??
+                      _queueClearCompletedMinutes)
+                  .toString()) ??
+          _queueClearCompletedMinutes;
       // Note: albumIds are captured via FormField onSaved.
 
       final prefs = await SharedPreferences.getInstance();
-      final oldLocalRepo = prefs.getString('project_local_repository_path') ?? '';
+      final oldLocalRepo =
+          prefs.getString('project_local_repository_path') ?? '';
 
-      final newOpenAIApiKey = values.containsKey('openAiApiKey') ? values['openAiApiKey'] as String? : _openAiApiKey;
-      final newGithubToken = values.containsKey('githubToken') ? values['githubToken'] as String? : _githubToken;
-      final newVersionControlRepoUrl = values.containsKey('versionControlRepoUrl') ? values['versionControlRepoUrl'] as String? : _versionControlRepoUrl;
-      final newOllamaBaseUrl = values.containsKey('ollamaBaseUrl') ? values['ollamaBaseUrl'] as String? : _ollamaBaseUrl;
-      final newOllamaModel = values.containsKey('ollamaModel') ? values['ollamaModel'] as String? : _ollamaModel;
-      final newOllamaTimeoutMs = int.tryParse((values['ollamaTimeoutMs'] ?? _ollamaTimeoutMs).toString()) ?? _ollamaTimeoutMs;
-      final newOllamaClarityPrompt = values.containsKey('ollamaClarityPrompt') ? values['ollamaClarityPrompt'] as String? : _ollamaClarityPrompt;
-      final newOllamaRewritePrompt = values.containsKey('ollamaRewritePrompt') ? values['ollamaRewritePrompt'] as String? : _ollamaRewritePrompt;
-      final newOllamaGenerateTaskPrompt = values.containsKey('ollamaGenerateTaskPrompt') ? values['ollamaGenerateTaskPrompt'] as String? : _ollamaGenerateTaskPrompt;
+      final newOpenAIApiKey = values.containsKey('openAiApiKey')
+          ? values['openAiApiKey'] as String?
+          : _openAiApiKey;
+      final newGithubToken = values.containsKey('githubToken')
+          ? values['githubToken'] as String?
+          : _githubToken;
+      final newVersionControlRepoUrl =
+          values.containsKey('versionControlRepoUrl')
+              ? values['versionControlRepoUrl'] as String?
+              : _versionControlRepoUrl;
+      final newOllamaBaseUrl = values.containsKey('ollamaBaseUrl')
+          ? values['ollamaBaseUrl'] as String?
+          : _ollamaBaseUrl;
+      final newOllamaModel = values.containsKey('ollamaModel')
+          ? values['ollamaModel'] as String?
+          : _ollamaModel;
+      final newOllamaTimeoutMs = int.tryParse(
+              (values['ollamaTimeoutMs'] ?? _ollamaTimeoutMs).toString()) ??
+          _ollamaTimeoutMs;
+      final newOllamaClarityPrompt = values.containsKey('ollamaClarityPrompt')
+          ? values['ollamaClarityPrompt'] as String?
+          : _ollamaClarityPrompt;
+      final newOllamaRewritePrompt = values.containsKey('ollamaRewritePrompt')
+          ? values['ollamaRewritePrompt'] as String?
+          : _ollamaRewritePrompt;
+      final newOllamaGenerateTaskPrompt =
+          values.containsKey('ollamaGenerateTaskPrompt')
+              ? values['ollamaGenerateTaskPrompt'] as String?
+              : _ollamaGenerateTaskPrompt;
 
-      final newAgentRules = values.containsKey('agentRules') ? values['agentRules'] as String? : _agentRules;
-      final newProjectSummary = values.containsKey('projectSummary') ? values['projectSummary'] as String? : _projectSummary;
-      final newAntigravityBaseUrl = values.containsKey('antigravityBaseUrl') ? values['antigravityBaseUrl'] as String? : _antigravityBaseUrl;
-      final newAntigravityInvokeEndpoint = values.containsKey('antigravityInvokeEndpoint') ? values['antigravityInvokeEndpoint'] as String? : _antigravityInvokeEndpoint;
-      final newAntigravityPromptEndpoint = values.containsKey('antigravityPromptEndpoint') ? values['antigravityPromptEndpoint'] as String? : _antigravityPromptEndpoint;
-      final newAntigravityStartupCommand = values.containsKey('antigravityStartupCommand') ? values['antigravityStartupCommand'] as String? : _antigravityStartupCommand;
-      final newAntigravityApiKey = values.containsKey('antigravityApiKey') ? values['antigravityApiKey'] as String? : _antigravityApiKey;
-      final newAntigravityModel = values.containsKey('antigravityModel') ? values['antigravityModel'] as String? : _antigravityModel;
+      final newAgentRules = values.containsKey('agentRules')
+          ? values['agentRules'] as String?
+          : _agentRules;
+      final newProjectSummary = values.containsKey('projectSummary')
+          ? values['projectSummary'] as String?
+          : _projectSummary;
+      final newAntigravityBaseUrl = values.containsKey('antigravityBaseUrl')
+          ? values['antigravityBaseUrl'] as String?
+          : _antigravityBaseUrl;
+      final newAntigravityInvokeEndpoint =
+          values.containsKey('antigravityInvokeEndpoint')
+              ? values['antigravityInvokeEndpoint'] as String?
+              : _antigravityInvokeEndpoint;
+      final newAntigravityPromptEndpoint =
+          values.containsKey('antigravityPromptEndpoint')
+              ? values['antigravityPromptEndpoint'] as String?
+              : _antigravityPromptEndpoint;
+      final newAntigravityStartupCommand =
+          values.containsKey('antigravityStartupCommand')
+              ? values['antigravityStartupCommand'] as String?
+              : _antigravityStartupCommand;
+      final newAntigravityApiKey = values.containsKey('antigravityApiKey')
+          ? values['antigravityApiKey'] as String?
+          : _antigravityApiKey;
+      final newAntigravityModel = values.containsKey('antigravityModel')
+          ? values['antigravityModel'] as String?
+          : _antigravityModel;
       // Read LO/HI/AvailableModels from whichever tab's field name is currently registered.
       // SDK tab uses 'antigravityLoModel'; Desktop/CLI tabs use the NonSdk variants.
       final newAntigravityLoModel = values.containsKey('antigravityLoModel')
@@ -776,14 +1043,21 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           : values.containsKey('antigravityHiModelNonSdk')
               ? values['antigravityHiModelNonSdk'] as String?
               : _antigravityHiModel;
-      final newAntigravityAvailableModels = values.containsKey('antigravityAvailableModels')
-          ? values['antigravityAvailableModels'] as String?
-          : values.containsKey('antigravityAvailableModelsDesktop')
-              ? values['antigravityAvailableModelsDesktop'] as String?
-              : _antigravityAvailableModels;
-      final newAntigravityTargetWindowTitle = values.containsKey('antigravityTargetWindowTitle') ? values['antigravityTargetWindowTitle'] as String? : _antigravityTargetWindowTitle;
-      final newAntigravityFocusMacroName = values.containsKey('antigravityFocusMacroName') ? values['antigravityFocusMacroName'] as String? : _antigravityFocusMacroName;
-      
+      final newAntigravityAvailableModels =
+          values.containsKey('antigravityAvailableModels')
+              ? values['antigravityAvailableModels'] as String?
+              : values.containsKey('antigravityAvailableModelsDesktop')
+                  ? values['antigravityAvailableModelsDesktop'] as String?
+                  : _antigravityAvailableModels;
+      final newAntigravityTargetWindowTitle =
+          values.containsKey('antigravityTargetWindowTitle')
+              ? values['antigravityTargetWindowTitle'] as String?
+              : _antigravityTargetWindowTitle;
+      final newAntigravityFocusMacroName =
+          values.containsKey('antigravityFocusMacroName')
+              ? values['antigravityFocusMacroName'] as String?
+              : _antigravityFocusMacroName;
+
       final desktopLight = prefs.getInt('ve_desktop_light');
       final desktopDark = prefs.getInt('ve_desktop_dark');
       final desktopDracula = prefs.getInt('ve_desktop_dracula');
@@ -799,129 +1073,155 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
 
       final envFile = File('.env');
       if (await envFile.exists()) {
-          final lines = await envFile.readAsLines();
-          final updatedLines = <String>[];
-          bool foundOpenAi = false;
-          bool foundGithub = false;
-          for (var line in lines) {
-              if (line.startsWith('OPENAI_API_KEY=')) {
-                  if (newOpenAIApiKey != null && newOpenAIApiKey.trim().isNotEmpty) {
-                      updatedLines.add('OPENAI_API_KEY=${newOpenAIApiKey.trim()}');
-                  }
-                  foundOpenAi = true;
-              } else if (line.startsWith('GITHUB_TOKEN=')) {
-                  if (newGithubToken != null && newGithubToken.trim().isNotEmpty) {
-                      updatedLines.add('GITHUB_TOKEN=${newGithubToken.trim()}');
-                  }
-                  foundGithub = true;
-              } else {
-                  updatedLines.add(line);
-              }
-          }
-          if (!foundOpenAi && newOpenAIApiKey != null && newOpenAIApiKey.trim().isNotEmpty) {
+        final lines = await envFile.readAsLines();
+        final updatedLines = <String>[];
+        bool foundOpenAi = false;
+        bool foundGithub = false;
+        for (var line in lines) {
+          if (line.startsWith('OPENAI_API_KEY=')) {
+            if (newOpenAIApiKey != null && newOpenAIApiKey.trim().isNotEmpty) {
               updatedLines.add('OPENAI_API_KEY=${newOpenAIApiKey.trim()}');
-          }
-          if (!foundGithub && newGithubToken != null && newGithubToken.trim().isNotEmpty) {
+            }
+            foundOpenAi = true;
+          } else if (line.startsWith('GITHUB_TOKEN=')) {
+            if (newGithubToken != null && newGithubToken.trim().isNotEmpty) {
               updatedLines.add('GITHUB_TOKEN=${newGithubToken.trim()}');
+            }
+            foundGithub = true;
+          } else {
+            updatedLines.add(line);
           }
-          await envFile.writeAsString(updatedLines.join('\n'));
-          dotenv.clean();
-          await dotenv.load(fileName: '.env');
+        }
+        if (!foundOpenAi &&
+            newOpenAIApiKey != null &&
+            newOpenAIApiKey.trim().isNotEmpty) {
+          updatedLines.add('OPENAI_API_KEY=${newOpenAIApiKey.trim()}');
+        }
+        if (!foundGithub &&
+            newGithubToken != null &&
+            newGithubToken.trim().isNotEmpty) {
+          updatedLines.add('GITHUB_TOKEN=${newGithubToken.trim()}');
+        }
+        await envFile.writeAsString(updatedLines.join('\n'));
+        dotenv.clean();
+        await dotenv.load(fileName: '.env');
       }
 
-      if (values.containsKey('primaryStorageUrl') && values['primaryStorageUrl'] != null) {
+      if (values.containsKey('primaryStorageUrl') &&
+          values['primaryStorageUrl'] != null) {
         if (newUrl != null && newUrl.trim().isNotEmpty) {
-           // Standardize by ensuring it ends with a trailing slash
-           String storedUrl = newUrl.trim();
-           if (!storedUrl.endsWith('/')) storedUrl += '/';
-           await prefs.setString('project_primary_storage_url', storedUrl);
+          // Standardize by ensuring it ends with a trailing slash
+          String storedUrl = newUrl.trim();
+          if (!storedUrl.endsWith('/')) storedUrl += '/';
+          await prefs.setString('project_primary_storage_url', storedUrl);
         } else {
-           await prefs.remove('project_primary_storage_url');
+          await prefs.remove('project_primary_storage_url');
         }
       }
 
-      if (values.containsKey('localRepositoryPath') && values['localRepositoryPath'] != null) {
+      if (values.containsKey('localRepositoryPath') &&
+          values['localRepositoryPath'] != null) {
         if (newLocalRepo != null && newLocalRepo.trim().isNotEmpty) {
-           final cleanNewPath = newLocalRepo.trim();
-           // If path literally changed, migrate files
-           if (oldLocalRepo != cleanNewPath) {
-               if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Migrating repository...')));
-               await _moveLocalRepository(oldLocalRepo, cleanNewPath);
-           }
-           await prefs.setString('project_local_repository_path', cleanNewPath);
+          final cleanNewPath = newLocalRepo.trim();
+          // If path literally changed, migrate files
+          if (oldLocalRepo != cleanNewPath) {
+            if (mounted)
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Migrating repository...')));
+            await _moveLocalRepository(oldLocalRepo, cleanNewPath);
+          }
+          await prefs.setString('project_local_repository_path', cleanNewPath);
         } else {
-           await prefs.remove('project_local_repository_path');
+          await prefs.remove('project_local_repository_path');
         }
       }
 
-      if (values.containsKey('versionControlRepoUrl') && values['versionControlRepoUrl'] != null) {
-        if (newVersionControlRepoUrl != null && newVersionControlRepoUrl.trim().isNotEmpty) {
-           await prefs.setString('project_version_control_repo_url', newVersionControlRepoUrl.trim());
+      if (values.containsKey('versionControlRepoUrl') &&
+          values['versionControlRepoUrl'] != null) {
+        if (newVersionControlRepoUrl != null &&
+            newVersionControlRepoUrl.trim().isNotEmpty) {
+          await prefs.setString('project_version_control_repo_url',
+              newVersionControlRepoUrl.trim());
         } else {
-           await prefs.remove('project_version_control_repo_url');
+          await prefs.remove('project_version_control_repo_url');
         }
       }
 
-      if (values.containsKey('ollamaBaseUrl') && values['ollamaBaseUrl'] != null) {
+      if (values.containsKey('ollamaBaseUrl') &&
+          values['ollamaBaseUrl'] != null) {
         if (newOllamaBaseUrl != null && newOllamaBaseUrl.trim().isNotEmpty) {
-           await prefs.setString('ollamaBaseUrl', newOllamaBaseUrl.trim());
+          await prefs.setString('ollamaBaseUrl', newOllamaBaseUrl.trim());
         } else {
-           await prefs.remove('ollamaBaseUrl');
+          await prefs.remove('ollamaBaseUrl');
         }
       }
       if (values.containsKey('ollamaModel') && values['ollamaModel'] != null) {
         if (newOllamaModel != null && newOllamaModel.trim().isNotEmpty) {
-           await prefs.setString('ollamaModel', newOllamaModel.trim());
+          await prefs.setString('ollamaModel', newOllamaModel.trim());
         } else {
-           await prefs.remove('ollamaModel');
+          await prefs.remove('ollamaModel');
         }
       }
       await prefs.setInt('ollamaTimeoutMs', newOllamaTimeoutMs);
-      if (values.containsKey('ollamaClarityPrompt') && values['ollamaClarityPrompt'] != null) {
-        if (newOllamaClarityPrompt != null && newOllamaClarityPrompt.trim().isNotEmpty) {
-           await prefs.setString('ollamaClarityPrompt', newOllamaClarityPrompt.trim());
+      if (values.containsKey('ollamaClarityPrompt') &&
+          values['ollamaClarityPrompt'] != null) {
+        if (newOllamaClarityPrompt != null &&
+            newOllamaClarityPrompt.trim().isNotEmpty) {
+          await prefs.setString(
+              'ollamaClarityPrompt', newOllamaClarityPrompt.trim());
         } else {
-           await prefs.remove('ollamaClarityPrompt');
+          await prefs.remove('ollamaClarityPrompt');
         }
       }
-      if (values.containsKey('ollamaRewritePrompt') && values['ollamaRewritePrompt'] != null) {
-        if (newOllamaRewritePrompt != null && newOllamaRewritePrompt.trim().isNotEmpty) {
-           await prefs.setString('ollamaRewritePrompt', newOllamaRewritePrompt.trim());
+      if (values.containsKey('ollamaRewritePrompt') &&
+          values['ollamaRewritePrompt'] != null) {
+        if (newOllamaRewritePrompt != null &&
+            newOllamaRewritePrompt.trim().isNotEmpty) {
+          await prefs.setString(
+              'ollamaRewritePrompt', newOllamaRewritePrompt.trim());
         } else {
-           await prefs.remove('ollamaRewritePrompt');
+          await prefs.remove('ollamaRewritePrompt');
         }
       }
-      if (values.containsKey('ollamaGenerateTaskPrompt') && values['ollamaGenerateTaskPrompt'] != null) {
-        if (newOllamaGenerateTaskPrompt != null && newOllamaGenerateTaskPrompt.trim().isNotEmpty) {
-           await prefs.setString('ollamaGenerateTaskPrompt', newOllamaGenerateTaskPrompt.trim());
+      if (values.containsKey('ollamaGenerateTaskPrompt') &&
+          values['ollamaGenerateTaskPrompt'] != null) {
+        if (newOllamaGenerateTaskPrompt != null &&
+            newOllamaGenerateTaskPrompt.trim().isNotEmpty) {
+          await prefs.setString(
+              'ollamaGenerateTaskPrompt', newOllamaGenerateTaskPrompt.trim());
         } else {
-           await prefs.remove('ollamaGenerateTaskPrompt');
+          await prefs.remove('ollamaGenerateTaskPrompt');
         }
       }
-      if (values.containsKey('backupDirectoryPath') && values['backupDirectoryPath'] != null) {
+      if (values.containsKey('backupDirectoryPath') &&
+          values['backupDirectoryPath'] != null) {
         if (newBackupDir != null && newBackupDir.trim().isNotEmpty) {
-           await prefs.setString('project_backup_directory_path', newBackupDir.trim());
+          await prefs.setString(
+              'project_backup_directory_path', newBackupDir.trim());
         } else {
-           await prefs.remove('project_backup_directory_path');
+          await prefs.remove('project_backup_directory_path');
         }
       }
 
-      await prefs.setStringList('project_album_folder_ids', _albumFolderIds.map((e) => e.toString()).toList());
+      await prefs.setStringList('project_album_folder_ids',
+          _albumFolderIds.map((e) => e.toString()).toList());
       if (_tagsFolderId != null) {
-          await prefs.setString('project_tags_folder_id', _tagsFolderId.toString());
+        await prefs.setString(
+            'project_tags_folder_id', _tagsFolderId.toString());
       } else {
-          await prefs.remove('project_tags_folder_id');
+        await prefs.remove('project_tags_folder_id');
       }
 
       if (_languagesFolderId != null) {
-          await prefs.setString('project_languages_folder_id', _languagesFolderId.toString());
+        await prefs.setString(
+            'project_languages_folder_id', _languagesFolderId.toString());
       } else {
-          await prefs.remove('project_languages_folder_id');
+        await prefs.remove('project_languages_folder_id');
       }
 
       await prefs.setDouble('project_simulator_width', newSimWidth);
       await prefs.setDouble('project_simulator_height', newSimHeight);
-      
+
       await prefs.setDouble('ve_previewWidth', newPreviewWidth);
       await prefs.setDouble('ve_previewHeight', newPreviewHeight);
       await prefs.setString('ve_previewAspectRatio', newPreviewAspectRatio);
@@ -939,372 +1239,440 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       await prefs.setDouble('ve_textOutlineWidth', newTextOutlineWidth);
       await prefs.setDouble('ve_titleBarHeight', newTitleBarHeight);
 
-      await prefs.setString('ve_windowAvailability', jsonEncode(_windowAvailability));
+      await prefs.setString(
+          've_windowAvailability', jsonEncode(_windowAvailability));
       await prefs.setInt('queueClearCompletedMinutes', newClearCompleted);
 
       if (values.containsKey('agentRules') && values['agentRules'] != null) {
         if (newAgentRules != null && newAgentRules.trim().isNotEmpty) {
-            await prefs.setString('project_agent_rules', newAgentRules.trim());
+          await prefs.setString('project_agent_rules', newAgentRules.trim());
         } else {
-            await prefs.remove('project_agent_rules');
+          await prefs.remove('project_agent_rules');
         }
       }
 
-      if (values.containsKey('projectSummary') && values['projectSummary'] != null) {
+      if (values.containsKey('projectSummary') &&
+          values['projectSummary'] != null) {
         if (newProjectSummary != null && newProjectSummary.trim().isNotEmpty) {
-            await prefs.setString('project_summary', newProjectSummary.trim());
+          await prefs.setString('project_summary', newProjectSummary.trim());
         } else {
-            await prefs.remove('project_summary');
+          await prefs.remove('project_summary');
         }
       }
 
       final newAntigravityBridgeMode = _antigravityBridgeMode;
-      if (newAntigravityBridgeMode != null && newAntigravityBridgeMode.trim().isNotEmpty) {
-          await prefs.setString('antigravity_bridge_mode', newAntigravityBridgeMode.trim());
-          final mode = AntigravityBridgeMode.values.firstWhere(
-              (e) => e.name == newAntigravityBridgeMode,
-              orElse: () => AntigravityBridgeMode.sdk);
-          AiBridgeService.instance.setBridgeMode(mode);
+      if (newAntigravityBridgeMode != null &&
+          newAntigravityBridgeMode.trim().isNotEmpty) {
+        await prefs.setString(
+            'antigravity_bridge_mode', newAntigravityBridgeMode.trim());
+        final mode = AntigravityBridgeMode.values.firstWhere(
+            (e) => e.name == newAntigravityBridgeMode,
+            orElse: () => AntigravityBridgeMode.sdk);
+        AiBridgeService.instance.setBridgeMode(mode);
       } else {
-          await prefs.remove('antigravity_bridge_mode');
+        await prefs.remove('antigravity_bridge_mode');
       }
 
-      if (values.containsKey('antigravityBaseUrl') && values['antigravityBaseUrl'] != null) {
-        if (newAntigravityBaseUrl != null && newAntigravityBaseUrl.trim().isNotEmpty) {
-            await prefs.setString('antigravity_base_url', newAntigravityBaseUrl.trim());
+      if (values.containsKey('antigravityBaseUrl') &&
+          values['antigravityBaseUrl'] != null) {
+        if (newAntigravityBaseUrl != null &&
+            newAntigravityBaseUrl.trim().isNotEmpty) {
+          await prefs.setString(
+              'antigravity_base_url', newAntigravityBaseUrl.trim());
         } else {
-            await prefs.remove('antigravity_base_url');
+          await prefs.remove('antigravity_base_url');
         }
       }
 
-      if (values.containsKey('antigravityInvokeEndpoint') && values['antigravityInvokeEndpoint'] != null) {
-        if (newAntigravityInvokeEndpoint != null && newAntigravityInvokeEndpoint.trim().isNotEmpty) {
-            await prefs.setString('antigravity_invoke_endpoint', newAntigravityInvokeEndpoint.trim());
+      if (values.containsKey('antigravityInvokeEndpoint') &&
+          values['antigravityInvokeEndpoint'] != null) {
+        if (newAntigravityInvokeEndpoint != null &&
+            newAntigravityInvokeEndpoint.trim().isNotEmpty) {
+          await prefs.setString('antigravity_invoke_endpoint',
+              newAntigravityInvokeEndpoint.trim());
         } else {
-            await prefs.remove('antigravity_invoke_endpoint');
+          await prefs.remove('antigravity_invoke_endpoint');
         }
       }
 
-      if (values.containsKey('antigravityPromptEndpoint') && values['antigravityPromptEndpoint'] != null) {
-        if (newAntigravityPromptEndpoint != null && newAntigravityPromptEndpoint.trim().isNotEmpty) {
-            await prefs.setString('antigravity_prompt_endpoint', newAntigravityPromptEndpoint.trim());
+      if (values.containsKey('antigravityPromptEndpoint') &&
+          values['antigravityPromptEndpoint'] != null) {
+        if (newAntigravityPromptEndpoint != null &&
+            newAntigravityPromptEndpoint.trim().isNotEmpty) {
+          await prefs.setString('antigravity_prompt_endpoint',
+              newAntigravityPromptEndpoint.trim());
         } else {
-            await prefs.remove('antigravity_prompt_endpoint');
+          await prefs.remove('antigravity_prompt_endpoint');
         }
       }
 
-      if (values.containsKey('antigravityStartupCommand') && values['antigravityStartupCommand'] != null) {
-        if (newAntigravityStartupCommand != null && newAntigravityStartupCommand.trim().isNotEmpty) {
-            await prefs.setString('antigravity_startup_command', newAntigravityStartupCommand.trim());
+      if (values.containsKey('antigravityStartupCommand') &&
+          values['antigravityStartupCommand'] != null) {
+        if (newAntigravityStartupCommand != null &&
+            newAntigravityStartupCommand.trim().isNotEmpty) {
+          await prefs.setString('antigravity_startup_command',
+              newAntigravityStartupCommand.trim());
         } else {
-            await prefs.remove('antigravity_startup_command');
+          await prefs.remove('antigravity_startup_command');
         }
       }
 
-      if (values.containsKey('antigravityApiKey') && values['antigravityApiKey'] != null) {
-        if (newAntigravityApiKey != null && newAntigravityApiKey.trim().isNotEmpty) {
-            await prefs.setString('antigravity_api_key', newAntigravityApiKey.trim());
+      if (values.containsKey('antigravityApiKey') &&
+          values['antigravityApiKey'] != null) {
+        if (newAntigravityApiKey != null &&
+            newAntigravityApiKey.trim().isNotEmpty) {
+          await prefs.setString(
+              'antigravity_api_key', newAntigravityApiKey.trim());
         } else {
-            await prefs.remove('antigravity_api_key');
+          await prefs.remove('antigravity_api_key');
         }
       }
 
-      if (values.containsKey('antigravityModel') && values['antigravityModel'] != null) {
-        if (newAntigravityModel != null && newAntigravityModel.trim().isNotEmpty) {
-            await prefs.setString('antigravity_model', newAntigravityModel.trim());
+      if (values.containsKey('antigravityModel') &&
+          values['antigravityModel'] != null) {
+        if (newAntigravityModel != null &&
+            newAntigravityModel.trim().isNotEmpty) {
+          await prefs.setString(
+              'antigravity_model', newAntigravityModel.trim());
         } else {
-            await prefs.remove('antigravity_model');
+          await prefs.remove('antigravity_model');
         }
       }
 
       // LO model — may come from the SDK tab field or the Desktop/CLI non-SDK field.
-      if ((values.containsKey('antigravityLoModel') && values['antigravityLoModel'] != null) ||
-          (values.containsKey('antigravityLoModelNonSdk') && values['antigravityLoModelNonSdk'] != null)) {
-        if (newAntigravityLoModel != null && newAntigravityLoModel.trim().isNotEmpty) {
-            await prefs.setString('antigravity_lo_model', newAntigravityLoModel.trim());
+      if ((values.containsKey('antigravityLoModel') &&
+              values['antigravityLoModel'] != null) ||
+          (values.containsKey('antigravityLoModelNonSdk') &&
+              values['antigravityLoModelNonSdk'] != null)) {
+        if (newAntigravityLoModel != null &&
+            newAntigravityLoModel.trim().isNotEmpty) {
+          await prefs.setString(
+              'antigravity_lo_model', newAntigravityLoModel.trim());
         } else {
-            await prefs.remove('antigravity_lo_model');
+          await prefs.remove('antigravity_lo_model');
         }
       }
 
       // HI model — may come from the SDK tab field or the Desktop/CLI non-SDK field.
-      if ((values.containsKey('antigravityHiModel') && values['antigravityHiModel'] != null) ||
-          (values.containsKey('antigravityHiModelNonSdk') && values['antigravityHiModelNonSdk'] != null)) {
-        if (newAntigravityHiModel != null && newAntigravityHiModel.trim().isNotEmpty) {
-            await prefs.setString('antigravity_hi_model', newAntigravityHiModel.trim());
+      if ((values.containsKey('antigravityHiModel') &&
+              values['antigravityHiModel'] != null) ||
+          (values.containsKey('antigravityHiModelNonSdk') &&
+              values['antigravityHiModelNonSdk'] != null)) {
+        if (newAntigravityHiModel != null &&
+            newAntigravityHiModel.trim().isNotEmpty) {
+          await prefs.setString(
+              'antigravity_hi_model', newAntigravityHiModel.trim());
         } else {
-            await prefs.remove('antigravity_hi_model');
+          await prefs.remove('antigravity_hi_model');
         }
       }
 
       // Available models list — may come from the CLI tab field or the Desktop tab's unique field name.
-      if ((values.containsKey('antigravityAvailableModels') && values['antigravityAvailableModels'] != null) ||
-          (values.containsKey('antigravityAvailableModelsDesktop') && values['antigravityAvailableModelsDesktop'] != null)) {
-        if (newAntigravityAvailableModels != null && newAntigravityAvailableModels.trim().isNotEmpty) {
-            await prefs.setString('antigravity_available_models', newAntigravityAvailableModels.trim());
+      if ((values.containsKey('antigravityAvailableModels') &&
+              values['antigravityAvailableModels'] != null) ||
+          (values.containsKey('antigravityAvailableModelsDesktop') &&
+              values['antigravityAvailableModelsDesktop'] != null)) {
+        if (newAntigravityAvailableModels != null &&
+            newAntigravityAvailableModels.trim().isNotEmpty) {
+          await prefs.setString('antigravity_available_models',
+              newAntigravityAvailableModels.trim());
         } else {
-            await prefs.remove('antigravity_available_models');
+          await prefs.remove('antigravity_available_models');
         }
       }
 
-      if (values.containsKey('antigravityTargetWindowTitle') && values['antigravityTargetWindowTitle'] != null) {
-        if (newAntigravityTargetWindowTitle != null && newAntigravityTargetWindowTitle.trim().isNotEmpty) {
-            await prefs.setString('antigravity_target_window_title', newAntigravityTargetWindowTitle.trim());
+      if (values.containsKey('antigravityTargetWindowTitle') &&
+          values['antigravityTargetWindowTitle'] != null) {
+        if (newAntigravityTargetWindowTitle != null &&
+            newAntigravityTargetWindowTitle.trim().isNotEmpty) {
+          await prefs.setString('antigravity_target_window_title',
+              newAntigravityTargetWindowTitle.trim());
         } else {
-            await prefs.remove('antigravity_target_window_title');
+          await prefs.remove('antigravity_target_window_title');
         }
       }
 
-      if (values.containsKey('antigravityFocusMacroName') && values['antigravityFocusMacroName'] != null) {
-        if (newAntigravityFocusMacroName != null && newAntigravityFocusMacroName.trim().isNotEmpty) {
-            await prefs.setString('antigravity_focus_macro_name', newAntigravityFocusMacroName.trim());
+      if (values.containsKey('antigravityFocusMacroName') &&
+          values['antigravityFocusMacroName'] != null) {
+        if (newAntigravityFocusMacroName != null &&
+            newAntigravityFocusMacroName.trim().isNotEmpty) {
+          await prefs.setString('antigravity_focus_macro_name',
+              newAntigravityFocusMacroName.trim());
         } else {
-            await prefs.remove('antigravity_focus_macro_name');
+          await prefs.remove('antigravity_focus_macro_name');
         }
       }
 
-      final newAntigravityHandsfreeAutoExecute = values.containsKey('antigravityHandsfreeAutoExecute') ? values['antigravityHandsfreeAutoExecute'] == true : _antigravityHandsfreeAutoExecute;
-      await prefs.setBool('antigravity_handsfree_auto_execute', newAntigravityHandsfreeAutoExecute);
+      final newAntigravityHandsfreeAutoExecute =
+          values.containsKey('antigravityHandsfreeAutoExecute')
+              ? values['antigravityHandsfreeAutoExecute'] == true
+              : _antigravityHandsfreeAutoExecute;
+      await prefs.setBool('antigravity_handsfree_auto_execute',
+          newAntigravityHandsfreeAutoExecute);
 
       final newAiTasksDelaySeconds = values.containsKey('aiTasksDelaySeconds')
-          ? double.tryParse(values['aiTasksDelaySeconds'].toString()) ?? _aiTasksDelaySeconds
+          ? double.tryParse(values['aiTasksDelaySeconds'].toString()) ??
+              _aiTasksDelaySeconds
           : _aiTasksDelaySeconds;
       await prefs.setDouble('ai_tasks_delay_seconds', newAiTasksDelaySeconds);
 
-      final newAntigravityStatusDebug = values.containsKey('antigravityStatusDebug') ? values['antigravityStatusDebug'] == true : _antigravityStatusDebug;
-      await prefs.setBool('antigravity_status_debug', newAntigravityStatusDebug);
+      final newAntigravityStatusDebug =
+          values.containsKey('antigravityStatusDebug')
+              ? values['antigravityStatusDebug'] == true
+              : _antigravityStatusDebug;
+      await prefs.setBool(
+          'antigravity_status_debug', newAntigravityStatusDebug);
 
-      final newAntigravitySendViaClipboard = values.containsKey('antigravitySendViaClipboard') ? values['antigravitySendViaClipboard'] == true : _antigravitySendViaClipboard;
-      AiBridgeService.instance.setSendViaClipboard(newAntigravitySendViaClipboard);
+      final newAntigravitySendViaClipboard =
+          values.containsKey('antigravitySendViaClipboard')
+              ? values['antigravitySendViaClipboard'] == true
+              : _antigravitySendViaClipboard;
+      AiBridgeService.instance
+          .setSendViaClipboard(newAntigravitySendViaClipboard);
 
       if (mounted) {
-         setState(() {
-            _primaryStorageUrl = newUrl;
-            _localRepositoryPath = newLocalRepo;
-            _backupDirectoryPath = newBackupDir;
-            _simulatorWidth = newSimWidth;
-            _simulatorHeight = newSimHeight;
-            _previewWidth = newPreviewWidth;
-            _previewHeight = newPreviewHeight;
-            _previewAspectRatio = newPreviewAspectRatio;
-            _openAiApiKey = newOpenAIApiKey;
-            _githubToken = newGithubToken;
-            _toolWindowOpacity = newOpacity;
+        setState(() {
+          _primaryStorageUrl = newUrl;
+          _localRepositoryPath = newLocalRepo;
+          _backupDirectoryPath = newBackupDir;
+          _simulatorWidth = newSimWidth;
+          _simulatorHeight = newSimHeight;
+          _previewWidth = newPreviewWidth;
+          _previewHeight = newPreviewHeight;
+          _previewAspectRatio = newPreviewAspectRatio;
+          _openAiApiKey = newOpenAIApiKey;
+          _githubToken = newGithubToken;
+          _toolWindowOpacity = newOpacity;
 
+          _rootFontSize = newRootFontSize;
+          _iconFontSize = newIconFontSize;
+          _globalActionIconSize = newGlobalActionIconSize;
+          _iconFontBold = newIconFontBold;
+          _windowTitleUppercase = newWindowTitleUppercase;
+          _windowTitleBold = newWindowTitleBold;
+          _iconOutlineWidth = newIconOutlineWidth;
+          _textOutlineWidth = newTextOutlineWidth;
+          _titleBarHeight = newTitleBarHeight;
+          _windowBorderRadius = newBorderRadius;
+          _windowBorderWidth = newBorderWidth;
+          AppUIConfig.iconOutlineWidth = newIconOutlineWidth;
+          AppUIConfig.textOutlineWidth = newTextOutlineWidth;
+          AppUIConfig.titleBarHeight = newTitleBarHeight;
+          AppUIConfig.windowBorderRadius = newBorderRadius;
+          AppUIConfig.windowBorderWidth = newBorderWidth;
+          _queueClearCompletedMinutes = newClearCompleted;
+          _agentRules = newAgentRules;
+          _projectSummary = newProjectSummary;
+          _antigravityBaseUrl = newAntigravityBaseUrl;
+          _antigravityBridgeMode = newAntigravityBridgeMode;
+          _antigravityInvokeEndpoint = newAntigravityInvokeEndpoint;
+          _antigravityPromptEndpoint = newAntigravityPromptEndpoint;
+          _antigravityStartupCommand = newAntigravityStartupCommand;
+          _antigravityModel = newAntigravityModel;
+          _antigravityLoModel = newAntigravityLoModel;
+          _antigravityHiModel = newAntigravityHiModel;
+          _antigravityAvailableModels = newAntigravityAvailableModels;
+          _antigravityApiKey = newAntigravityApiKey;
+          _antigravityStatusDebug = newAntigravityStatusDebug;
+          _antigravitySendViaClipboard = newAntigravitySendViaClipboard;
+          _antigravityTargetWindowTitle = newAntigravityTargetWindowTitle;
+          _antigravityFocusMacroName = newAntigravityFocusMacroName;
+          _antigravityHandsfreeAutoExecute = newAntigravityHandsfreeAutoExecute;
+          _aiTasksDelaySeconds = newAiTasksDelaySeconds;
+          _versionControlRepoUrl = newVersionControlRepoUrl;
+          _ollamaBaseUrl = newOllamaBaseUrl;
+          _ollamaModel = newOllamaModel;
+          _ollamaTimeoutMs = newOllamaTimeoutMs;
+          _ollamaClarityPrompt = newOllamaClarityPrompt;
+          _ollamaRewritePrompt = newOllamaRewritePrompt;
+          _ollamaGenerateTaskPrompt = newOllamaGenerateTaskPrompt;
 
+          // _albumFolderIds, _tagsFolderId, _languagesFolderId remain synchronously updated.
+        });
 
-
-
-
-            _rootFontSize = newRootFontSize;
-            _iconFontSize = newIconFontSize;
-            _globalActionIconSize = newGlobalActionIconSize;
-            _iconFontBold = newIconFontBold;
-            _windowTitleUppercase = newWindowTitleUppercase;
-            _windowTitleBold = newWindowTitleBold;
-            _iconOutlineWidth = newIconOutlineWidth;
-            _textOutlineWidth = newTextOutlineWidth;
-            _titleBarHeight = newTitleBarHeight;
-            _windowBorderRadius = newBorderRadius;
-            _windowBorderWidth = newBorderWidth;
-            AppUIConfig.iconOutlineWidth = newIconOutlineWidth;
-            AppUIConfig.textOutlineWidth = newTextOutlineWidth;
-            AppUIConfig.titleBarHeight = newTitleBarHeight;
-            AppUIConfig.windowBorderRadius = newBorderRadius;
-            AppUIConfig.windowBorderWidth = newBorderWidth;
-            _queueClearCompletedMinutes = newClearCompleted;
-            _agentRules = newAgentRules;
-            _projectSummary = newProjectSummary;
-            _antigravityBaseUrl = newAntigravityBaseUrl;
-            _antigravityBridgeMode = newAntigravityBridgeMode;
-            _antigravityInvokeEndpoint = newAntigravityInvokeEndpoint;
-            _antigravityPromptEndpoint = newAntigravityPromptEndpoint;
-            _antigravityStartupCommand = newAntigravityStartupCommand;
-            _antigravityModel = newAntigravityModel;
-            _antigravityLoModel = newAntigravityLoModel;
-            _antigravityHiModel = newAntigravityHiModel;
-            _antigravityAvailableModels = newAntigravityAvailableModels;
-            _antigravityApiKey = newAntigravityApiKey;
-            _antigravityStatusDebug = newAntigravityStatusDebug;
-            _antigravitySendViaClipboard = newAntigravitySendViaClipboard;
-            _antigravityTargetWindowTitle = newAntigravityTargetWindowTitle;
-            _antigravityFocusMacroName = newAntigravityFocusMacroName;
-            _antigravityHandsfreeAutoExecute = newAntigravityHandsfreeAutoExecute;
-            _aiTasksDelaySeconds = newAiTasksDelaySeconds;
-            _versionControlRepoUrl = newVersionControlRepoUrl;
-            _ollamaBaseUrl = newOllamaBaseUrl;
-            _ollamaModel = newOllamaModel;
-            _ollamaTimeoutMs = newOllamaTimeoutMs;
-            _ollamaClarityPrompt = newOllamaClarityPrompt;
-            _ollamaRewritePrompt = newOllamaRewritePrompt;
-            _ollamaGenerateTaskPrompt = newOllamaGenerateTaskPrompt;
-
-            // _albumFolderIds, _tagsFolderId, _languagesFolderId remain synchronously updated.
-         });
-         
-          await _updateActiveThemeAndSave();
-          await LocalAiService.instance.loadConfig();
-          try {
-            await AiBridgeService.instance.updateAntigravityConfig();
-            if (mounted) {
-              setState(() {
-                _modelsFuture = AntigravityClient().models.list();
-              });
-            }
-          } catch (e) {
-            debugPrint('[ProjectConfigurationPanel] Error updating active Antigravity config: $e');
+        await _updateActiveThemeAndSave();
+        await LocalAiService.instance.loadConfig();
+        try {
+          await AiBridgeService.instance.updateAntigravityConfig();
+          if (mounted) {
+            setState(() {
+              _modelsFuture = AntigravityClient().models.list();
+            });
           }
+        } catch (e) {
+          debugPrint(
+              '[ProjectConfigurationPanel] Error updating active Antigravity config: $e');
+        }
 
-         // Trigger the global notifier so all tool windows instantly repaint with new opacity
-         VisualEditorScreen.configRefreshNotifier.value++;
+        // Trigger the global notifier so all tool windows instantly repaint with new opacity
+        VisualEditorScreen.configRefreshNotifier.value++;
 
-         if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Project configuration auto-saved'), backgroundColor: Colors.green, duration: Duration(seconds: 1))
-           );
-         }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Project configuration auto-saved'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 1)));
+        }
       }
     }
   }
 
   Future<void> _moveLocalRepository(String oldPath, String newPath) async {
-     try {
-        final srcDir = Directory(oldPath);
-        final destDir = Directory(newPath);
+    try {
+      final srcDir = Directory(oldPath);
+      final destDir = Directory(newPath);
 
-        if (!await srcDir.exists()) return;
-        if (srcDir.absolute.path == destDir.absolute.path) return;
-        
-        // CRITICAL SAFETY GUARD: Never allow the internal Flutter assets directory to be moved
-        final normalizedSrcPath = srcDir.absolute.path.replaceAll('\\', '/');
-        if (normalizedSrcPath.endsWith('Project/assets') || normalizedSrcPath.endsWith('Project/assets/')) {
-            debugPrint('Safety guard prevented migration of internal Flutter assets directory.');
-            return;
-        }
+      if (!await srcDir.exists()) return;
+      if (srcDir.absolute.path == destDir.absolute.path) return;
 
-        if (!await destDir.parent.exists()) {
-           await destDir.parent.create(recursive: true);
-        }
+      // CRITICAL SAFETY GUARD: Never allow the internal Flutter assets directory to be moved
+      final normalizedSrcPath = srcDir.absolute.path.replaceAll('\\', '/');
+      if (normalizedSrcPath.endsWith('Project/assets') ||
+          normalizedSrcPath.endsWith('Project/assets/')) {
+        debugPrint(
+            'Safety guard prevented migration of internal Flutter assets directory.');
+        return;
+      }
 
-        try {
-           // If destination was freshly created or exists emptied, rename will fail if it literally exists as a folder on Windows.
-           if (await destDir.exists()) await destDir.delete(recursive: true);
-           await srcDir.rename(destDir.path);
-        } catch (_) {
-           // Cross-device link fallback via explicit recursive copy
-           await _copyDirectory(srcDir, destDir);
-           await srcDir.delete(recursive: true);
-        }
-     } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to migrate repository files: $e'), backgroundColor: Colors.red));
-     }
+      if (!await destDir.parent.exists()) {
+        await destDir.parent.create(recursive: true);
+      }
+
+      try {
+        // If destination was freshly created or exists emptied, rename will fail if it literally exists as a folder on Windows.
+        if (await destDir.exists()) await destDir.delete(recursive: true);
+        await srcDir.rename(destDir.path);
+      } catch (_) {
+        // Cross-device link fallback via explicit recursive copy
+        await _copyDirectory(srcDir, destDir);
+        await srcDir.delete(recursive: true);
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Failed to migrate repository files: $e'),
+            backgroundColor: Colors.red));
+    }
   }
 
   Future<void> _copyDirectory(Directory source, Directory destination) async {
-      if (!await destination.exists()) await destination.create(recursive: true);
-      
-      await for (var entity in source.list(recursive: false)) {
-          final itemName = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
-          final newPath = '${destination.absolute.path}${Platform.pathSeparator}$itemName';
-          
-          if (entity is Directory) {
-             var newDirectory = Directory(newPath);
-             await newDirectory.create(recursive: true);
-             await _copyDirectory(entity, newDirectory);
-          } else if (entity is File) {
-             await entity.copy(newPath);
-          }
+    if (!await destination.exists()) await destination.create(recursive: true);
+
+    await for (var entity in source.list(recursive: false)) {
+      final itemName = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      final newPath =
+          '${destination.absolute.path}${Platform.pathSeparator}$itemName';
+
+      if (entity is Directory) {
+        var newDirectory = Directory(newPath);
+        await newDirectory.create(recursive: true);
+        await _copyDirectory(entity, newDirectory);
+      } else if (entity is File) {
+        await entity.copy(newPath);
       }
+    }
   }
 
   Future<void> _syncLocalRepository() async {
-      final currentValues = _formKey.currentState?.value ?? {};
-      String baseDir = currentValues['localRepositoryPath'] as String? ?? '';
-      if (baseDir.trim().isEmpty) {
-          final prefs = await SharedPreferences.getInstance();
-          baseDir = prefs.getString('project_local_repository_path') ?? '';
-      }
-      baseDir = baseDir.trim();
-      if (baseDir.endsWith('/') || baseDir.endsWith('\\')) baseDir = baseDir.substring(0, baseDir.length - 1);
+    final currentValues = _formKey.currentState?.value ?? {};
+    String baseDir = currentValues['localRepositoryPath'] as String? ?? '';
+    if (baseDir.trim().isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      baseDir = prefs.getString('project_local_repository_path') ?? '';
+    }
+    baseDir = baseDir.trim();
+    if (baseDir.endsWith('/') || baseDir.endsWith('\\'))
+      baseDir = baseDir.substring(0, baseDir.length - 1);
+
+    setState(() {
+      _isSyncing = true;
+      _syncProgress = 0;
+      _syncTotal = 0;
+      _syncCurrentFile = 'Initializing...';
+    });
+
+    try {
+      final dao = context.read<AssetsDao>();
+      final allAssets = await dao.select(dao.assets).get();
+
+      final Map<int, Asset> mapById = {for (var a in allAssets) a.id: a};
+      final filesToSync = allAssets
+          .where((a) => a.type == 'FILE' && a.storagePath != null)
+          .toList();
 
       setState(() {
-          _isSyncing = true;
-          _syncProgress = 0;
-          _syncTotal = 0;
-          _syncCurrentFile = 'Initializing...';
+        _syncTotal = filesToSync.length;
       });
 
-      try {
-          final dao = context.read<AssetsDao>();
-          final allAssets = await dao.select(dao.assets).get();
-          
-          final Map<int, Asset> mapById = { for(var a in allAssets) a.id : a };
-          final filesToSync = allAssets.where((a) => a.type == 'FILE' && a.storagePath != null).toList();
-          
-          setState(() {
-             _syncTotal = filesToSync.length;
-          });
+      int successCount = 0;
+      for (final asset in filesToSync) {
+        setState(() => _syncCurrentFile = asset.name);
 
-          int successCount = 0;
-          for (final asset in filesToSync) {
-              setState(() => _syncCurrentFile = asset.name);
-              
-              // Build hierarchy path
-              List<String> folderNames = [];
-              int? currParent = asset.parentId;
-              while (currParent != null) {
-                 final parentFolder = mapById[currParent];
-                 if (parentFolder != null) {
-                    folderNames.add(parentFolder.name);
-                    currParent = parentFolder.parentId;
-                 } else {
-                    break;
-                 }
-              }
-              
-              String targetUri = baseDir;
-              for (final fName in folderNames.reversed) {
-                 targetUri += '\\$fName';
-              }
-              
-              final fileCheck = File('$targetUri\\${asset.name}');
-              bool outOfSync = false;
-
-              if (!await fileCheck.exists()) {
-                  outOfSync = true;
-              } else {
-                  final localLength = await fileCheck.length();
-                  if (asset.sizeBytes != null && localLength != asset.sizeBytes!) {
-                      outOfSync = true;
-                  } else if (asset.updatedAt != null) {
-                      final localMod = await fileCheck.lastModified();
-                      // Use a 5-second buffer to prevent micro-millisecond mismatches causing endless syncs
-                      if (localMod.millisecondsSinceEpoch < (asset.updatedAt! - 5000)) {
-                          outOfSync = true;
-                      }
-                  }
-              }
-
-              if (outOfSync) {
-                  if (!await fileCheck.parent.exists()) await fileCheck.parent.create(recursive: true);
-                  try {
-                      final bytes = await Supabase.instance.client.storage.from('tenant-assets').download(asset.storagePath!);
-                      await fileCheck.writeAsBytes(bytes);
-                      successCount++;
-                  } catch(e) {
-                      debugPrint('Sync failed for ${asset.name}: $e');
-                  }
-              }
-              setState(() => _syncProgress++);
+        // Build hierarchy path
+        List<String> folderNames = [];
+        int? currParent = asset.parentId;
+        while (currParent != null) {
+          final parentFolder = mapById[currParent];
+          if (parentFolder != null) {
+            folderNames.add(parentFolder.name);
+            currParent = parentFolder.parentId;
+          } else {
+            break;
           }
-          
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sync Complete! $successCount missing files downloaded natively.'), backgroundColor: Colors.green));
-          
-      } catch(e) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sync failed catastrophically: $e'), backgroundColor: Colors.red));
-      } finally {
-          setState(() => _isSyncing = false);
+        }
+
+        String targetUri = baseDir;
+        for (final fName in folderNames.reversed) {
+          targetUri += '\\$fName';
+        }
+
+        final fileCheck = File('$targetUri\\${asset.name}');
+        bool outOfSync = false;
+
+        if (!await fileCheck.exists()) {
+          outOfSync = true;
+        } else {
+          final localLength = await fileCheck.length();
+          if (asset.sizeBytes != null && localLength != asset.sizeBytes!) {
+            outOfSync = true;
+          } else if (asset.updatedAt != null) {
+            final localMod = await fileCheck.lastModified();
+            // Use a 5-second buffer to prevent micro-millisecond mismatches causing endless syncs
+            if (localMod.millisecondsSinceEpoch < (asset.updatedAt! - 5000)) {
+              outOfSync = true;
+            }
+          }
+        }
+
+        if (outOfSync) {
+          if (!await fileCheck.parent.exists())
+            await fileCheck.parent.create(recursive: true);
+          try {
+            final bytes = await Supabase.instance.client.storage
+                .from('tenant-assets')
+                .download(asset.storagePath!);
+            await fileCheck.writeAsBytes(bytes);
+            successCount++;
+          } catch (e) {
+            debugPrint('Sync failed for ${asset.name}: $e');
+          }
+        }
+        setState(() => _syncProgress++);
       }
+
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                'Sync Complete! $successCount missing files downloaded natively.'),
+            backgroundColor: Colors.green));
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Sync failed catastrophically: $e'),
+            backgroundColor: Colors.red));
+    } finally {
+      setState(() => _isSyncing = false);
+    }
   }
 
   void _showError(String message) {
@@ -1313,12 +1681,21 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: AppColors.windowBackground,
-          title: Text('Version Control Error', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize * 1.2)),
-          content: Text(message, style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize)),
+          title: Text('Version Control Error',
+              style: TextStyle(
+                  color: AppColors.panelTextPrimary,
+                  fontSize: AppUIConfig.rootFontSize * 1.2)),
+          content: Text(message,
+              style: TextStyle(
+                  color: AppColors.panelTextSecondary,
+                  fontSize: AppUIConfig.rootFontSize)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('OK', style: TextStyle(color: AppColors.accent, fontSize: AppUIConfig.rootFontSize)),
+              child: Text('OK',
+                  style: TextStyle(
+                      color: AppColors.accent,
+                      fontSize: AppUIConfig.rootFontSize)),
             )
           ],
         ),
@@ -1328,18 +1705,23 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
 
   void _showSuccess(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message, style: TextStyle(fontSize: AppUIConfig.rootFontSize)), backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(message,
+              style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+          backgroundColor: Colors.green));
     }
   }
 
   Future<void> _handleClone() async {
     final prefs = await SharedPreferences.getInstance();
-    final url = prefs.getString('project_version_control_repo_url')?.trim() ?? '';
+    final url =
+        prefs.getString('project_version_control_repo_url')?.trim() ?? '';
     if (url.isEmpty) {
       _showError('Please configure your GitHub Repository URL first.');
       return;
     }
-    final missing = await VersionControlService.instance.getMissingConfigMessage();
+    final missing =
+        await VersionControlService.instance.getMissingConfigMessage();
     if (missing.isNotEmpty) {
       _showError(missing);
       return;
@@ -1358,12 +1740,14 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
 
   Future<void> _handleSync() async {
     final prefs = await SharedPreferences.getInstance();
-    final url = prefs.getString('project_version_control_repo_url')?.trim() ?? '';
+    final url =
+        prefs.getString('project_version_control_repo_url')?.trim() ?? '';
     if (url.isEmpty) {
       _showError('Please configure your GitHub Repository URL first.');
       return;
     }
-    final missing = await VersionControlService.instance.getMissingConfigMessage();
+    final missing =
+        await VersionControlService.instance.getMissingConfigMessage();
     if (missing.isNotEmpty) {
       _showError(missing);
       return;
@@ -1382,7 +1766,8 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
 
   Future<void> _handleTestState() async {
     final prefs = await SharedPreferences.getInstance();
-    final url = prefs.getString('project_version_control_repo_url')?.trim() ?? '';
+    final url =
+        prefs.getString('project_version_control_repo_url')?.trim() ?? '';
     if (url.isEmpty) {
       _showError('Please configure your GitHub Repository URL first.');
       return;
@@ -1395,12 +1780,22 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           context: context,
           builder: (ctx) => AlertDialog(
             backgroundColor: AppColors.windowBackground,
-            title: Text('GitHub Diagnostic State', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize * 1.2)),
-            content: SelectableText(res, style: TextStyle(color: Colors.lightBlueAccent, fontFamily: 'monospace', fontSize: AppUIConfig.rootFontSize)),
+            title: Text('GitHub Diagnostic State',
+                style: TextStyle(
+                    color: AppColors.panelTextPrimary,
+                    fontSize: AppUIConfig.rootFontSize * 1.2)),
+            content: SelectableText(res,
+                style: TextStyle(
+                    color: Colors.lightBlueAccent,
+                    fontFamily: 'monospace',
+                    fontSize: AppUIConfig.rootFontSize)),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: Text('OK', style: TextStyle(color: AppColors.accent, fontSize: AppUIConfig.rootFontSize)),
+                child: Text('OK',
+                    style: TextStyle(
+                        color: AppColors.accent,
+                        fontSize: AppUIConfig.rootFontSize)),
               )
             ],
           ),
@@ -1415,14 +1810,22 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
 
   InputDecoration _inputDecoration([String? label, IconData? icon]) {
     return InputDecoration(
-      floatingLabelBehavior: label != null ? FloatingLabelBehavior.always : null,
+      floatingLabelBehavior:
+          label != null ? FloatingLabelBehavior.always : null,
       labelText: label,
-      labelStyle: label != null ? TextStyle(color: AppColors.accent, fontSize: AppUIConfig.smallFontSize, fontWeight: FontWeight.normal) : null,
+      labelStyle: label != null
+          ? TextStyle(
+              color: AppColors.accent,
+              fontSize: AppUIConfig.smallFontSize,
+              fontWeight: FontWeight.normal)
+          : null,
       prefixIcon: icon != null ? Icon(icon, color: Colors.blueGrey) : null,
       filled: true,
       fillColor: AppColors.panelBackground,
       isDense: true,
-      contentPadding: label == null ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12) : null,
+      contentPadding: label == null
+          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+          : null,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius),
         borderSide: BorderSide.none,
@@ -1436,52 +1839,67 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
 
   Future<void> _testAntigravityConnection() async {
     _formKey.currentState?.saveAndValidate();
-    final url = _formKey.currentState?.value['antigravityBaseUrl'] ?? _antigravityBaseUrl ?? 'http://localhost:8080';
-    final startupCmd = _formKey.currentState?.value['antigravityStartupCommand'] ?? _antigravityStartupCommand ?? 'antigravity-server';
+    final url = _formKey.currentState?.value['antigravityBaseUrl'] ??
+        _antigravityBaseUrl ??
+        'http://localhost:8080';
+    final startupCmd =
+        _formKey.currentState?.value['antigravityStartupCommand'] ??
+            _antigravityStartupCommand ??
+            'antigravity-server';
     setState(() => _isTestingAntigravity = true);
-    final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 5), receiveTimeout: const Duration(seconds: 5)));
-    
+    final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 5)));
+
     try {
       final response = await dio.get(url);
       if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Connection Successful: ${response.statusCode}'), backgroundColor: Colors.green));
-         setState(() {
-           _modelsFuture = AntigravityClient().models.list();
-         });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Connection Successful: ${response.statusCode}'),
+            backgroundColor: Colors.green));
+        setState(() {
+          _modelsFuture = AntigravityClient().models.list();
+        });
       }
     } catch (e) {
       // Auto-spawn backend on connection failure
       if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connection Refused. Spawning backend...'), backgroundColor: Colors.orange));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Connection Refused. Spawning backend...'),
+            backgroundColor: Colors.orange));
       }
-      
+
       try {
         await BackendProcessManager().spawnBackend(startupCmd);
-        await Future.delayed(const Duration(seconds: 4)); // Wait for server to bind
-        
+        await Future.delayed(
+            const Duration(seconds: 4)); // Wait for server to bind
+
         final retryResponse = await dio.get(url);
         if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backend Started & Connected: ${retryResponse.statusCode}'), backgroundColor: Colors.green));
-           setState(() {
-             _modelsFuture = AntigravityClient().models.list();
-           });
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                  'Backend Started & Connected: ${retryResponse.statusCode}'),
+              backgroundColor: Colors.green));
+          setState(() {
+            _modelsFuture = AntigravityClient().models.list();
+          });
         }
       } catch (retryError) {
         if (mounted) {
-           final errorString = 'Failed to connect after spawning: $retryError';
-           Clipboard.setData(ClipboardData(text: errorString));
-           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-             content: Text('$errorString (Copied to Clipboard)'), 
-             backgroundColor: Colors.red,
-             duration: const Duration(seconds: 5),
-             action: SnackBarAction(
-               label: 'Copy',
-               textColor: Colors.white,
-               onPressed: () {
-                 Clipboard.setData(ClipboardData(text: errorString));
-               },
-             ),
-           ));
+          final errorString = 'Failed to connect after spawning: $retryError';
+          Clipboard.setData(ClipboardData(text: errorString));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('$errorString (Copied to Clipboard)'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Copy',
+              textColor: Colors.white,
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: errorString));
+              },
+            ),
+          ));
         }
       }
     } finally {
@@ -1491,18 +1909,23 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
 
   Future<List<String>> _fetchOllamaModels() async {
     _formKey.currentState?.saveAndValidate();
-    final url = _formKey.currentState?.value['ollamaBaseUrl'] ?? _ollamaBaseUrl ?? 'http://localhost:11434';
-    final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 4), receiveTimeout: const Duration(seconds: 4)));
+    final url = _formKey.currentState?.value['ollamaBaseUrl'] ??
+        _ollamaBaseUrl ??
+        'http://localhost:11434';
+    final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 4),
+        receiveTimeout: const Duration(seconds: 4)));
     try {
       final response = await dio.get('$url/api/tags');
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
         if (data is Map && data.containsKey('models')) {
           final List modelsList = data['models'] as List;
-          final customAlias = LocalAiService.instance.customModelName.trim().toLowerCase();
+          final customAlias = _ollamaCustomModelName.trim().toLowerCase();
           final List<String> names = modelsList
               .map((m) => (m['name'] ?? m['model'] ?? '').toString())
-              .where((name) => name.isNotEmpty && name.toLowerCase() != customAlias)
+              .where((name) =>
+                  name.isNotEmpty && name.toLowerCase() != customAlias)
               .toList();
           return names;
         }
@@ -1515,34 +1938,37 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
 
   Future<void> _testOllamaConnection() async {
     _formKey.currentState?.saveAndValidate();
-    final url = _formKey.currentState?.value['ollamaBaseUrl'] ?? _ollamaBaseUrl ?? 'http://localhost:11434';
+    final url = _formKey.currentState?.value['ollamaBaseUrl'] ??
+        _ollamaBaseUrl ??
+        'http://localhost:11434';
     setState(() => _isTestingOllama = true);
-    final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 5), receiveTimeout: const Duration(seconds: 5)));
-    
+    final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 5)));
+
     try {
       final response = await dio.get(url);
       if (mounted) {
         if (response.statusCode == 200) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Ollama Connection Successful: ${response.statusCode}'), 
-            backgroundColor: Colors.green
-          ));
+              content:
+                  Text('Ollama Connection Successful: ${response.statusCode}'),
+              backgroundColor: Colors.green));
           setState(() {
             _ollamaModelsFuture = _fetchOllamaModels();
           });
         } else {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Ollama returned status ${response.statusCode}: ${response.data}'), 
-            backgroundColor: Colors.orange
-          ));
+              content: Text(
+                  'Ollama returned status ${response.statusCode}: ${response.data}'),
+              backgroundColor: Colors.orange));
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Failed to connect to Ollama: $e'), 
-          backgroundColor: Colors.red
-        ));
+            content: Text('Failed to connect to Ollama: $e'),
+            backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) setState(() => _isTestingOllama = false);
@@ -1552,8 +1978,17 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   Future<void> _buildCustomOllamaModel() async {
     _formKey.currentState?.saveAndValidate();
     final values = _formKey.currentState?.value ?? {};
-    final modelName = (values['ollamaCustomModelName'] as String? ?? 'gorilla-engine').trim();
-    final baseModel = (values['ollamaModel'] as String? ?? _ollamaModel ?? 'qwen2.5:3b').trim();
+    final modelName =
+        (values['ollamaCustomModelName'] as String? ?? 'gorilla-engine').trim();
+    final baseModel =
+        (values['ollamaModel'] as String? ?? _ollamaModel ?? 'qwen2.5:3b')
+            .trim();
+    final contextLength = int.tryParse(
+            (values['ollamaCustomModelContextLength'] ?? '').toString()) ??
+        4096;
+    final summaryTrimLength = int.tryParse(
+            (values['ollamaCustomModelSummaryTrimLength'] ?? '').toString()) ??
+        3000;
 
     if (modelName.isEmpty) return;
 
@@ -1562,16 +1997,20 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       _buildModelMessage = null;
     });
 
-    final error = await LocalAiService.instance.buildAndInstallModelfile(modelName, baseModel);
+    LocalAiService.instance.customModelContextLength = contextLength;
+    LocalAiService.instance.customModelSummaryTrimLength = summaryTrimLength;
+    final error = await LocalAiService.instance
+        .buildAndInstallModelfile(modelName, baseModel);
 
     if (mounted) {
       setState(() {
         _isBuildingModel = false;
         _buildModelSuccess = error == null;
         _buildModelMessage = error == null
-            ? 'Model "$modelName" created successfully. Select it in the Model Name dropdown to use it.'
+            ? 'Model "$modelName" created successfully.'
             : 'Build failed: $error';
         if (error == null) {
+          _ollamaCustomModelName = modelName;
           // Refresh the model dropdown so the new model appears
           _ollamaModelsFuture = _fetchOllamaModels();
         }
@@ -1582,20 +2021,23 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   Future<void> _buildProjectSummary() async {
     _formKey.currentState?.save();
     final values = _formKey.currentState?.value;
-    final summaryText = values?['projectSummary'] as String? ?? _projectSummary ?? '';
-    
+    final summaryText =
+        values?['projectSummary'] as String? ?? _projectSummary ?? '';
+
     try {
       final file = File('PROJECT_SUMMARY.md');
       await file.writeAsString(summaryText);
-      
+
       // Send the content to the AI Bridge queue
-      final promptText = 'Please save the following project summary document into PROJECT_SUMMARY.md:\n\n$summaryText';
+      final promptText =
+          'Please save the following project summary document into PROJECT_SUMMARY.md:\n\n$summaryText';
       await AiBridgeService.instance.sendToQueue(promptText, true);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Project summary built, saved, and sent to AI Bridge!'),
+            content:
+                Text('Project summary built, saved, and sent to AI Bridge!'),
             duration: Duration(seconds: 4),
           ),
         );
@@ -1616,21 +2058,20 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   Future<void> _testCliConnection() async {
     setState(() => _isTestingCli = true);
     try {
-      final statusMap = await AntigravityStatusService.instance.getHttpBridgeStatus();
+      final statusMap =
+          await AntigravityStatusService.instance.getHttpBridgeStatus();
       if (statusMap != null) {
         final state = (statusMap['status'] ?? 'IDLE').toString();
         final activeJobs = statusMap['active_jobs'] ?? 0;
-        
+
         // Also verify the SDK connection (checking binary path, CSRF token, and gRPC connection)
         try {
           final models = await AntigravityClient().models.list();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(
-                'CLI Connected successfully!\n'
-                'HTTP Bridge: Online (State: $state, Active Jobs: $activeJobs)\n'
-                'SDK Status: Connected (${models.length} models available)'
-              ),
+              content: Text('CLI Connected successfully!\n'
+                  'HTTP Bridge: Online (State: $state, Active Jobs: $activeJobs)\n'
+                  'SDK Status: Connected (${models.length} models available)'),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 5),
             ));
@@ -1639,28 +2080,30 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(
-                'HTTP Bridge is online (State: $state), but SDK connection failed.\n'
-                'Error: $sdkError\n'
-                'Please check your CSRF Token or binary path configuration.'
-              ),
+                  'HTTP Bridge is online (State: $state), but SDK connection failed.\n'
+                  'Error: $sdkError\n'
+                  'Please check your CSRF Token or binary path configuration.'),
               backgroundColor: Colors.orange,
               duration: const Duration(seconds: 6),
             ));
           }
         }
       } else {
-        final processRunning = await AntigravityStatusService.instance.isProcessRunning();
+        final processRunning =
+            await AntigravityStatusService.instance.isProcessRunning();
         if (mounted) {
           if (processRunning) {
             final url = await AntigravityStatusService.instance.getBridgeUrl();
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('CLI daemon process is running, but HTTP bridge ($url) is unresponsive.'),
+              content: Text(
+                  'CLI daemon process is running, but HTTP bridge ($url) is unresponsive.'),
               backgroundColor: Colors.orange,
               duration: const Duration(seconds: 4),
             ));
           } else {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('CLI daemon is offline. Start it in your project folder using "agy ."'),
+              content: Text(
+                  'CLI daemon is offline. Start it in your project folder using "agy ."'),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 5),
             ));
@@ -1692,10 +2135,12 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
             } else if (subIndex == 1) {
               targetModeStr = 'desktop';
             } else {
-              targetModeStr = _antigravityHandsfreeAutoExecute ? 'handsfree' : 'cli';
+              targetModeStr =
+                  _antigravityHandsfreeAutoExecute ? 'handsfree' : 'cli';
             }
             _antigravityBridgeMode = targetModeStr;
-            _formKey.currentState?.fields['antigravityBridgeMode']?.didChange(targetModeStr);
+            _formKey.currentState?.fields['antigravityBridgeMode']
+                ?.didChange(targetModeStr);
           });
         },
         child: Container(
@@ -1715,7 +2160,8 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           child: Text(
             label,
             style: TextStyle(
-              color: isSelected ? AppColors.accent : AppColors.panelTextSecondary,
+              color:
+                  isSelected ? AppColors.accent : AppColors.panelTextSecondary,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               fontSize: AppUIConfig.rootFontSize * 0.95,
             ),
@@ -1742,7 +2188,8 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       isActive = _antigravityBridgeMode == 'desktop';
       targetModeStr = 'desktop';
     } else if (_aiBridgeSubTabIndex == 2) {
-      isActive = _antigravityBridgeMode == 'cli' || _antigravityBridgeMode == 'handsfree';
+      isActive = _antigravityBridgeMode == 'cli' ||
+          _antigravityBridgeMode == 'handsfree';
       targetModeStr = _antigravityHandsfreeAutoExecute ? 'handsfree' : 'cli';
     }
 
@@ -1764,7 +2211,9 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isActive ? 'Active Integration Mode' : 'Inactive Integration Mode',
+                  isActive
+                      ? 'Active Integration Mode'
+                      : 'Inactive Integration Mode',
                   style: TextStyle(
                     color: isActive ? AppColors.accent : Colors.grey,
                     fontSize: AppUIConfig.rootFontSize * 0.85,
@@ -1791,13 +2240,15 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
               onPressed: () {
                 setState(() {
                   _antigravityBridgeMode = targetModeStr;
-                  _formKey.currentState?.fields['antigravityBridgeMode']?.didChange(targetModeStr);
+                  _formKey.currentState?.fields['antigravityBridgeMode']
+                      ?.didChange(targetModeStr);
                 });
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.accent.withValues(alpha: 0.15),
                 foregroundColor: AppColors.accent,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 side: BorderSide(color: AppColors.accent, width: 1),
               ),
               child: Text(
@@ -1828,9 +2279,18 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   List<String> _getParsedAvailableModels() {
     final raw = _antigravityAvailableModels ?? '';
     if (raw.trim().isEmpty) {
-      return ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-pro', 'gemini-3.5-flash'];
+      return [
+        'gemini-2.0-flash-lite',
+        'gemini-2.0-flash',
+        'gemini-2.0-pro',
+        'gemini-3.5-flash'
+      ];
     }
-    return raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    return raw
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
   }
 
   Widget _buildLoHiDropdownsForNonSdk() {
@@ -1839,57 +2299,69 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
     // to avoid collisions with the SDK tab's 'antigravityLoModel' / 'antigravityHiModel'
     // fields that are already registered in the same FormBuilder scope.
     final hasLoSelection = models.contains(_antigravityLoModel);
-    final initialLo = hasLoSelection ? _antigravityLoModel : (models.isNotEmpty ? models.first : 'gemini-2.0-flash-lite');
-    
+    final initialLo = hasLoSelection
+        ? _antigravityLoModel
+        : (models.isNotEmpty ? models.first : 'gemini-2.0-flash-lite');
+
     final hasHiSelection = models.contains(_antigravityHiModel);
-    final initialHi = hasHiSelection ? _antigravityHiModel : (models.isNotEmpty ? models.last : 'gemini-2.0-flash');
+    final initialHi = hasHiSelection
+        ? _antigravityHiModel
+        : (models.isNotEmpty ? models.last : 'gemini-2.0-flash');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildLabeled('LO Model (economy tier)', Icons.trending_down, FormBuilderDropdown<String>(
-          name: 'antigravityLoModelNonSdk',
-          decoration: _inputDecoration(),
-          dropdownColor: AppColors.panelBackground,
-          initialValue: initialLo,
-          onChanged: (val) {
-            if (val != null) {
-              setState(() => _antigravityLoModel = val);
-              _onFormChanged();
-            }
-          },
-          onSaved: (val) {
-            if (val != null) _antigravityLoModel = val;
-          },
-          items: models.map((m) {
-            return DropdownMenuItem(
-              value: m,
-              child: Text(m, style: TextStyle(color: AppColors.panelTextPrimary)),
-            );
-          }).toList(),
-        )),
+        _buildLabeled(
+            'LO Model (economy tier)',
+            Icons.trending_down,
+            FormBuilderDropdown<String>(
+              name: 'antigravityLoModelNonSdk',
+              decoration: _inputDecoration(),
+              dropdownColor: AppColors.panelBackground,
+              initialValue: initialLo,
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _antigravityLoModel = val);
+                  _onFormChanged();
+                }
+              },
+              onSaved: (val) {
+                if (val != null) _antigravityLoModel = val;
+              },
+              items: models.map((m) {
+                return DropdownMenuItem(
+                  value: m,
+                  child: Text(m,
+                      style: TextStyle(color: AppColors.panelTextPrimary)),
+                );
+              }).toList(),
+            )),
         const SizedBox(height: 16),
-        _buildLabeled('HI Model (power tier)', Icons.trending_up, FormBuilderDropdown<String>(
-          name: 'antigravityHiModelNonSdk',
-          decoration: _inputDecoration(),
-          dropdownColor: AppColors.panelBackground,
-          initialValue: initialHi,
-          onChanged: (val) {
-            if (val != null) {
-              setState(() => _antigravityHiModel = val);
-              _onFormChanged();
-            }
-          },
-          onSaved: (val) {
-            if (val != null) _antigravityHiModel = val;
-          },
-          items: models.map((m) {
-            return DropdownMenuItem(
-              value: m,
-              child: Text(m, style: TextStyle(color: AppColors.panelTextPrimary)),
-            );
-          }).toList(),
-        )),
+        _buildLabeled(
+            'HI Model (power tier)',
+            Icons.trending_up,
+            FormBuilderDropdown<String>(
+              name: 'antigravityHiModelNonSdk',
+              decoration: _inputDecoration(),
+              dropdownColor: AppColors.panelBackground,
+              initialValue: initialHi,
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _antigravityHiModel = val);
+                  _onFormChanged();
+                }
+              },
+              onSaved: (val) {
+                if (val != null) _antigravityHiModel = val;
+              },
+              items: models.map((m) {
+                return DropdownMenuItem(
+                  value: m,
+                  child: Text(m,
+                      style: TextStyle(color: AppColors.panelTextPrimary)),
+                );
+              }).toList(),
+            )),
       ],
     );
   }
@@ -1904,7 +2376,11 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           children: [
             Icon(icon, size: 14, color: AppColors.accent),
             const SizedBox(width: 6),
-            Flexible(child: Text(label, style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize))),
+            Flexible(
+                child: Text(label,
+                    style: TextStyle(
+                        color: AppColors.panelTextSecondary,
+                        fontSize: AppUIConfig.rootFontSize))),
           ],
         ),
         const SizedBox(height: 8),
@@ -1916,22 +2392,34 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   Widget _buildTabBtn(int index, String label) {
     bool isSelected = _savedTabIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _savedTabIndex = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        margin: const EdgeInsets.only(right: 4),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: isSelected ? AppColors.accent : Colors.transparent, width: 2)),
-        ),
-        child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: isSelected ? AppColors.accent : AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-      )
-    );
+        onTap: () => setState(() => _savedTabIndex = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
+            border: Border(
+                bottom: BorderSide(
+                    color: isSelected ? AppColors.accent : Colors.transparent,
+                    width: 2)),
+          ),
+          child: Text(label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: isSelected
+                      ? AppColors.accent
+                      : AppColors.panelTextSecondary,
+                  fontSize: AppUIConfig.rootFontSize,
+                  fontWeight:
+                      isSelected ? FontWeight.bold : FontWeight.normal)),
+        ));
   }
 
   @override
   Widget build(BuildContext context) {
-    Widget buildColorCard(String label, Color displayColor, VoidCallback onTap) {
-      String hexString = '#${displayColor.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+    Widget buildColorCard(
+        String label, Color displayColor, VoidCallback onTap) {
+      String hexString =
+          '#${displayColor.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
       return InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
@@ -1951,9 +2439,15 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(label, style: TextStyle(color: AppColors.panelTextPrimary, fontWeight: FontWeight.w600, fontSize: 14)),
+                    Text(label,
+                        style: TextStyle(
+                            color: AppColors.panelTextPrimary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
                     const SizedBox(height: 4),
-                    Text(hexString, style: TextStyle(color: AppColors.panelTextSecondary, fontSize: 12)),
+                    Text(hexString,
+                        style: TextStyle(
+                            color: AppColors.panelTextSecondary, fontSize: 12)),
                   ],
                 ),
               ),
@@ -1971,119 +2465,140 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
         ),
       );
     }
+
     if (_isLoading) {
-       return Center(child: CircularProgressIndicator());
+      return Center(child: CircularProgressIndicator());
     }
 
     final allWorkspaces = AppWorkspaces.available;
 
     return Container(
-        color: Colors.transparent,
-        padding: const EdgeInsets.all(16.0),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: double.infinity),
-            child: FormBuilder(
-              key: _formKey,
-              onChanged: _onFormChanged,
-              initialValue: {
-                'primaryStorageUrl': _primaryStorageUrl ?? '',
-                'localRepositoryPath': _localRepositoryPath ?? '',
-                'backupDirectoryPath': _backupDirectoryPath ?? '',
-                'albumFolderIds': _albumFolderIds,
-                'tagsFolderId': _tagsFolderId,
-                'languagesFolderId': _languagesFolderId,
-                'simulatorWidth': _simulatorWidth.toInt().toString(),
-                'simulatorHeight': _simulatorHeight.toInt().toString(),
-                'previewWidth': _previewWidth.toInt().toString(),
-                'previewHeight': _previewHeight.toInt().toString(),
-                'previewAspectRatio': _previewAspectRatio,
-                'openAiApiKey': _openAiApiKey ?? '',
-                'githubToken': _githubToken ?? '',
-                'toolWindowOpacity': _toolWindowOpacity,
-                  
-                  
-                  
-                'rootFontSize': _rootFontSize.toString(),
-                'iconFontSize': _iconFontSize.toString(),
-                'globalActionIconSize': _globalActionIconSize.toString(),
-                'iconFontBold': _iconFontBold,
-                'windowTitleUppercase': _windowTitleUppercase,
-                'windowTitleBold': _windowTitleBold,
-                'iconOutlineWidth': _iconOutlineWidth.toString(),
-                'textOutlineWidth': _textOutlineWidth.toString(),
-                'queueClearCompletedMinutes': _queueClearCompletedMinutes.toString(),
-                'agentRules': _agentRules ?? 'Role: Senior Systems Architect.\nCommunication Style: Minimalist. No greetings, no "I hope this helps," no conversational filler. Output only technical plans, code, or critical status alerts.\nOperational Protocol:\nAlways prioritize Planning Mode before Acting.\nUse the /terminal to verify assumptions; do not guess file structures.\nIf a task is ambiguous, list 3 specific questions and stop.\n\nThe "Focus & Drift" Monitor:\nBefore every task, state the current objective in one sentence.\nIf the current task deviates from the PROJECT_SUMMARY.md goals, flag a "Context Drift Alert" and request realignment.\nError Reduction: Run a "Red Team" check on every code block for null pointers and race conditions before presenting.\n\nThe "State Persistence" Workflow:\nCreate a workflow /sync that:\nScans the last 10 interactions.\nUpdates PROJECT_SUMMARY.md with:\n[Current Architecture]\n[Resolved Blockers]\n[Pending Critical Tasks].\nUpdates BRIDGE_LOGS.md with any API or connectivity changes.\nDeletes outdated \'TODO\' comments in the codebase.\n\nThe "New Chat" Handover:\nGenerate a Handover Manifest. Summarize the current technical state, the specific logic of the AI Bridge we just built, and the exact next step. Format this so I can paste it into a fresh chat to give the new agent 100% context instantly.\n\nAutomated Summary Maintenance:\nUpon completion of any file write or terminal command, automatically append a 1-sentence summary of the change to the CHANGELOG.md and verify it against the PROJECT_SUMMARY.md for consistency.',
-                'projectSummary': _projectSummary ?? '',
-                'antigravityBridgeMode': _antigravityBridgeMode ?? 'sdk',
-                'antigravityBaseUrl': _antigravityBaseUrl ?? 'http://localhost:8080',
-                'antigravityInvokeEndpoint': _antigravityInvokeEndpoint ?? '/api/v1/agents/invoke',
-                'antigravityPromptEndpoint': _antigravityPromptEndpoint ?? '/api/v1/prompt',
-                'antigravityStartupCommand': _antigravityStartupCommand ?? 'antigravity-server',
-                'antigravityApiKey': _antigravityApiKey ?? '',
-                'antigravityAvailableModels': _antigravityAvailableModels ?? 'gemini-2.0-flash-lite, gemini-2.0-flash, gemini-2.0-pro, gemini-3.5-flash',
-                'antigravityLoModel': _antigravityLoModel ?? 'gemini-2.0-flash-lite',
-                'antigravityHiModel': _antigravityHiModel ?? 'gemini-2.0-flash',
-                'antigravityStatusDebug': _antigravityStatusDebug,
-                'antigravitySendViaClipboard': _antigravitySendViaClipboard,
-                'versionControlRepoUrl': _versionControlRepoUrl ?? '',
-              },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _buildTabBtn(0, 'General'),
-                          _buildTabBtn(1, 'Media\nResolution'),
-                          _buildTabBtn(2, 'Remote\nPathing'),
-                          _buildTabBtn(3, 'Native\nIntegration'),
-                          _buildTabBtn(4, 'API\nBindings'),
-                          _buildTabBtn(5, 'Logical\nBindings'),
-                          _buildTabBtn(6, 'Themes'),
-                          _buildTabBtn(7, 'Custom\nWorkspaces'),
-                          _buildTabBtn(8, 'Window\nWorkspaces'),
-                          _buildTabBtn(9, 'Agentic\nMastery'),
-                          _buildTabBtn(10, 'Version\nControl'),
-                          _buildTabBtn(11, 'AI\nAssistant'),
-                          _buildTabBtn(12, 'AI\nBridge'),
-                        ],
-                      )
-                    ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: IndexedStack(
-                        index: _savedTabIndex,
+      color: Colors.transparent,
+      padding: const EdgeInsets.all(16.0),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: double.infinity),
+          child: FormBuilder(
+            key: _formKey,
+            onChanged: _onFormChanged,
+            initialValue: {
+              'primaryStorageUrl': _primaryStorageUrl ?? '',
+              'localRepositoryPath': _localRepositoryPath ?? '',
+              'backupDirectoryPath': _backupDirectoryPath ?? '',
+              'albumFolderIds': _albumFolderIds,
+              'tagsFolderId': _tagsFolderId,
+              'languagesFolderId': _languagesFolderId,
+              'simulatorWidth': _simulatorWidth.toInt().toString(),
+              'simulatorHeight': _simulatorHeight.toInt().toString(),
+              'previewWidth': _previewWidth.toInt().toString(),
+              'previewHeight': _previewHeight.toInt().toString(),
+              'previewAspectRatio': _previewAspectRatio,
+              'openAiApiKey': _openAiApiKey ?? '',
+              'githubToken': _githubToken ?? '',
+              'toolWindowOpacity': _toolWindowOpacity,
+              'rootFontSize': _rootFontSize.toString(),
+              'iconFontSize': _iconFontSize.toString(),
+              'globalActionIconSize': _globalActionIconSize.toString(),
+              'iconFontBold': _iconFontBold,
+              'windowTitleUppercase': _windowTitleUppercase,
+              'windowTitleBold': _windowTitleBold,
+              'iconOutlineWidth': _iconOutlineWidth.toString(),
+              'textOutlineWidth': _textOutlineWidth.toString(),
+              'queueClearCompletedMinutes':
+                  _queueClearCompletedMinutes.toString(),
+              'agentRules': _agentRules ??
+                  'Role: Senior Systems Architect.\nCommunication Style: Minimalist. No greetings, no "I hope this helps," no conversational filler. Output only technical plans, code, or critical status alerts.\nOperational Protocol:\nAlways prioritize Planning Mode before Acting.\nUse the /terminal to verify assumptions; do not guess file structures.\nIf a task is ambiguous, list 3 specific questions and stop.\n\nThe "Focus & Drift" Monitor:\nBefore every task, state the current objective in one sentence.\nIf the current task deviates from the PROJECT_SUMMARY.md goals, flag a "Context Drift Alert" and request realignment.\nError Reduction: Run a "Red Team" check on every code block for null pointers and race conditions before presenting.\n\nThe "State Persistence" Workflow:\nCreate a workflow /sync that:\nScans the last 10 interactions.\nUpdates PROJECT_SUMMARY.md with:\n[Current Architecture]\n[Resolved Blockers]\n[Pending Critical Tasks].\nUpdates BRIDGE_LOGS.md with any API or connectivity changes.\nDeletes outdated \'TODO\' comments in the codebase.\n\nThe "New Chat" Handover:\nGenerate a Handover Manifest. Summarize the current technical state, the specific logic of the AI Bridge we just built, and the exact next step. Format this so I can paste it into a fresh chat to give the new agent 100% context instantly.\n\nAutomated Summary Maintenance:\nUpon completion of any file write or terminal command, automatically append a 1-sentence summary of the change to the CHANGELOG.md and verify it against the PROJECT_SUMMARY.md for consistency.',
+              'projectSummary': _projectSummary ?? '',
+              'antigravityBridgeMode': _antigravityBridgeMode ?? 'sdk',
+              'antigravityBaseUrl':
+                  _antigravityBaseUrl ?? 'http://localhost:8080',
+              'antigravityInvokeEndpoint':
+                  _antigravityInvokeEndpoint ?? '/api/v1/agents/invoke',
+              'antigravityPromptEndpoint':
+                  _antigravityPromptEndpoint ?? '/api/v1/prompt',
+              'antigravityStartupCommand':
+                  _antigravityStartupCommand ?? 'antigravity-server',
+              'antigravityApiKey': _antigravityApiKey ?? '',
+              'antigravityAvailableModels': _antigravityAvailableModels ??
+                  'gemini-2.0-flash-lite, gemini-2.0-flash, gemini-2.0-pro, gemini-3.5-flash',
+              'antigravityLoModel':
+                  _antigravityLoModel ?? 'gemini-2.0-flash-lite',
+              'antigravityHiModel': _antigravityHiModel ?? 'gemini-2.0-flash',
+              'antigravityStatusDebug': _antigravityStatusDebug,
+              'antigravitySendViaClipboard': _antigravitySendViaClipboard,
+              'versionControlRepoUrl': _versionControlRepoUrl ?? '',
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
                       children: [
-                        ListenableBuilder(
+                        _buildTabBtn(0, 'General'),
+                        _buildTabBtn(1, 'Media\nResolution'),
+                        _buildTabBtn(2, 'Remote\nPathing'),
+                        _buildTabBtn(3, 'Native\nIntegration'),
+                        _buildTabBtn(4, 'API\nBindings'),
+                        _buildTabBtn(5, 'Logical\nBindings'),
+                        _buildTabBtn(6, 'Themes'),
+                        _buildTabBtn(7, 'Custom\nWorkspaces'),
+                        _buildTabBtn(8, 'Window\nWorkspaces'),
+                        _buildTabBtn(9, 'Agentic\nMastery'),
+                        _buildTabBtn(10, 'Version\nControl'),
+                        _buildTabBtn(11, 'AI\nAssistant'),
+                        _buildTabBtn(12, 'AI\nBridge'),
+                      ],
+                    )),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: IndexedStack(
+                    index: _savedTabIndex,
+                    children: [
+                      ListenableBuilder(
                           listenable: SystemLogsService.instance,
                           builder: (context, _) {
-                            return ListView(key: const PageStorageKey('config_tab_general'),
+                            return ListView(
+                              key: const PageStorageKey('config_tab_general'),
                               padding: const EdgeInsets.only(right: 16),
                               children: [
                                 const SizedBox(height: 16),
-                                Text('GENERAL LOG CONFIGURATION', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                                Text('GENERAL LOG CONFIGURATION',
+                                    style: TextStyle(
+                                        color: AppColors.panelTextSecondary,
+                                        fontSize: AppUIConfig.rootFontSize,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 2)),
                                 const SizedBox(height: 8),
-                                Text('Drag handles on the right to reorder the log output priority. Toggle checkboxes to enable/disable output destinations.', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.9)),
+                                Text(
+                                    'Drag handles on the right to reorder the log output priority. Toggle checkboxes to enable/disable output destinations.',
+                                    style: TextStyle(
+                                        color: AppColors.panelTextSecondary,
+                                        fontSize:
+                                            AppUIConfig.rootFontSize * 0.9)),
                                 const SizedBox(height: 16),
                                 Container(
-                                  height: 400, // Bounded height for the reorderable list
+                                  height:
+                                      400, // Bounded height for the reorderable list
                                   decoration: BoxDecoration(
                                     color: AppColors.panelBackground,
-                                    border: Border.all(color: AppColors.borderSubtle),
+                                    border: Border.all(
+                                        color: AppColors.borderSubtle),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: ReorderableListView.builder(
                                     shrinkWrap: true,
-                                    itemCount: SystemLogsService.instance.categoryConfigs.length,
+                                    itemCount: SystemLogsService
+                                        .instance.categoryConfigs.length,
                                     onReorder: (oldIndex, newIndex) {
                                       setState(() {
-                                        SystemLogsService.instance.reorderConfigs(oldIndex, newIndex);
+                                        SystemLogsService.instance
+                                            .reorderConfigs(oldIndex, newIndex);
                                       });
                                     },
                                     itemBuilder: (context, i) {
-                                      final config = SystemLogsService.instance.categoryConfigs[i];
+                                      final config = SystemLogsService
+                                          .instance.categoryConfigs[i];
                                       return ListTile(
                                         key: ValueKey(config.category.name),
                                         title: Text(
@@ -2091,14 +2606,16 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                           style: TextStyle(
                                             color: AppColors.panelTextPrimary,
                                             fontWeight: FontWeight.bold,
-                                            fontSize: AppUIConfig.rootFontSize * 1.1,
+                                            fontSize:
+                                                AppUIConfig.rootFontSize * 1.1,
                                           ),
                                         ),
                                         subtitle: Text(
                                           'Configure destinations for ${config.category.name} type logs',
                                           style: TextStyle(
                                             color: AppColors.panelTextSecondary,
-                                            fontSize: AppUIConfig.rootFontSize * 0.9,
+                                            fontSize:
+                                                AppUIConfig.rootFontSize * 0.9,
                                           ),
                                         ),
                                         trailing: Row(
@@ -2112,12 +2629,19 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                                   activeColor: AppColors.accent,
                                                   onChanged: (val) {
                                                     setState(() {
-                                                      config.system = val ?? false;
-                                                      SystemLogsService.instance.saveConfigs();
+                                                      config.system =
+                                                          val ?? false;
+                                                      SystemLogsService.instance
+                                                          .saveConfigs();
                                                     });
                                                   },
                                                 ),
-                                                Text('System Log', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize)),
+                                                Text('System Log',
+                                                    style: TextStyle(
+                                                        color: AppColors
+                                                            .panelTextPrimary,
+                                                        fontSize: AppUIConfig
+                                                            .rootFontSize)),
                                               ],
                                             ),
                                             const SizedBox(width: 16),
@@ -2129,16 +2653,24 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                                   activeColor: AppColors.accent,
                                                   onChanged: (val) {
                                                     setState(() {
-                                                      config.console = val ?? false;
-                                                      SystemLogsService.instance.saveConfigs();
+                                                      config.console =
+                                                          val ?? false;
+                                                      SystemLogsService.instance
+                                                          .saveConfigs();
                                                     });
                                                   },
                                                 ),
-                                                Text('Console Log', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize)),
+                                                Text('Console Log',
+                                                    style: TextStyle(
+                                                        color: AppColors
+                                                            .panelTextPrimary,
+                                                        fontSize: AppUIConfig
+                                                            .rootFontSize)),
                                               ],
                                             ),
                                             const SizedBox(width: 8),
-                                            const Icon(Icons.drag_handle, color: Colors.grey),
+                                            const Icon(Icons.drag_handle,
+                                                color: Colors.grey),
                                           ],
                                         ),
                                       );
@@ -2147,1037 +2679,1457 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                 ),
                               ],
                             );
-                          }
-                        ),
-                        ListView(key: const PageStorageKey('config_tab_0'),
-                          padding: const EdgeInsets.only(right: 16),
-                          children: [
-                            const SizedBox(height: 16),
-                            Text('MEDIA RESOLUTION (Global Sandbox Layout Bounds)', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                const SizedBox(height: 16),
-                Row(
-                   children: [
-                      Expanded(
-                        child: _buildLabeled('Simulator Width', Icons.straighten, FormBuilderTextField(
-                          name: 'simulatorWidth',
-                          style: TextStyle(color: AppColors.panelTextPrimary),
-                          decoration: _inputDecoration(),
-                        ))
+                          }),
+                      ListView(
+                        key: const PageStorageKey('config_tab_0'),
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          const SizedBox(height: 16),
+                          Text(
+                              'MEDIA RESOLUTION (Global Sandbox Layout Bounds)',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          Row(children: [
+                            Expanded(
+                                child: _buildLabeled(
+                                    'Simulator Width',
+                                    Icons.straighten,
+                                    FormBuilderTextField(
+                                      name: 'simulatorWidth',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary),
+                                      decoration: _inputDecoration(),
+                                    ))),
+                            const SizedBox(width: 16),
+                            Expanded(
+                                child: _buildLabeled(
+                                    'Simulator Height',
+                                    Icons.height,
+                                    FormBuilderTextField(
+                                      name: 'simulatorHeight',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary),
+                                      decoration: _inputDecoration(),
+                                    ))),
+                          ]),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'These structural metrics strictly dictate the physical target rendering layout resolution passed silently down the compilation pipeline into global Canvas elements.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildLabeled('Simulator Height', Icons.height, FormBuilderTextField(
-                          name: 'simulatorHeight',
-                          style: TextStyle(color: AppColors.panelTextPrimary),
-                          decoration: _inputDecoration(),
-                        ))
+                      ListView(
+                        key: const PageStorageKey('config_tab_1'),
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          const SizedBox(height: 16),
+                          Text('REMOTE PATHING',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Primary Storage Base URL (e.g. https://cdn.example.com/assets/)',
+                              Icons.cloud,
+                              FormBuilderTextField(
+                                name: 'primaryStorageUrl',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'When configured, you only need to store relative file paths in Data Nodes (like Items). The application natively prepends this URL during runtime evaluation.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                        ],
                       ),
-                   ]
-                ),
-                Padding(
-                  padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                  child: Text(
-                    'These structural metrics strictly dictate the physical target rendering layout resolution passed silently down the compilation pipeline into global Canvas elements.',
-                    style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
-                  ),
-                ),
-                
-                          ],
-                        ),
-                        ListView(key: const PageStorageKey('config_tab_1'),
-                          padding: const EdgeInsets.only(right: 16),
-                          children: [
+                      ListView(
+                        key: const PageStorageKey('config_tab_2'),
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          const SizedBox(height: 16),
+                          Text('NATIVE SYSTEM INTEGRATION',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Project Backups Directory (e.g. C:/Backups/)',
+                              Icons.backup,
+                              FormBuilderTextField(
+                                name: 'backupDirectoryPath',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Defines the directory where project backups are stored as compressed archives.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          if (_isSyncing) ...[
+                            const SizedBox(height: 8),
+                            LinearProgressIndicator(
+                                value: _syncTotal > 0
+                                    ? (_syncProgress / _syncTotal)
+                                    : null,
+                                color: Colors.amberAccent,
+                                backgroundColor: Colors.black45),
+                            const SizedBox(height: 8),
+                            Text(
+                                'Syncing $_syncProgress / $_syncTotal files (Current: $_syncCurrentFile)',
+                                style: TextStyle(
+                                    color: Colors.amberAccent,
+                                    fontSize: AppUIConfig.rootFontSize)),
                             const SizedBox(height: 16),
-                            Text('REMOTE PATHING', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                const SizedBox(height: 16),
-                _buildLabeled('Primary Storage Base URL (e.g. https://cdn.example.com/assets/)', Icons.cloud, FormBuilderTextField(
-                  name: 'primaryStorageUrl',
-                  style: TextStyle(color: AppColors.panelTextPrimary),
-                  decoration: _inputDecoration(),
-                )),
-                Padding(
-                  padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                  child: Text(
-                    'When configured, you only need to store relative file paths in Data Nodes (like Items). The application natively prepends this URL during runtime evaluation.',
-                    style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
-                  ),
-                ),
-                
                           ],
-                        ),
-                        ListView(key: const PageStorageKey('config_tab_2'),
-                          padding: const EdgeInsets.only(right: 16),
-                          children: [
-                            const SizedBox(height: 16),
-                            Text('NATIVE SYSTEM INTEGRATION', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                const SizedBox(height: 16),
-                _buildLabeled('Project Backups Directory (e.g. C:/Backups/)', Icons.backup, FormBuilderTextField(
-                  name: 'backupDirectoryPath',
-                  style: TextStyle(color: AppColors.panelTextPrimary),
-                  decoration: _inputDecoration(),
-                )),
-                Padding(
-                  padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                  child: Text(
-                    'Defines the directory where project backups are stored as compressed archives.',
-                    style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
-                  ),
-                ),
-                
-                const SizedBox(height: 32),
-                if (_isSyncing) ...[
-                   const SizedBox(height: 8),
-                   LinearProgressIndicator(value: _syncTotal > 0 ? (_syncProgress / _syncTotal) : null, color: Colors.amberAccent, backgroundColor: Colors.black45),
-                   const SizedBox(height: 8),
-                   Text('Syncing $_syncProgress / $_syncTotal files (Current: $_syncCurrentFile)', style: TextStyle(color: Colors.amberAccent, fontSize: AppUIConfig.rootFontSize)),
-                   const SizedBox(height: 16),
-                ],
-                Row(
-                  children: [
-                     ElevatedButton.icon(
-                        onPressed: _isSyncing ? null : _syncLocalRepository,
-                        icon: const Icon(Icons.cloud_download),
-                        label: Text('Deep Sync Local Repository'),
-                        style: ElevatedButton.styleFrom(
-                           backgroundColor: const Color(0xFF2A2A2A),
-                           foregroundColor: Colors.amberAccent,
-                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                           side: const BorderSide(color: Colors.amberAccent, width: 1)
-                        ),
-                     ),
-                     Expanded(
-                        child: Padding(
-                           padding: EdgeInsets.only(left: 12.0),
-                           child: Text('Automatically traverses the entire Workspace searching for missing local binary replicas, downloading them deep into corresponding OS folders recursively.',
-                              style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
-                           )
-                        )
-                     )
-                  ]
-                ),
-                          ],
-                        ),
-                        ListView(key: const PageStorageKey('config_tab_3'),
-                          padding: const EdgeInsets.only(right: 16),
-                          children: [
-                            const SizedBox(height: 16),
-                            Text('EXTERNAL API BINDINGS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                const SizedBox(height: 16),
-                _buildLabeled('OpenAI API Key (sk-...)', Icons.key, FormBuilderTextField(
-                  name: 'openAiApiKey',
-                  style: TextStyle(color: AppColors.panelTextPrimary),
-                  decoration: _inputDecoration(),
-                )),
-                Padding(
-                  padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                  child: Text(
-                    'Stored natively alongside runtime parameters inside .env globally. Injecting this intelligently guides transcription models mapping.',
-                    style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                _buildLabeled('GitHub Access Token', Icons.lock, FormBuilderTextField(
-                  name: 'githubToken',
-                  style: TextStyle(color: AppColors.panelTextPrimary),
-                  decoration: _inputDecoration(),
-                  obscureText: true,
-                )),
-                Padding(
-                  padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                  child: Text(
-                    'Used for Git integration. Obscured to prevent LLM exposure.',
-                    style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
-                  ),
-                ),
-                
-                          ],
-                        ),
-                        ListView(key: const PageStorageKey('config_tab_4'),
-                          padding: const EdgeInsets.only(right: 16),
-                          children: [
-                            const SizedBox(height: 16),
-                            Text('LOGICAL BINDINGS LAYER', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                const SizedBox(height: 16),
-                
-                StreamBuilder<List<Asset>>(
-                  stream: context.read<AssetsDao>().watchAllAssets(),
-                  builder: (context, snapshot) {
-                     if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
-                     final folders = snapshot.data!.where((a) => a.type == 'FOLDER').toList();
-                     if (folders.isEmpty) return Text('No Folders configured yet natively.', style: TextStyle(color: AppColors.panelTextSecondary));
-                     
-                     folders.sort((a,b) => a.name.compareTo(b.name));
-                     
-                     return FormField<List<int>>(
-                        initialValue: _albumFolderIds,
-                        onSaved: (vals) {
-                           _albumFolderIds = vals ?? [];
-                        },
-                        builder: (FormFieldState<List<int>> state) {
-                           final currentVal = state.value ?? [];
-                           final topLevel = folders.where((f) => f.parentId == null).toList();
+                          Row(children: [
+                            ElevatedButton.icon(
+                              onPressed:
+                                  _isSyncing ? null : _syncLocalRepository,
+                              icon: const Icon(Icons.cloud_download),
+                              label: Text('Deep Sync Local Repository'),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF2A2A2A),
+                                  foregroundColor: Colors.amberAccent,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 12),
+                                  side: const BorderSide(
+                                      color: Colors.amberAccent, width: 1)),
+                            ),
+                            Expanded(
+                                child: Padding(
+                                    padding: EdgeInsets.only(left: 12.0),
+                                    child: Text(
+                                      'Automatically traverses the entire Workspace searching for missing local binary replicas, downloading them deep into corresponding OS folders recursively.',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextSecondary,
+                                          fontSize: AppUIConfig.rootFontSize),
+                                    )))
+                          ]),
+                        ],
+                      ),
+                      ListView(
+                        key: const PageStorageKey('config_tab_3'),
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          const SizedBox(height: 16),
+                          Text('EXTERNAL API BINDINGS',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'OpenAI API Key (sk-...)',
+                              Icons.key,
+                              FormBuilderTextField(
+                                name: 'openAiApiKey',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Stored natively alongside runtime parameters inside .env globally. Injecting this intelligently guides transcription models mapping.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          _buildLabeled(
+                              'GitHub Access Token',
+                              Icons.lock,
+                              FormBuilderTextField(
+                                name: 'githubToken',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                                obscureText: true,
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Used for Git integration. Obscured to prevent LLM exposure.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                        ],
+                      ),
+                      ListView(
+                        key: const PageStorageKey('config_tab_4'),
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          const SizedBox(height: 16),
+                          Text('LOGICAL BINDINGS LAYER',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          StreamBuilder<List<Asset>>(
+                              stream:
+                                  context.read<AssetsDao>().watchAllAssets(),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData)
+                                  return Center(
+                                      child: CircularProgressIndicator());
+                                final folders = snapshot.data!
+                                    .where((a) => a.type == 'FOLDER')
+                                    .toList();
+                                if (folders.isEmpty)
+                                  return Text(
+                                      'No Folders configured yet natively.',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextSecondary));
 
-                           return InputDecorator(
-                              decoration: _inputDecoration('Designated Album Folders', Icons.album),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: topLevel.map((topF) {
-                                   final subs = folders.where((f) => f.parentId == topF.id).toList();
-                                   if (subs.isEmpty) return const SizedBox.shrink();
-                                   
-                                   return Theme(
-                                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                                      child: ExpansionTile(
-                                        title: Text(topF.name.toUpperCase(), style: TextStyle(color: AppColors.panelTextPrimary, fontWeight: FontWeight.bold, fontSize: AppUIConfig.rootFontSize)),
-                                        subtitle: Text('${subs.length} inner sub-directories available', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize)),
-                                        collapsedIconColor: AppColors.panelTextSecondary,
-                                        iconColor: AppColors.accent,
-                                        childrenPadding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
-                                        children: [
-                                           Align(
-                                             alignment: Alignment.centerLeft,
-                                             child: Wrap(
-                                               spacing: 8,
-                                               runSpacing: 8,
-                                               children: subs.map((f) {
-                                                  final isSelected = currentVal.contains(f.id);
-                                                  return FilterChip(
-                                                     label: Text(f.name.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold)),
-                                                     selected: isSelected,
-                                                     onSelected: (bool selected) {
-                                                        if (selected) {
-                                                           state.didChange([...currentVal, f.id]);
-                                                        } else {
-                                                           state.didChange(currentVal.where((id) => id != f.id).toList());
-                                                        }
-                                                     },
-                                                     selectedColor: Colors.amberAccent.withOpacity(0.2),
-                                                     checkmarkColor: Colors.amberAccent,
-                                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius), side: BorderSide(color: AppColors.borderSubtle)),
-                                                     labelStyle: TextStyle(color: AppColors.panelTextPrimary),
-                                                     backgroundColor: AppColors.background,
-                                                  );
-                                               }).toList(),
-                                             ),
-                                           )
-                                        ]
-                                      )
-                                   );
-                                }).toList()
-                              )
-                           );
-                        }
-                     );
-                  }
-                ),
-                
-                Padding(
-                  padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                  child: Text(
-                    'Select which Asset layout Folders represent physical Album collections organically globally. Native parsing iteratively maps nested internal assets securely into tracks dynamically computationally.',
-                    style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
-                  ),
-                ),
-                
-                const SizedBox(height: 32),
-                
-                StreamBuilder<List<SystemString>>(
-                  stream: context.read<I18nDao>().watchAllStrings(),
-                  builder: (context, snapshot) {
-                     if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
-                     final folders = snapshot.data!.where((s) => s.type == 'FOLDER').toList();
-                     if (folders.isEmpty) return Text('No String Folders configured yet natively.', style: TextStyle(color: AppColors.panelTextSecondary));
-                     
-                     folders.sort((a,b) => a.key.compareTo(b.key));
-                     
-                     return FormBuilderDropdown<int>(
-                       name: 'tagsFolderId',
-                       decoration: _inputDecoration('Designated Global Tags Root Folder', Icons.sell),
-                       initialValue: _tagsFolderId,
-                       onChanged: (val) {
-                         _tagsFolderId = val;
-                       },
-                       onSaved: (val) {
-                         _tagsFolderId = val;
-                       },
-                       items: folders.map((f) => DropdownMenuItem(
-                           value: f.id,
-                           child: Text(f.key, style: TextStyle(color: AppColors.panelTextPrimary)),
-                       )).toList(),
-                     );
-                  }
-                ),
-                
-                Padding(
-                  padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                  child: Text(
-                    'Select which Strings layout Folder represents all system taxonomies/tags visually across grids and filters organically.',
-                    style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
-                  ),
-                ),
-                
-                const SizedBox(height: 32),
-                
-                StreamBuilder<List<SystemString>>(
-                  stream: context.read<I18nDao>().watchAllStrings(),
-                  builder: (context, snapshot) {
-                     if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
-                     final folders = snapshot.data!.where((s) => s.type == 'FOLDER').toList();
-                     if (folders.isEmpty) return Text('No String Folders configured yet natively.', style: TextStyle(color: AppColors.panelTextSecondary));
-                     
-                     folders.sort((a,b) => a.key.compareTo(b.key));
-                     
-                     return FormBuilderDropdown<int>(
-                       name: 'languagesFolderId',
-                       decoration: _inputDecoration('Designated Global Languages Root Folder', Icons.language),
-                       initialValue: _languagesFolderId,
-                       onChanged: (val) {
-                         _languagesFolderId = val;
-                       },
-                       onSaved: (val) {
-                         _languagesFolderId = val;
-                       },
-                       items: folders.map((f) => DropdownMenuItem(
-                           value: f.id,
-                           child: Text(f.key, style: TextStyle(color: AppColors.panelTextPrimary)),
-                       )).toList(),
-                     );
-                  }
-                ),
-                
-                Padding(
-                  padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                  child: Text(
-                    'Select which Strings layout Folder represents all system translation Languages globally.',
-                    style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
-                  ),
-                ),
-                
-                          ],
-                        ),
-                        ListView(key: const PageStorageKey('config_tab_5'),
-                          padding: const EdgeInsets.only(right: 16),
-                          children: [
-                            const SizedBox(height: 16),
-                            
-                              const SizedBox(height: 16),
+                                folders
+                                    .sort((a, b) => a.name.compareTo(b.name));
 
-                            
-                              Divider(color: AppColors.controlBorder),
+                                return FormField<List<int>>(
+                                    initialValue: _albumFolderIds,
+                                    onSaved: (vals) {
+                                      _albumFolderIds = vals ?? [];
+                                    },
+                                    builder: (FormFieldState<List<int>> state) {
+                                      final currentVal = state.value ?? [];
+                                      final topLevel = folders
+                                          .where((f) => f.parentId == null)
+                                          .toList();
 
-                            
-                              const SizedBox(height: 16),
+                                      return InputDecorator(
+                                          decoration: _inputDecoration(
+                                              'Designated Album Folders',
+                                              Icons.album),
+                                          child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.stretch,
+                                              children: topLevel.map((topF) {
+                                                final subs = folders
+                                                    .where((f) =>
+                                                        f.parentId == topF.id)
+                                                    .toList();
+                                                if (subs.isEmpty)
+                                                  return const SizedBox
+                                                      .shrink();
 
-                            
-                              Text('THEME PROFILES', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                                                return Theme(
+                                                    data: Theme.of(context).copyWith(
+                                                        dividerColor:
+                                                            Colors.transparent),
+                                                    child: ExpansionTile(
+                                                        title: Text(topF.name.toUpperCase(),
+                                                            style: TextStyle(
+                                                                color: AppColors
+                                                                    .panelTextPrimary,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                fontSize: AppUIConfig
+                                                                    .rootFontSize)),
+                                                        subtitle: Text(
+                                                            '${subs.length} inner sub-directories available',
+                                                            style: TextStyle(
+                                                                color: AppColors
+                                                                    .panelTextSecondary,
+                                                                fontSize: AppUIConfig.rootFontSize)),
+                                                        collapsedIconColor: AppColors.panelTextSecondary,
+                                                        iconColor: AppColors.accent,
+                                                        childrenPadding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+                                                        children: [
+                                                          Align(
+                                                            alignment: Alignment
+                                                                .centerLeft,
+                                                            child: Wrap(
+                                                              spacing: 8,
+                                                              runSpacing: 8,
+                                                              children:
+                                                                  subs.map((f) {
+                                                                final isSelected =
+                                                                    currentVal
+                                                                        .contains(
+                                                                            f.id);
+                                                                return FilterChip(
+                                                                  label: Text(
+                                                                      f.name
+                                                                          .toUpperCase(),
+                                                                      style: const TextStyle(
+                                                                          fontWeight:
+                                                                              FontWeight.bold)),
+                                                                  selected:
+                                                                      isSelected,
+                                                                  onSelected: (bool
+                                                                      selected) {
+                                                                    if (selected) {
+                                                                      state
+                                                                          .didChange([
+                                                                        ...currentVal,
+                                                                        f.id
+                                                                      ]);
+                                                                    } else {
+                                                                      state.didChange(currentVal
+                                                                          .where((id) =>
+                                                                              id !=
+                                                                              f.id)
+                                                                          .toList());
+                                                                    }
+                                                                  },
+                                                                  selectedColor: Colors
+                                                                      .amberAccent
+                                                                      .withOpacity(
+                                                                          0.2),
+                                                                  checkmarkColor:
+                                                                      Colors
+                                                                          .amberAccent,
+                                                                  shape: RoundedRectangleBorder(
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(AppUIConfig
+                                                                              .windowBorderRadius),
+                                                                      side: BorderSide(
+                                                                          color:
+                                                                              AppColors.borderSubtle)),
+                                                                  labelStyle:
+                                                                      TextStyle(
+                                                                          color:
+                                                                              AppColors.panelTextPrimary),
+                                                                  backgroundColor:
+                                                                      AppColors
+                                                                          .background,
+                                                                );
+                                                              }).toList(),
+                                                            ),
+                                                          )
+                                                        ]));
+                                              }).toList()));
+                                    });
+                              }),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Select which Asset layout Folders represent physical Album collections organically globally. Native parsing iteratively maps nested internal assets securely into tracks dynamically computationally.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          StreamBuilder<List<SystemString>>(
+                              stream: context.read<I18nDao>().watchAllStrings(),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData)
+                                  return Center(
+                                      child: CircularProgressIndicator());
+                                final folders = snapshot.data!
+                                    .where((s) => s.type == 'FOLDER')
+                                    .toList();
+                                if (folders.isEmpty)
+                                  return Text(
+                                      'No String Folders configured yet natively.',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextSecondary));
 
-                            
-                              const SizedBox(height: 16),
+                                folders.sort((a, b) => a.key.compareTo(b.key));
 
-                            
-                              if (AppUIConfig.savedThemes.isNotEmpty) ...[
+                                return FormBuilderDropdown<int>(
+                                  name: 'tagsFolderId',
+                                  decoration: _inputDecoration(
+                                      'Designated Global Tags Root Folder',
+                                      Icons.sell),
+                                  initialValue: _tagsFolderId,
+                                  onChanged: (val) {
+                                    _tagsFolderId = val;
+                                  },
+                                  onSaved: (val) {
+                                    _tagsFolderId = val;
+                                  },
+                                  items: folders
+                                      .map((f) => DropdownMenuItem(
+                                            value: f.id,
+                                            child: Text(f.key,
+                                                style: TextStyle(
+                                                    color: AppColors
+                                                        .panelTextPrimary)),
+                                          ))
+                                      .toList(),
+                                );
+                              }),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Select which Strings layout Folder represents all system taxonomies/tags visually across grids and filters organically.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          StreamBuilder<List<SystemString>>(
+                              stream: context.read<I18nDao>().watchAllStrings(),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData)
+                                  return Center(
+                                      child: CircularProgressIndicator());
+                                final folders = snapshot.data!
+                                    .where((s) => s.type == 'FOLDER')
+                                    .toList();
+                                if (folders.isEmpty)
+                                  return Text(
+                                      'No String Folders configured yet natively.',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextSecondary));
 
-                            
-                              Container(
+                                folders.sort((a, b) => a.key.compareTo(b.key));
 
-                            
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                                return FormBuilderDropdown<int>(
+                                  name: 'languagesFolderId',
+                                  decoration: _inputDecoration(
+                                      'Designated Global Languages Root Folder',
+                                      Icons.language),
+                                  initialValue: _languagesFolderId,
+                                  onChanged: (val) {
+                                    _languagesFolderId = val;
+                                  },
+                                  onSaved: (val) {
+                                    _languagesFolderId = val;
+                                  },
+                                  items: folders
+                                      .map((f) => DropdownMenuItem(
+                                            value: f.id,
+                                            child: Text(f.key,
+                                                style: TextStyle(
+                                                    color: AppColors
+                                                        .panelTextPrimary)),
+                                          ))
+                                      .toList(),
+                                );
+                              }),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Select which Strings layout Folder represents all system translation Languages globally.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                        ],
+                      ),
+                      ListView(
+                        key: const PageStorageKey('config_tab_5'),
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          const SizedBox(height: 16),
 
-                            
+                          const SizedBox(height: 16),
+
+                          Divider(color: AppColors.controlBorder),
+
+                          const SizedBox(height: 16),
+
+                          Text('THEME PROFILES',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+
+                          const SizedBox(height: 16),
+
+                          if (AppUIConfig.savedThemes.isNotEmpty) ...[
+                            Container(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
                               decoration: BoxDecoration(
-
-                            
-                              color: AppColors.panelBackground,
-
-                            
-                              border: Border.all(color: AppColors.borderSubtle),
-
-                            
-                              borderRadius: BorderRadius.circular(4),
-
-                            
+                                color: AppColors.panelBackground,
+                                border:
+                                    Border.all(color: AppColors.borderSubtle),
+                                borderRadius: BorderRadius.circular(4),
                               ),
-
-                            
                               child: DropdownButtonHideUnderline(
+                                child: DropdownButton<CustomColorTheme>(
+                                  isExpanded: true,
+                                  hint: Text('Load a Saved Theme...',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextSecondary)),
+                                  dropdownColor: AppColors.panelBackground,
+                                  icon: Icon(Icons.arrow_drop_down,
+                                      color: AppColors.panelTextSecondary),
+                                  value: AppUIConfig.activeTheme != null &&
+                                          AppUIConfig.savedThemes.any((t) =>
+                                              t.id ==
+                                              AppUIConfig.activeTheme!.id)
+                                      ? AppUIConfig.savedThemes.firstWhere(
+                                          (t) =>
+                                              t.id ==
+                                              AppUIConfig.activeTheme!.id)
+                                      : null,
+                                  items: AppUIConfig.savedThemes.map((theme) {
+                                    return DropdownMenuItem<CustomColorTheme>(
+                                      value: theme,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(theme.name,
+                                              style: TextStyle(
+                                                  color: AppColors
+                                                      .panelTextPrimary)),
+                                          IconButton(
+                                            icon: Icon(Icons.delete,
+                                                color: Colors.redAccent,
+                                                size: 16),
+                                            padding: EdgeInsets.zero,
+                                            constraints: BoxConstraints(),
+                                            onPressed: () {
+                                              setState(() {
+                                                AppUIConfig.savedThemes
+                                                    .removeWhere((t) =>
+                                                        t.id == theme.id);
+                                              });
 
-                            
-                              child: DropdownButton<CustomColorTheme>(
-
-                            
-                              isExpanded: true,
-
-                            
-                              hint: Text('Load a Saved Theme...', style: TextStyle(color: AppColors.panelTextSecondary)),
-
-                            
-                              dropdownColor: AppColors.panelBackground,
-
-                            
-                              icon: Icon(Icons.arrow_drop_down, color: AppColors.panelTextSecondary),
-                                value: AppUIConfig.activeTheme != null && AppUIConfig.savedThemes.any((t) => t.id == AppUIConfig.activeTheme!.id) ? AppUIConfig.savedThemes.firstWhere((t) => t.id == AppUIConfig.activeTheme!.id) : null,
-                                items: AppUIConfig.savedThemes.map((theme) {
-
-                            
-                              return DropdownMenuItem<CustomColorTheme>(
-
-                            
-                              value: theme,
-
-                            
-                              child: Row(
-
-                            
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
-                            
-                              children: [
-
-                            
-                              Text(theme.name, style: TextStyle(color: AppColors.panelTextPrimary)),
-
-                            
-                              IconButton(
-
-                            
-                              icon: Icon(Icons.delete, color: Colors.redAccent, size: 16),
-
-                            
-                              padding: EdgeInsets.zero,
-
-                            
-                              constraints: BoxConstraints(),
-
-                            
-                              onPressed: () {
-
-                            
-                              setState(() {
-
-                            
-                              AppUIConfig.savedThemes.removeWhere((t) => t.id == theme.id);
-
-                            
-                              });
-
-                            
-                              AppUIConfig.saveCustomThemes().then((_) => VisualEditorScreen.configRefreshNotifier.value++);
-
-                            
-                              },
-
-                            
-                              ),
-
-                            
-                              ],
-
-                            
-                              ),
-
-                            
-                              );
-
-                            
-                              }).toList(),
-
-                            
-                              onChanged: (theme) {
-
-                            
-                              if (theme != null) {
-
-                            
-                              _applyTheme(theme);
-
-                            
-                              }
-
-                            
-                              },
-
-                            
-                              ),
-
-                            
-                              ),
-
-                            
-                              ),
-
-                            
-                              const SizedBox(height: 16),
-
-                            
-                              ],
-
-                            
-                              // Theme Management UI
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.panelBackground,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: AppColors.borderSubtle),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: DropdownButtonHideUnderline(
-                                            child: DropdownButton<CustomColorTheme>(
-                                              isExpanded: true,
-                                              hint: Text('Select Theme', style: TextStyle(color: AppColors.panelTextSecondary)),
-                                              dropdownColor: AppColors.panelBackground,
-                                              icon: Icon(Icons.arrow_drop_down, color: AppColors.panelTextSecondary),
-                                              value: AppUIConfig.activeTheme != null && AppUIConfig.savedThemes.any((t) => t.id == AppUIConfig.activeTheme!.id)
-                                                  ? AppUIConfig.savedThemes.firstWhere((t) => t.id == AppUIConfig.activeTheme!.id)
-                                                  : null,
-                                              items: AppUIConfig.savedThemes.map((theme) {
-                                                return DropdownMenuItem<CustomColorTheme>(
-                                                  value: theme,
-                                                  child: Text(theme.name, style: TextStyle(color: AppColors.panelTextPrimary)),
-                                                );
-                                              }).toList(),
-                                              onChanged: (theme) {
-                                                if (theme != null) {
-                                                  _applyTheme(theme);
-                                                }
-                                              },
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: TextField(
-                                            controller: _themeNameController,
-                                            style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.smallFontSize),
-                                            decoration: _inputDecoration('Theme Name', Icons.edit).copyWith(
-                                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
-                                            ),
-                                            onSubmitted: (val) {
-                                              if (val.isNotEmpty && AppUIConfig.activeTheme != null) {
-                                                setState(() {
-                                                  AppUIConfig.activeTheme = AppUIConfig.activeTheme!.copyWith(name: val);
-                                                  final idx = AppUIConfig.savedThemes.indexWhere((t) => t.id == AppUIConfig.activeTheme!.id);
-                                                  if (idx >= 0) AppUIConfig.savedThemes[idx] = AppUIConfig.activeTheme!;
-                                                });
-                                                AppUIConfig.saveCustomThemes().then((_) => VisualEditorScreen.configRefreshNotifier.value++);
-                                              }
+                                              AppUIConfig.saveCustomThemes()
+                                                  .then((_) =>
+                                                      VisualEditorScreen
+                                                          .configRefreshNotifier
+                                                          .value++);
                                             },
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        IconButton(
-                                          icon: const Icon(Icons.copy, color: Colors.blueAccent, size: 20),
-                                          tooltip: 'Duplicate Theme',
-                                          onPressed: () {
-                                            if (AppUIConfig.activeTheme != null) {
-                                              final newTheme = AppUIConfig.activeTheme!.copyWith(
-                                                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                                                name: AppUIConfig.activeTheme!.name + ' (Copy)'
-                                              );
-                                              setState(() {
-                                                AppUIConfig.savedThemes.add(newTheme);
-                                                _applyTheme(newTheme);
-                                              });
-                                              AppUIConfig.saveCustomThemes().then((_) => VisualEditorScreen.configRefreshNotifier.value++);
+                                        ],
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (theme) {
+                                    if (theme != null) {
+                                      _applyTheme(theme);
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Theme Management UI
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.panelBackground,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.borderSubtle),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<CustomColorTheme>(
+                                          isExpanded: true,
+                                          hint: Text('Select Theme',
+                                              style: TextStyle(
+                                                  color: AppColors
+                                                      .panelTextSecondary)),
+                                          dropdownColor:
+                                              AppColors.panelBackground,
+                                          icon: Icon(Icons.arrow_drop_down,
+                                              color:
+                                                  AppColors.panelTextSecondary),
+                                          value: AppUIConfig.activeTheme !=
+                                                      null &&
+                                                  AppUIConfig.savedThemes.any(
+                                                      (t) =>
+                                                          t.id ==
+                                                          AppUIConfig
+                                                              .activeTheme!.id)
+                                              ? AppUIConfig.savedThemes
+                                                  .firstWhere((t) =>
+                                                      t.id ==
+                                                      AppUIConfig
+                                                          .activeTheme!.id)
+                                              : null,
+                                          items: AppUIConfig.savedThemes
+                                              .map((theme) {
+                                            return DropdownMenuItem<
+                                                CustomColorTheme>(
+                                              value: theme,
+                                              child: Text(theme.name,
+                                                  style: TextStyle(
+                                                      color: AppColors
+                                                          .panelTextPrimary)),
+                                            );
+                                          }).toList(),
+                                          onChanged: (theme) {
+                                            if (theme != null) {
+                                              _applyTheme(theme);
                                             }
                                           },
                                         ),
-                                        const SizedBox(width: 4),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
-                                          tooltip: 'Delete Theme',
-                                          onPressed: () {
-                                            if (AppUIConfig.activeTheme != null) {
-                                              setState(() {
-                                                AppUIConfig.savedThemes.removeWhere((t) => t.id == AppUIConfig.activeTheme!.id);
-                                                if (AppUIConfig.savedThemes.isNotEmpty) {
-                                                  final fallback = AppUIConfig.savedThemes.first;
-                                                  _applyTheme(fallback);
-                                                } else {
-                                                  final fallback = CustomColorTheme(id: 'default', name: 'Default Theme');
-                                                  AppUIConfig.savedThemes.add(fallback);
-                                                  _applyTheme(fallback);
-                                                }
-                                              });
-                                              AppUIConfig.saveCustomThemes().then((_) => VisualEditorScreen.configRefreshNotifier.value++);
-                                            }
-                                          },
-                                        ),
-                                      ],
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
-                              const SizedBox(height: 16),
-                              const SizedBox(height: 16),
-                              Divider(color: AppColors.controlBorder),
-                              const SizedBox(height: 16),
-                              Text('THEME COLORS (Active Theme Only)', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                              const SizedBox(height: 16),
-                              Wrap(
-                                spacing: 16,
-                                runSpacing: 16,
-                                children: [
-                                  buildColorCard('Title Bar', AppColors.titleBarBackground, () {
-                                    int? currentColor = _customTitleBarColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customTitleBarColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.white,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Desktop Background', AppColors.background, () {
-                                    int? currentColor = _customDesktopColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customDesktopColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.white,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Window Body', AppColors.windowBackground, () {
-                                    int? currentColor = _customWindowColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customWindowColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.white,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Toolbars & Sidebar', AppColors.toolbarBackground, () {
-                                    int? currentColor = _customToolbarColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customToolbarColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.white,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Window Highlight', AppColors.panelBackground, () {
-                                    int? currentColor = _customPanelColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customPanelColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.white,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Accent Highlight', AppColors.accent, () {
-                                    int? currentColor = _customAccentColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customAccentColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.white,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Stroke Color', AppUIConfig.outlineColor, () {
-                                    int? currentColor = _customOutlineColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customOutlineColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.black,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Window Border', AppColors.border, () {
-                                    int? currentColor = _customWindowBorderColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customWindowBorderColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : AppColors.borderDark,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Control Border', AppColors.controlBorder, () {
-                                    int? currentColor = _customControlBorderColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customControlBorderColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : AppColors.controlBorder,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Active Window', AppColors.activeWindowBorder, () {
-                                    int? currentColor = _customActiveWindowBorderColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customActiveWindowBorderColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : AppColors.accent,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Active Task', AppColors.activeTaskHighlight, () {
-                                    int? currentColor = _customActiveTaskHighlightColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customActiveTaskHighlightColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : AppColors.activeTaskHighlight,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Divider(color: AppColors.controlBorder),
-                              const SizedBox(height: 16),
-                              Text('MARKUP THEME COLORS (Active Theme Only)', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                              const SizedBox(height: 16),
-                              Wrap(
-                                spacing: 16,
-                                runSpacing: 16,
-                                children: [
-                                  buildColorCard('Markdown Background', AppUIConfig.markupBackgroundColor, () {
-                                    int? currentColor = _customMarkupBackgroundColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customMarkupBackgroundColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.transparent,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Markup Header', AppUIConfig.markupHeaderColor, () {
-                                    int? currentColor = _customMarkupHeaderColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customMarkupHeaderColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.black,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Block Background', AppUIConfig.markupBlockBackgroundColor, () {
-                                    int? currentColor = _customMarkupBlockBackgroundColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customMarkupBlockBackgroundColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : const Color(0xFFE3F2FD),
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Inline Code', AppUIConfig.markupInlineCodeColor, () {
-                                    int? currentColor = _customMarkupInlineCodeColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customMarkupInlineCodeColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : const Color(0xFF3A3A4A),
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Code Block', AppUIConfig.markupCodeBlockBackgroundColor, () {
-                                    int? currentColor = _customMarkupCodeBlockBackgroundColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customMarkupCodeBlockBackgroundColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : const Color(0xFF1E1E2E),
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Block Text', AppUIConfig.markupBlockTextColor, () {
-                                    int? currentColor = _customMarkupBlockTextColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customMarkupBlockTextColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.black87,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Inline Text', AppUIConfig.markupInlineTextColor, () {
-                                    int? currentColor = _customMarkupInlineTextColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customMarkupInlineTextColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.white,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                  buildColorCard('Code Block Text', AppUIConfig.markupCodeBlockTextColor, () {
-                                    int? currentColor = _customMarkupCodeBlockTextColor;
-                                    Function(int?) onSelected = (c) async { setState(() => _customMarkupCodeBlockTextColor = c); await _updateActiveThemeAndSave(); };
-                                    GlobalPickerState.instance.requestColor(
-                                      initialColor: currentColor != null ? Color(currentColor!) : Colors.white,
-                                      onColorSelected: (cc) => onSelected(cc?.value),
-                                    );
-                                    showColorPickerWindow(context);
-                                  }),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Divider(color: AppColors.controlBorder),
-                              const SizedBox(height: 16),
-             Text('USER INTERFACE OPTIONS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildLabeled('Tool Window Background Opacity', Icons.opacity, FormBuilderSlider(
-                                    name: 'toolWindowOpacity',
-                                    initialValue: _toolWindowOpacity,
-                                    min: 0.3,
-                                    max: 1.0,
-                                    divisions: 14,
-                                    activeColor: AppColors.accent,
-                                    inactiveColor: AppColors.controlBorder,
-                                    decoration: _inputDecoration(),
-                                    displayValues: DisplayValues.current,
-                                  )),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: _buildLabeled('Window Border Radius', Icons.rounded_corner, FormBuilderSlider(
-                                    name: 'windowBorderRadius',
-                                    initialValue: AppUIConfig.windowBorderRadius,
-                                    min: 0,
-                                    max: 32,
-                                    divisions: 32,
-                                    activeColor: AppColors.accent,
-                                    inactiveColor: AppColors.controlBorder,
-                                    decoration: _inputDecoration(),
-                                    displayValues: DisplayValues.current,
-                                    onChanged: (val) {
-                                      if (val != null) {
-                                        setState(() {
-                                          AppUIConfig.windowBorderRadius = val;
-                                          VisualEditorScreen.configRefreshNotifier.value++;
-                                        });
-                                      }
-                                    },
-                                  )),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: _buildLabeled('Window Border Width', Icons.border_all, FormBuilderSlider(
-                                    name: 'windowBorderWidth',
-                                    initialValue: AppUIConfig.windowBorderWidth,
-                                    min: 0,
-                                    max: 10,
-                                    divisions: 20,
-                                    activeColor: AppColors.accent,
-                                    inactiveColor: AppColors.controlBorder,
-                                    decoration: _inputDecoration(),
-                                    displayValues: DisplayValues.current,
-                                    onChanged: (val) {
-                                      if (val != null) {
-                                        setState(() {
-                                          AppUIConfig.windowBorderWidth = val;
-                                          VisualEditorScreen.configRefreshNotifier.value++;
-                                        });
-                                      }
-                                    },
-                                  )),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _themeNameController,
+                                        style: TextStyle(
+                                            color: AppColors.panelTextPrimary,
+                                            fontSize:
+                                                AppUIConfig.smallFontSize),
+                                        decoration: _inputDecoration(
+                                                'Theme Name', Icons.edit)
+                                            .copyWith(
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                        vertical: 8)),
+                                        onSubmitted: (val) {
+                                          if (val.isNotEmpty &&
+                                              AppUIConfig.activeTheme != null) {
+                                            setState(() {
+                                              AppUIConfig.activeTheme =
+                                                  AppUIConfig.activeTheme!
+                                                      .copyWith(name: val);
+                                              final idx = AppUIConfig
+                                                  .savedThemes
+                                                  .indexWhere((t) =>
+                                                      t.id ==
+                                                      AppUIConfig
+                                                          .activeTheme!.id);
+                                              if (idx >= 0)
+                                                AppUIConfig.savedThemes[idx] =
+                                                    AppUIConfig.activeTheme!;
+                                            });
+                                            AppUIConfig.saveCustomThemes().then(
+                                                (_) => VisualEditorScreen
+                                                    .configRefreshNotifier
+                                                    .value++);
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.copy,
+                                          color: Colors.blueAccent, size: 20),
+                                      tooltip: 'Duplicate Theme',
+                                      onPressed: () {
+                                        if (AppUIConfig.activeTheme != null) {
+                                          final newTheme =
+                                              AppUIConfig.activeTheme!.copyWith(
+                                                  id: DateTime.now()
+                                                      .millisecondsSinceEpoch
+                                                      .toString(),
+                                                  name: AppUIConfig
+                                                          .activeTheme!.name +
+                                                      ' (Copy)');
+                                          setState(() {
+                                            AppUIConfig.savedThemes
+                                                .add(newTheme);
+                                            _applyTheme(newTheme);
+                                          });
+                                          AppUIConfig.saveCustomThemes().then(
+                                              (_) => VisualEditorScreen
+                                                  .configRefreshNotifier
+                                                  .value++);
+                                        }
+                                      },
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete,
+                                          color: Colors.redAccent, size: 20),
+                                      tooltip: 'Delete Theme',
+                                      onPressed: () {
+                                        if (AppUIConfig.activeTheme != null) {
+                                          setState(() {
+                                            AppUIConfig.savedThemes.removeWhere(
+                                                (t) =>
+                                                    t.id ==
+                                                    AppUIConfig
+                                                        .activeTheme!.id);
+                                            if (AppUIConfig
+                                                .savedThemes.isNotEmpty) {
+                                              final fallback =
+                                                  AppUIConfig.savedThemes.first;
+                                              _applyTheme(fallback);
+                                            } else {
+                                              final fallback = CustomColorTheme(
+                                                  id: 'default',
+                                                  name: 'Default Theme');
+                                              AppUIConfig.savedThemes
+                                                  .add(fallback);
+                                              _applyTheme(fallback);
+                                            }
+                                          });
+                                          AppUIConfig.saveCustomThemes().then(
+                                              (_) => VisualEditorScreen
+                                                  .configRefreshNotifier
+                                                  .value++);
+                                        }
+                                      },
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                              const SizedBox(height: 16),
+                          ),
+                          const SizedBox(height: 16),
+                          const SizedBox(height: 16),
+                          Divider(color: AppColors.controlBorder),
+                          const SizedBox(height: 16),
+                          Text('THEME COLORS (Active Theme Only)',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            children: [
+                              buildColorCard(
+                                  'Title Bar', AppColors.titleBarBackground,
+                                  () {
+                                int? currentColor = _customTitleBarColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() => _customTitleBarColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.white,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard(
+                                  'Desktop Background', AppColors.background,
+                                  () {
+                                int? currentColor = _customDesktopColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() => _customDesktopColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.white,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard(
+                                  'Window Body', AppColors.windowBackground,
+                                  () {
+                                int? currentColor = _customWindowColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() => _customWindowColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.white,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard('Toolbars & Sidebar',
+                                  AppColors.toolbarBackground, () {
+                                int? currentColor = _customToolbarColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() => _customToolbarColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.white,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard(
+                                  'Window Highlight', AppColors.panelBackground,
+                                  () {
+                                int? currentColor = _customPanelColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() => _customPanelColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.white,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard(
+                                  'Accent Highlight', AppColors.accent, () {
+                                int? currentColor = _customAccentColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() => _customAccentColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.white,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard(
+                                  'Stroke Color', AppUIConfig.outlineColor, () {
+                                int? currentColor = _customOutlineColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() => _customOutlineColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.black,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard('Window Border', AppColors.border,
+                                  () {
+                                int? currentColor = _customWindowBorderColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() => _customWindowBorderColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : AppColors.borderDark,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard(
+                                  'Control Border', AppColors.controlBorder,
+                                  () {
+                                int? currentColor = _customControlBorderColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() => _customControlBorderColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : AppColors.controlBorder,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard(
+                                  'Active Window', AppColors.activeWindowBorder,
+                                  () {
+                                int? currentColor =
+                                    _customActiveWindowBorderColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(
+                                      () => _customActiveWindowBorderColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : AppColors.accent,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard(
+                                  'Active Task', AppColors.activeTaskHighlight,
+                                  () {
+                                int? currentColor =
+                                    _customActiveTaskHighlightColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() =>
+                                      _customActiveTaskHighlightColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : AppColors.activeTaskHighlight,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Divider(color: AppColors.controlBorder),
+                          const SizedBox(height: 16),
+                          Text('MARKUP THEME COLORS (Active Theme Only)',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            children: [
+                              buildColorCard('Markdown Background',
+                                  AppUIConfig.markupBackgroundColor, () {
+                                int? currentColor =
+                                    _customMarkupBackgroundColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(
+                                      () => _customMarkupBackgroundColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.transparent,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard('Markup Header',
+                                  AppUIConfig.markupHeaderColor, () {
+                                int? currentColor = _customMarkupHeaderColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() => _customMarkupHeaderColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.black,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard('Block Background',
+                                  AppUIConfig.markupBlockBackgroundColor, () {
+                                int? currentColor =
+                                    _customMarkupBlockBackgroundColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() =>
+                                      _customMarkupBlockBackgroundColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : const Color(0xFFE3F2FD),
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard('Inline Code',
+                                  AppUIConfig.markupInlineCodeColor, () {
+                                int? currentColor =
+                                    _customMarkupInlineCodeColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(
+                                      () => _customMarkupInlineCodeColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : const Color(0xFF3A3A4A),
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard('Code Block',
+                                  AppUIConfig.markupCodeBlockBackgroundColor,
+                                  () {
+                                int? currentColor =
+                                    _customMarkupCodeBlockBackgroundColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() =>
+                                      _customMarkupCodeBlockBackgroundColor =
+                                          c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : const Color(0xFF1E1E2E),
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard('Block Text',
+                                  AppUIConfig.markupBlockTextColor, () {
+                                int? currentColor = _customMarkupBlockTextColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(
+                                      () => _customMarkupBlockTextColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.black87,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard('Inline Text',
+                                  AppUIConfig.markupInlineTextColor, () {
+                                int? currentColor =
+                                    _customMarkupInlineTextColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(
+                                      () => _customMarkupInlineTextColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.white,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                              buildColorCard('Code Block Text',
+                                  AppUIConfig.markupCodeBlockTextColor, () {
+                                int? currentColor =
+                                    _customMarkupCodeBlockTextColor;
+                                Function(int?) onSelected = (c) async {
+                                  setState(() =>
+                                      _customMarkupCodeBlockTextColor = c);
+                                  await _updateActiveThemeAndSave();
+                                };
+                                GlobalPickerState.instance.requestColor(
+                                  initialColor: currentColor != null
+                                      ? Color(currentColor!)
+                                      : Colors.white,
+                                  onColorSelected: (cc) =>
+                                      onSelected(cc?.value),
+                                );
+                                showColorPickerWindow(context);
+                              }),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Divider(color: AppColors.controlBorder),
+                          const SizedBox(height: 16),
+                          Text('USER INTERFACE OPTIONS',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildLabeled(
+                                    'Tool Window Background Opacity',
+                                    Icons.opacity,
+                                    FormBuilderSlider(
+                                      name: 'toolWindowOpacity',
+                                      initialValue: _toolWindowOpacity,
+                                      min: 0.3,
+                                      max: 1.0,
+                                      divisions: 14,
+                                      activeColor: AppColors.accent,
+                                      inactiveColor: AppColors.controlBorder,
+                                      decoration: _inputDecoration(),
+                                      displayValues: DisplayValues.current,
+                                    )),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildLabeled(
+                                    'Window Border Radius',
+                                    Icons.rounded_corner,
+                                    FormBuilderSlider(
+                                      name: 'windowBorderRadius',
+                                      initialValue:
+                                          AppUIConfig.windowBorderRadius,
+                                      min: 0,
+                                      max: 32,
+                                      divisions: 32,
+                                      activeColor: AppColors.accent,
+                                      inactiveColor: AppColors.controlBorder,
+                                      decoration: _inputDecoration(),
+                                      displayValues: DisplayValues.current,
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          setState(() {
+                                            AppUIConfig.windowBorderRadius =
+                                                val;
+                                            VisualEditorScreen
+                                                .configRefreshNotifier.value++;
+                                          });
+                                        }
+                                      },
+                                    )),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildLabeled(
+                                    'Window Border Width',
+                                    Icons.border_all,
+                                    FormBuilderSlider(
+                                      name: 'windowBorderWidth',
+                                      initialValue:
+                                          AppUIConfig.windowBorderWidth,
+                                      min: 0,
+                                      max: 10,
+                                      divisions: 20,
+                                      activeColor: AppColors.accent,
+                                      inactiveColor: AppColors.controlBorder,
+                                      decoration: _inputDecoration(),
+                                      displayValues: DisplayValues.current,
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          setState(() {
+                                            AppUIConfig.windowBorderWidth = val;
+                                            VisualEditorScreen
+                                                .configRefreshNotifier.value++;
+                                          });
+                                        }
+                                      },
+                                    )),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
 
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildLabeled('Base Font (Root)', Icons.format_size, FormBuilderTextField(
-                                    name: 'rootFontSize',
-                                    style: TextStyle(color: AppColors.panelTextPrimary),
-                                    decoration: _inputDecoration(),
-                                    keyboardType: TextInputType.number,
-                                  )),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                    child: _buildLabeled('Icon Text Size', Icons.insert_emoticon, FormBuilderTextField(
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildLabeled(
+                                    'Base Font (Root)',
+                                    Icons.format_size,
+                                    FormBuilderTextField(
+                                      name: 'rootFontSize',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary),
+                                      decoration: _inputDecoration(),
+                                      keyboardType: TextInputType.number,
+                                    )),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildLabeled(
+                                    'Icon Text Size',
+                                    Icons.insert_emoticon,
+                                    FormBuilderTextField(
                                       name: 'iconFontSize',
-                                      style: TextStyle(color: AppColors.panelTextPrimary),
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary),
                                       decoration: _inputDecoration(),
                                       keyboardType: TextInputType.number,
                                     )),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: _buildLabeled('Action Icon Size', Icons.crop_free, FormBuilderTextField(
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildLabeled(
+                                    'Action Icon Size',
+                                    Icons.crop_free,
+                                    FormBuilderTextField(
                                       name: 'globalActionIconSize',
-                                      style: TextStyle(color: AppColors.panelTextPrimary),
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary),
                                       decoration: _inputDecoration(),
                                       keyboardType: TextInputType.number,
                                     )),
-                                  ),
-                                ],
                               ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildLabeled('Icon Stroke Width', Icons.line_weight, FormBuilderTextField(
-                                    name: 'iconOutlineWidth',
-                                    style: TextStyle(color: AppColors.panelTextPrimary),
-                                    decoration: _inputDecoration(),
-                                    keyboardType: TextInputType.number,
-                                  )),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: _buildLabeled('Text Stroke Width', Icons.text_fields, FormBuilderTextField(
-                                    name: 'textOutlineWidth',
-                                    style: TextStyle(color: AppColors.panelTextPrimary),
-                                    decoration: _inputDecoration(),
-                                    keyboardType: TextInputType.number,
-                                  )),
-                                ),
-                                const SizedBox(width: 16),
-                                const Spacer(),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildLabeled('Title Bar Height', Icons.height, FormBuilderTextField(
-                                    name: 'titleBarHeight',
-                                    initialValue: _titleBarHeight.toStringAsFixed(0),
-                                    style: TextStyle(color: AppColors.panelTextPrimary),
-                                    decoration: _inputDecoration(),
-                                    keyboardType: TextInputType.number,
-                                  )),
-                                ),
-                                const SizedBox(width: 16),
-                                const Spacer(),
-                                const SizedBox(width: 16),
-                                const Spacer(),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: FormBuilderSwitch(
-                                    name: 'iconFontBold',
-                                    title: Text('Bold Icon Text', style: TextStyle(color: AppColors.panelTextPrimary)),
-                                    decoration: InputDecoration(border: InputBorder.none),
-                                    activeColor: AppColors.accent,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: FormBuilderSwitch(
-                                    name: 'windowTitleUppercase',
-                                    title: Text('Window Titles Uppercase', style: TextStyle(color: AppColors.panelTextPrimary)),
-                                    decoration: InputDecoration(border: InputBorder.none),
-                                    activeColor: AppColors.accent,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: FormBuilderSwitch(
-                                    name: 'windowTitleBold',
-                                    title: Text('Window Titles Bold', style: TextStyle(color: AppColors.panelTextPrimary)),
-                                    decoration: InputDecoration(border: InputBorder.none),
-                                    activeColor: AppColors.accent,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                          ],
-                        ),
-                        CustomWorkspacesEditor(
-                          onWorkspacesChanged: () => setState(() {}),
-                        ),
-                        CustomToolWindowsEditor(
-                          windowAvailability: _windowAvailability,
-                          onAvailabilityChanged: (id, val) async {
-                             setState(() {
-                               if (val is List) {
-                                   _windowAvailability[id] = List<String>.from(val);
-                               } else if (val == 'ALL') {
-                                   _windowAvailability[id] = AppWorkspaces.available.map((w) => w.id).toList();
-                               } else {
-                                   _windowAvailability[id] = [val.toString()];
-                               }
-                             });
-                             final prefs = await SharedPreferences.getInstance();
-                             await prefs.setString('ve_windowAvailability', jsonEncode(_windowAvailability));
-                          },
-                          onToolWindowsChanged: () => setState(() {}),
-                        ),
-                        ListView(key: const PageStorageKey('config_tab_6'),
-                          padding: const EdgeInsets.only(right: 16),
-                          children: [
-                            const SizedBox(height: 16),
-                            Text('AGENTIC MASTERY SYSTEM', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Clear Completed AI Tasks (Minutes)', Icons.timer, FormBuilderTextField(
-                              name: 'queueClearCompletedMinutes',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
-                              keyboardType: TextInputType.number,
-                            )),
-                            Padding(
-                              padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                              child: Text(
-                                'Number of minutes before completed tasks are removed from the queue display. Set to -1 to disable auto-clear.',
-                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildLabeled(
+                                    'Icon Stroke Width',
+                                    Icons.line_weight,
+                                    FormBuilderTextField(
+                                      name: 'iconOutlineWidth',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary),
+                                      decoration: _inputDecoration(),
+                                      keyboardType: TextInputType.number,
+                                    )),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Agent Operational Rules & Communication Style', Icons.psychology, FormBuilderTextField(
-                              name: 'agentRules',
-                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, height: 1.5),
-                              maxLines: 15,
-                              minLines: 5,
-                              decoration: _inputDecoration(),
-                            )),
-                            Padding(
-                              padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                              child: Text(
-                                'These rules will be injected into every active prompt session to strictly control the agent\'s behavior and persona.',
-                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildLabeled(
+                                    'Text Stroke Width',
+                                    Icons.text_fields,
+                                    FormBuilderTextField(
+                                      name: 'textOutlineWidth',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary),
+                                      decoration: _inputDecoration(),
+                                      keyboardType: TextInputType.number,
+                                    )),
                               ),
-                            ),
-                          ],
-                        ),
-                        ListView(key: const PageStorageKey('config_tab_9'),
-                          padding: const EdgeInsets.only(right: 16),
-                          children: [
-                            const SizedBox(height: 16),
-                            Text('VERSION CONTROL', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                            const SizedBox(height: 16),
-                            _buildLabeled('GitHub Repository URL (e.g. https://github.com/user/repo.git)', Icons.source, FormBuilderTextField(
-                              name: 'versionControlRepoUrl',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
-                            )),
-                            Padding(
-                              padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                              child: Text(
-                                'The remote URL for synchronizing this project using Git.',
-                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+                              const SizedBox(width: 16),
+                              const Spacer(),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildLabeled(
+                                    'Title Bar Height',
+                                    Icons.height,
+                                    FormBuilderTextField(
+                                      name: 'titleBarHeight',
+                                      initialValue:
+                                          _titleBarHeight.toStringAsFixed(0),
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary),
+                                      decoration: _inputDecoration(),
+                                      keyboardType: TextInputType.number,
+                                    )),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Local Repository Source Directory (e.g. C:/Development/Music/Assets/)', Icons.folder_copy, FormBuilderTextField(
-                              name: 'localRepositoryPath',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
-                            )),
-                            Padding(
-                              padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                              child: Text(
-                                'Defines the physical master source drive path. When editing layout elements computationally, the Editor can automatically interface and open Native Windows Folders corresponding to your Tree correctly.',
-                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
+                              const SizedBox(width: 16),
+                              const Spacer(),
+                              const SizedBox(width: 16),
+                              const Spacer(),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FormBuilderSwitch(
+                                  name: 'iconFontBold',
+                                  title: Text('Bold Icon Text',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary)),
+                                  decoration:
+                                      InputDecoration(border: InputBorder.none),
+                                  activeColor: AppColors.accent,
+                                ),
                               ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: FormBuilderSwitch(
+                                  name: 'windowTitleUppercase',
+                                  title: Text('Window Titles Uppercase',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary)),
+                                  decoration:
+                                      InputDecoration(border: InputBorder.none),
+                                  activeColor: AppColors.accent,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: FormBuilderSwitch(
+                                  name: 'windowTitleBold',
+                                  title: Text('Window Titles Bold',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextPrimary)),
+                                  decoration:
+                                      InputDecoration(border: InputBorder.none),
+                                  activeColor: AppColors.accent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      CustomWorkspacesEditor(
+                        onWorkspacesChanged: () => setState(() {}),
+                      ),
+                      CustomToolWindowsEditor(
+                        windowAvailability: _windowAvailability,
+                        onAvailabilityChanged: (id, val) async {
+                          setState(() {
+                            if (val is List) {
+                              _windowAvailability[id] = List<String>.from(val);
+                            } else if (val == 'ALL') {
+                              _windowAvailability[id] = AppWorkspaces.available
+                                  .map((w) => w.id)
+                                  .toList();
+                            } else {
+                              _windowAvailability[id] = [val.toString()];
+                            }
+                          });
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setString('ve_windowAvailability',
+                              jsonEncode(_windowAvailability));
+                        },
+                        onToolWindowsChanged: () => setState(() {}),
+                      ),
+                      ListView(
+                        key: const PageStorageKey('config_tab_6'),
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          const SizedBox(height: 16),
+                          Text('AGENTIC MASTERY SYSTEM',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Clear Completed AI Tasks (Minutes)',
+                              Icons.timer,
+                              FormBuilderTextField(
+                                name: 'queueClearCompletedMinutes',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                                keyboardType: TextInputType.number,
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Number of minutes before completed tasks are removed from the queue display. Set to -1 to disable auto-clear.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
                             ),
-                            const SizedBox(height: 32),
-                            Container(
+                          ),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Agent Operational Rules & Communication Style',
+                              Icons.psychology,
+                              FormBuilderTextField(
+                                name: 'agentRules',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary,
+                                    fontSize: AppUIConfig.rootFontSize,
+                                    height: 1.5),
+                                maxLines: 15,
+                                minLines: 5,
+                                decoration: _inputDecoration(),
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'These rules will be injected into every active prompt session to strictly control the agent\'s behavior and persona.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                        ],
+                      ),
+                      ListView(
+                        key: const PageStorageKey('config_tab_9'),
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          const SizedBox(height: 16),
+                          Text('VERSION CONTROL',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'GitHub Repository URL (e.g. https://github.com/user/repo.git)',
+                              Icons.source,
+                              FormBuilderTextField(
+                                name: 'versionControlRepoUrl',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'The remote URL for synchronizing this project using Git.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Local Repository Source Directory (e.g. C:/Development/Music/Assets/)',
+                              Icons.folder_copy,
+                              FormBuilderTextField(
+                                name: 'localRepositoryPath',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Defines the physical master source drive path. When editing layout elements computationally, the Editor can automatically interface and open Native Windows Folders corresponding to your Tree correctly.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize),
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          Container(
                               padding: const EdgeInsets.all(24),
                               decoration: BoxDecoration(
                                 color: Colors.black12,
-                                borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius),
+                                borderRadius: BorderRadius.circular(
+                                    AppUIConfig.windowBorderRadius),
                                 border: Border.all(color: Colors.white10),
                               ),
                               child: Column(
@@ -3185,648 +4137,1117 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                                 children: [
                                   ElevatedButton.icon(
                                     onPressed: _isSyncing ? null : _handleClone,
-                                    icon: _isSyncing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.download),
-                                    label: Text('Clone Existing Repository', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+                                    icon: _isSyncing
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2))
+                                        : const Icon(Icons.download),
+                                    label: Text('Clone Existing Repository',
+                                        style: TextStyle(
+                                            fontSize:
+                                                AppUIConfig.rootFontSize)),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF2A2A2A),
-                                      foregroundColor: Colors.tealAccent,
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                      side: const BorderSide(color: Colors.tealAccent, width: 1)
-                                    ),
+                                        backgroundColor:
+                                            const Color(0xFF2A2A2A),
+                                        foregroundColor: Colors.tealAccent,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 16, vertical: 16),
+                                        side: const BorderSide(
+                                            color: Colors.tealAccent,
+                                            width: 1)),
                                   ),
                                   const SizedBox(height: 12),
-                                  Text('Download an existing project from GitHub to your local machine. This will overwrite any empty state.', 
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(color: AppColors.panelTextSecondary.withValues(alpha: 0.6), fontSize: AppUIConfig.rootFontSize * 0.9)),
+                                  Text(
+                                      'Download an existing project from GitHub to your local machine. This will overwrite any empty state.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          color: AppColors.panelTextSecondary
+                                              .withValues(alpha: 0.6),
+                                          fontSize:
+                                              AppUIConfig.rootFontSize * 0.9)),
                                   const SizedBox(height: 32),
                                   ElevatedButton.icon(
                                     onPressed: _isSyncing ? null : _handleSync,
-                                    icon: _isSyncing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.sync),
-                                    label: Text('Initialize & Sync New Repository', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+                                    icon: _isSyncing
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2))
+                                        : const Icon(Icons.sync),
+                                    label: Text(
+                                        'Initialize & Sync New Repository',
+                                        style: TextStyle(
+                                            fontSize:
+                                                AppUIConfig.rootFontSize)),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.accent,
-                                      foregroundColor: AppColors.panelTextPrimary,
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16)
-                                    ),
+                                        backgroundColor: AppColors.accent,
+                                        foregroundColor:
+                                            AppColors.panelTextPrimary,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 16, vertical: 16)),
                                   ),
                                   const SizedBox(height: 12),
-                                  Text('Create a new GitHub repository for your current local project, commit all files, and push them to the cloud.', 
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(color: AppColors.panelTextSecondary.withValues(alpha: 0.6), fontSize: AppUIConfig.rootFontSize * 0.9)),
+                                  Text(
+                                      'Create a new GitHub repository for your current local project, commit all files, and push them to the cloud.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          color: AppColors.panelTextSecondary
+                                              .withValues(alpha: 0.6),
+                                          fontSize:
+                                              AppUIConfig.rootFontSize * 0.9)),
                                   const SizedBox(height: 32),
                                   ElevatedButton.icon(
-                                    onPressed: _isSyncing ? null : _handleTestState,
-                                    icon: _isSyncing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.info_outline),
-                                    label: Text('Test GitHub State', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
+                                    onPressed:
+                                        _isSyncing ? null : _handleTestState,
+                                    icon: _isSyncing
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2))
+                                        : const Icon(Icons.info_outline),
+                                    label: Text('Test GitHub State',
+                                        style: TextStyle(
+                                            fontSize:
+                                                AppUIConfig.rootFontSize)),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF2A2A2A),
-                                      foregroundColor: Colors.lightBlueAccent,
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                      side: const BorderSide(color: Colors.lightBlueAccent, width: 1)
-                                    ),
+                                        backgroundColor:
+                                            const Color(0xFF2A2A2A),
+                                        foregroundColor: Colors.lightBlueAccent,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 16, vertical: 16),
+                                        side: const BorderSide(
+                                            color: Colors.lightBlueAccent,
+                                            width: 1)),
                                   ),
                                   const SizedBox(height: 12),
-                                  Text('Perform a diagnostic check on your local and remote Git connection status.', 
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(color: AppColors.panelTextSecondary.withValues(alpha: 0.6), fontSize: AppUIConfig.rootFontSize * 0.9)),
+                                  Text(
+                                      'Perform a diagnostic check on your local and remote Git connection status.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          color: AppColors.panelTextSecondary
+                                              .withValues(alpha: 0.6),
+                                          fontSize:
+                                              AppUIConfig.rootFontSize * 0.9)),
                                 ],
-                              )
+                              )),
+                        ],
+                      ),
+                      ListView(
+                        key: const PageStorageKey('config_tab_10'),
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          const SizedBox(height: 16),
+                          Text('LOCAL AI CONFIGURATION',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Ollama API Base URL (e.g. http://localhost:11434)',
+                              Icons.router,
+                              FormBuilderTextField(
+                                name: 'ollamaBaseUrl',
+                                initialValue:
+                                    _ollamaBaseUrl ?? 'http://localhost:11434',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Fallback Timeout (ms)',
+                              Icons.timer,
+                              FormBuilderTextField(
+                                name: 'ollamaTimeoutMs',
+                                initialValue: _ollamaTimeoutMs.toString(),
+                                keyboardType: TextInputType.number,
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Prompt Clarity Instruction',
+                              Icons.description,
+                              FormBuilderTextField(
+                                name: 'ollamaClarityPrompt',
+                                initialValue: _ollamaClarityPrompt ??
+                                    '{"prompt": "Is the following checklist item clear, specific, and actionable? \\"{PROMPT}\\"", "responseFormat": "binary"}',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary,
+                                    fontSize: AppUIConfig.rootFontSize * 0.85,
+                                    fontFamily: 'monospace',
+                                    height: 1.5),
+                                maxLines: 6,
+                                minLines: 4,
+                                decoration: _inputDecoration(),
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Use JSON format with "prompt" and "responseFormat": "binary" to enforce YES/NO structured output with notes. Use {PROMPT} as a placeholder.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize * 0.85),
                             ),
-                          ],
-                        ),
-                        ListView(key: const PageStorageKey('config_tab_10'),
-                          padding: const EdgeInsets.only(right: 16),
-                          children: [
-                            const SizedBox(height: 16),
-                            Text('LOCAL AI CONFIGURATION', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Ollama API Base URL (e.g. http://localhost:11434)', Icons.router, FormBuilderTextField(
-                              name: 'ollamaBaseUrl',
-                              initialValue: _ollamaBaseUrl ?? 'http://localhost:11434',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
-                            )),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Model Name (e.g. qwen2.5:3b)', Icons.memory, FutureBuilder<List<String>>(
-                              future: _ollamaModelsFuture,
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return Row(
-                                    children: [
-                                      const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Text('Loading Ollama models...', style: TextStyle(color: AppColors.panelTextSecondary)),
-                                    ],
-                                  );
-                                }
-
-                                final customAlias = LocalAiService.instance.customModelName.trim().toLowerCase();
-                                final models = (snapshot.data ?? [_ollamaModel ?? 'qwen2.5:3b'])
-                                    .where((m) => m.toLowerCase() != customAlias)
-                                    .toList();
-                                if (_ollamaModel != null && _ollamaModel!.isNotEmpty
-                                    && _ollamaModel!.toLowerCase() != customAlias
-                                    && !models.contains(_ollamaModel)) {
-                                  models.insert(0, _ollamaModel!);
-                                }
-                                final initialValue = _ollamaModel ?? (models.isNotEmpty ? models.first : 'qwen2.5:3b');
-
-                                return FormBuilderDropdown<String>(
-                                  name: 'ollamaModel',
-                                  decoration: _inputDecoration(),
-                                  dropdownColor: AppColors.panelBackground,
-                                  initialValue: initialValue,
-                                  onChanged: (val) {
-                                    _ollamaModel = val;
-                                  },
-                                  onSaved: (val) {
-                                    _ollamaModel = val;
-                                  },
-                                  items: models.map((m) {
-                                    return DropdownMenuItem(
-                                      value: m,
-                                      child: Text(m, style: TextStyle(color: AppColors.panelTextPrimary)),
-                                    );
-                                  }).toList(),
-                                );
-                              },
-                            )),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Fallback Timeout (ms)', Icons.timer, FormBuilderTextField(
-                              name: 'ollamaTimeoutMs',
-                              initialValue: _ollamaTimeoutMs.toString(),
-                              keyboardType: TextInputType.number,
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
-                            )),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Prompt Clarity Instruction', Icons.description, FormBuilderTextField(
-                              name: 'ollamaClarityPrompt',
-                              initialValue: _ollamaClarityPrompt ?? '{"prompt": "Is the following checklist item clear, specific, and actionable? \\"{PROMPT}\\"", "responseFormat": "binary"}',
-                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize * 0.85, fontFamily: 'monospace', height: 1.5),
-                              maxLines: 6,
-                              minLines: 4,
-                              decoration: _inputDecoration(),
-                            )),
-                            Padding(
-                              padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                              child: Text(
-                                'Use JSON format with "prompt" and "responseFormat": "binary" to enforce YES/NO structured output with notes. Use {PROMPT} as a placeholder.',
-                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.85),
-                              ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Rewrite Prompt Instruction',
+                              Icons.auto_fix_high,
+                              FormBuilderTextField(
+                                name: 'ollamaRewritePrompt',
+                                initialValue: _ollamaRewritePrompt ??
+                                    'Rewrite this prompt to make it clearer, more precise, and direct. Return only the rewritten prompt with no explanation. The prompt is: {PROMPT}',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary,
+                                    fontSize: AppUIConfig.rootFontSize * 0.85,
+                                    fontFamily: 'monospace',
+                                    height: 1.5),
+                                maxLines: 6,
+                                minLines: 4,
+                                decoration: _inputDecoration(),
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Sent to the AI when the lightbulb is pressed on an unclear checklist item. Use {PROMPT} as a placeholder for the original item text.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize * 0.85),
                             ),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Rewrite Prompt Instruction', Icons.auto_fix_high, FormBuilderTextField(
-                              name: 'ollamaRewritePrompt',
-                              initialValue: _ollamaRewritePrompt ?? 'Rewrite this prompt to make it clearer, more precise, and direct. Return only the rewritten prompt with no explanation. The prompt is: {PROMPT}',
-                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize * 0.85, fontFamily: 'monospace', height: 1.5),
-                              maxLines: 6,
-                              minLines: 4,
-                              decoration: _inputDecoration(),
-                            )),
-                            Padding(
-                              padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                              child: Text(
-                                'Sent to the AI when the lightbulb is pressed on an unclear checklist item. Use {PROMPT} as a placeholder for the original item text.',
-                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.85),
-                              ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Generate Task Prompt',
+                              Icons.auto_fix_high,
+                              FormBuilderTextField(
+                                name: 'ollamaGenerateTaskPrompt',
+                                initialValue: _ollamaGenerateTaskPrompt ??
+                                    'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary,
+                                    fontSize: AppUIConfig.rootFontSize * 0.85,
+                                    fontFamily: 'monospace',
+                                    height: 1.5),
+                                maxLines: 8,
+                                minLines: 5,
+                                decoration: _inputDecoration(),
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Sent to the AI when the ✨ Generate Task button is pressed in the task editor description bar. Use {DESCRIPTION} as a placeholder for the task description text.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize * 0.85),
                             ),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Generate Task Prompt', Icons.auto_fix_high, FormBuilderTextField(
-                              name: 'ollamaGenerateTaskPrompt',
-                              initialValue: _ollamaGenerateTaskPrompt ?? 'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"',
-                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize * 0.85, fontFamily: 'monospace', height: 1.5),
-                              maxLines: 8,
-                              minLines: 5,
-                              decoration: _inputDecoration(),
-                            )),
-                            Padding(
-                              padding: EdgeInsets.only(top: 8.0, left: 12.0),
-                              child: Text(
-                                'Sent to the AI when the ✨ Generate Task button is pressed in the task editor description bar. Use {DESCRIPTION} as a placeholder for the task description text.',
-                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.85),
-                              ),
-                            ),
-                            const SizedBox(height: 32),
-                            Row(
-                              children: [
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: ElevatedButton.icon(
-                                    onPressed: _isTestingOllama ? null : _testOllamaConnection,
-                                    icon: _isTestingOllama ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
-                                    label: Text('Test Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
-                                    style: ElevatedButton.styleFrom(
+                          ),
+                          const SizedBox(height: 32),
+                          Row(
+                            children: [
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: ElevatedButton.icon(
+                                  onPressed: _isTestingOllama
+                                      ? null
+                                      : _testOllamaConnection,
+                                  icon: _isTestingOllama
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2))
+                                      : const Icon(Icons.wifi_tethering),
+                                  label: Text('Test Connection',
+                                      style: TextStyle(
+                                          fontSize: AppUIConfig.rootFontSize)),
+                                  style: ElevatedButton.styleFrom(
                                       backgroundColor: const Color(0xFF2A2A2A),
                                       foregroundColor: AppColors.accent,
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                      side: BorderSide(color: AppColors.accent, width: 1)
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 32),
-                            Divider(color: AppColors.controlBorder),
-                            const SizedBox(height: 16),
-                            Text('CUSTOM CONTEXT MODEL', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                            const SizedBox(height: 8),
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 16.0),
-                              child: Text(
-                                'Bake your project_summary.md into a custom Ollama model so context is available at zero per-request token cost. Run once whenever your project summary changes.',
-                                style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.85),
-                              ),
-                            ),
-                            _buildLabeled('Internal Alias', Icons.smart_toy, FormBuilderTextField(
-                              name: 'ollamaCustomModelName',
-                              initialValue: LocalAiService.instance.customModelName.isNotEmpty
-                                  ? LocalAiService.instance.customModelName
-                                  : 'gorilla-engine',
-                              style: TextStyle(color: AppColors.panelTextPrimary),
-                              decoration: _inputDecoration(),
-                            )),
-                            const SizedBox(height: 8),
-                            Padding(
-                              padding: const EdgeInsets.only(left: 12.0, bottom: 16.0),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.account_tree_outlined, size: 13, color: AppColors.panelTextSecondary),
-                                  const SizedBox(width: 6),
-                                  Text('Root model: ', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.85)),
-                                  Text(
-                                    LocalAiService.instance.customModelBase.isNotEmpty
-                                        ? LocalAiService.instance.customModelBase
-                                        : (_ollamaModel ?? 'qwen2.5:3b'),
-                                    style: TextStyle(color: AppColors.accent, fontSize: AppUIConfig.rootFontSize * 0.85, fontFamily: 'monospace'),
-                                  ),
-                                  if (LocalAiService.instance.customModelBase.isEmpty) ...[
-                                    const SizedBox(width: 6),
-                                    Text('(not yet built)', style: TextStyle(color: AppColors.panelTextSecondary.withValues(alpha: 0.5), fontSize: AppUIConfig.rootFontSize * 0.8, fontStyle: FontStyle.italic)),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            if (_buildModelMessage != null)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 12.0),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: _buildModelSuccess ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: _buildModelSuccess ? Colors.green.withValues(alpha: 0.4) : Colors.red.withValues(alpha: 0.4)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(_buildModelSuccess ? Icons.check_circle_outline : Icons.error_outline,
-                                          color: _buildModelSuccess ? Colors.greenAccent : Colors.redAccent, size: 16),
-                                      const SizedBox(width: 8),
-                                      Expanded(child: Text(_buildModelMessage!, style: TextStyle(color: _buildModelSuccess ? Colors.greenAccent : Colors.redAccent, fontSize: AppUIConfig.rootFontSize * 0.85))),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: ElevatedButton.icon(
-                                onPressed: _isBuildingModel ? null : _buildCustomOllamaModel,
-                                icon: _isBuildingModel
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                    : const Icon(Icons.build_circle_outlined),
-                                label: Text('Build Custom Model', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1A2A1A),
-                                  foregroundColor: Colors.greenAccent,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                  side: const BorderSide(color: Colors.greenAccent, width: 1),
-                                ),
-                              ),
-                            ),
-
-                          ],
-                        ),
-                        ListView(key: const PageStorageKey('config_tab_11'),
-                          padding: const EdgeInsets.only(right: 16),
-                          children: [
-                            const SizedBox(height: 16),
-                            Text('PROJECT SUMMARY DOCUMENT', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                            const SizedBox(height: 16),
-                            _buildLabeled('Project Summary (saves as markdown rules for the Agent)', Icons.summarize, FormBuilderTextField(
-                              name: 'projectSummary',
-                              style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.rootFontSize, height: 1.5),
-                              maxLines: 15,
-                              minLines: 5,
-                              decoration: _inputDecoration(),
-                            )),
-                            const SizedBox(height: 12),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: ElevatedButton.icon(
-                                onPressed: _buildProjectSummary,
-                                icon: const Icon(Icons.build),
-                                label: Text('Build Project Summary', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2A2A2A),
-                                  foregroundColor: AppColors.accent,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                  side: BorderSide(color: AppColors.accent, width: 1)
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            const Divider(color: Color(0xFF2A2A2A)),
-                            const SizedBox(height: 16),
-                            Text('AI BRIDGE', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                            const SizedBox(height: 16),
-                            
-                            // Hidden form field so FormBuilder includes it
-                            Visibility(
-                              visible: false,
-                              child: FormBuilderTextField(
-                                name: 'antigravityBridgeMode',
-                                initialValue: _antigravityBridgeMode ?? 'sdk',
-                              ),
-                            ),
-                            
-                            // Horizontal Sub-Tabs Row
-                            Row(
-                              children: [
-                                _buildSubTabBtn(0, 'SDK'),
-                                _buildSubTabBtn(1, 'Desktop'),
-                                _buildSubTabBtn(2, 'CLI'),
-                              ],
-                            ),
-                            const SizedBox(height: 24),
-                            
-                            // Active status card
-                            _buildActiveStatusCard(),
-                            const SizedBox(height: 24),
-                            
-                            // Render settings dynamically based on _aiBridgeSubTabIndex:
-                            if (_aiBridgeSubTabIndex == 0) ...[
-                              _buildLabeled('Antigravity API Base URL', Icons.cloud, FormBuilderTextField(
-                                name: 'antigravityBaseUrl',
-                                initialValue: _antigravityBaseUrl,
-                                style: TextStyle(color: AppColors.panelTextPrimary),
-                                decoration: _inputDecoration(),
-                              )),
-                              const SizedBox(height: 16),
-                              _buildLabeled('Antigravity Invoke Endpoint', Icons.api, FormBuilderTextField(
-                                name: 'antigravityInvokeEndpoint',
-                                initialValue: _antigravityInvokeEndpoint,
-                                style: TextStyle(color: AppColors.panelTextPrimary),
-                                decoration: _inputDecoration(),
-                              )),
-                              const SizedBox(height: 16),
-                              _buildLabeled('Antigravity Prompt Endpoint', Icons.send, FormBuilderTextField(
-                                name: 'antigravityPromptEndpoint',
-                                initialValue: _antigravityPromptEndpoint,
-                                style: TextStyle(color: AppColors.panelTextPrimary),
-                                decoration: _inputDecoration(),
-                              )),
-                              const SizedBox(height: 16),
-                              _buildLabeled('Antigravity Startup Command', Icons.terminal, FormBuilderTextField(
-                                name: 'antigravityStartupCommand',
-                                initialValue: _antigravityStartupCommand,
-                                style: TextStyle(color: AppColors.panelTextPrimary),
-                                decoration: _inputDecoration(),
-                              )),
-                              const SizedBox(height: 16),
-                              _buildLabeled('Antigravity API Key (SDK Only)', Icons.key, FormBuilderTextField(
-                                name: 'antigravityApiKey',
-                                initialValue: _antigravityApiKey,
-                                style: TextStyle(color: AppColors.panelTextPrimary),
-                                decoration: _inputDecoration(),
-                                obscureText: true,
-                              )),
-                              const SizedBox(height: 16),
-                              _buildLabeled('Antigravity Target Model', Icons.psychology_alt, FutureBuilder<List<AntigravityModel>>(
-                                future: _modelsFuture,
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState == ConnectionState.waiting) {
-                                    return const SizedBox(
-                                      height: 48,
-                                      child: Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                        ),
-                                      ),
-                                    );
-                                  } else if (snapshot.hasError) {
-                                    return Text('Error loading models: ${snapshot.error}', style: const TextStyle(color: Colors.redAccent));
-                                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                                    return const Text('No models found in current SDK instance.', style: TextStyle(color: Colors.grey));
-                                  }
-
-                                  final models = snapshot.data!;
-                                  final hasSelection = models.any((m) => m.id == _antigravityModel);
-                                  final initialValue = hasSelection
-                                      ? _antigravityModel
-                                      : (models.isNotEmpty ? models.first.id : 'gemini-2.0-flash');
-
-                                  return FormBuilderDropdown<String>(
-                                    name: 'antigravityModel',
-                                    decoration: _inputDecoration(),
-                                    dropdownColor: AppColors.panelBackground,
-                                    initialValue: initialValue,
-                                    onChanged: (val) {
-                                      _antigravityModel = val;
-                                    },
-                                    onSaved: (val) {
-                                      _antigravityModel = val;
-                                    },
-                                    items: models.map((m) {
-                                      return DropdownMenuItem(
-                                        value: m.id,
-                                        child: Text(m.displayName, style: TextStyle(color: AppColors.panelTextPrimary)),
-                                      );
-                                    }).toList(),
-                                  );
-                                },
-                              )),
-                              const SizedBox(height: 16),
-                              _buildLabeled('Antigravity LO Model', Icons.psychology, FutureBuilder<List<AntigravityModel>>(
-                                future: _modelsFuture,
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState == ConnectionState.waiting) {
-                                    return const SizedBox(
-                                      height: 48,
-                                      child: Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                        ),
-                                      ),
-                                    );
-                                  } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  final models = snapshot.data!;
-                                  final hasSelection = models.any((m) => m.id == _antigravityLoModel);
-                                  final initialValue = hasSelection
-                                      ? _antigravityLoModel
-                                      : (models.isNotEmpty ? models.first.id : 'gemini-2.0-flash-lite');
-                                  return FormBuilderDropdown<String>(
-                                    name: 'antigravityLoModel',
-                                    decoration: _inputDecoration(),
-                                    dropdownColor: AppColors.panelBackground,
-                                    initialValue: initialValue,
-                                    onChanged: (val) {
-                                      _antigravityLoModel = val;
-                                    },
-                                    onSaved: (val) {
-                                      _antigravityLoModel = val;
-                                    },
-                                    items: models.map((m) {
-                                      return DropdownMenuItem(
-                                        value: m.id,
-                                        child: Text(m.displayName, style: TextStyle(color: AppColors.panelTextPrimary)),
-                                      );
-                                    }).toList(),
-                                  );
-                                },
-                              )),
-                              const SizedBox(height: 16),
-                              _buildLabeled('Antigravity HI Model', Icons.psychology, FutureBuilder<List<AntigravityModel>>(
-                                future: _modelsFuture,
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState == ConnectionState.waiting) {
-                                    return const SizedBox(
-                                      height: 48,
-                                      child: Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                        ),
-                                      ),
-                                    );
-                                  } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  final models = snapshot.data!;
-                                  final hasSelection = models.any((m) => m.id == _antigravityHiModel);
-                                  final initialValue = hasSelection
-                                      ? _antigravityHiModel
-                                      : (models.isNotEmpty ? models.first.id : 'gemini-2.0-flash');
-                                  return FormBuilderDropdown<String>(
-                                    name: 'antigravityHiModel',
-                                    decoration: _inputDecoration(),
-                                    dropdownColor: AppColors.panelBackground,
-                                    initialValue: initialValue,
-                                    onChanged: (val) {
-                                      _antigravityHiModel = val;
-                                    },
-                                    onSaved: (val) {
-                                      _antigravityHiModel = val;
-                                    },
-                                    items: models.map((m) {
-                                      return DropdownMenuItem(
-                                        value: m.id,
-                                        child: Text(m.displayName, style: TextStyle(color: AppColors.panelTextPrimary)),
-                                      );
-                                    }).toList(),
-                                  );
-                                },
-                              )),
-                              const SizedBox(height: 32),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: ElevatedButton.icon(
-                                  onPressed: _isTestingAntigravity ? null : _testAntigravityConnection,
-                                  icon: _isTestingAntigravity ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
-                                  label: Text('Test Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF2A2A2A),
-                                    foregroundColor: Colors.deepPurpleAccent,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                    side: const BorderSide(color: Colors.deepPurpleAccent, width: 1)
-                                  ),
-                                ),
-                              ),
-                            ] else if (_aiBridgeSubTabIndex == 1) ...[
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8.0, left: 12.0),
-                                child: Text(
-                                  'Desktop mode interacts with target windows using standard macros. No custom window title or focus macro configuration is required here.',
-                                  style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              _buildLabeled('Available Models (Comma-separated)', Icons.list, FormBuilderTextField(
-                                // Use a unique name here — 'antigravityAvailableModels' is already
-                                // registered by the CLI tab in this same FormBuilder scope.
-                                name: 'antigravityAvailableModelsDesktop',
-                                initialValue: _antigravityAvailableModels,
-                                style: TextStyle(color: AppColors.panelTextPrimary),
-                                decoration: _inputDecoration(),
-                                onChanged: (val) {
-                                  setState(() {
-                                    _antigravityAvailableModels = val;
-                                  });
-                                  _onFormChanged();
-                                },
-                                onSaved: (val) {
-                                  _antigravityAvailableModels = val;
-                                },
-                              )),
-                              const SizedBox(height: 16),
-                              _buildLoHiDropdownsForNonSdk(),
-                            ] else if (_aiBridgeSubTabIndex == 2) ...[
-                              Text('CLI SETTINGS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.9, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-                              const SizedBox(height: 12),
-                              FormBuilderSwitch(
-                                name: 'antigravitySendViaClipboard',
-                                title: Text('Send via clipboard paste to the CLI', style: TextStyle(color: AppColors.panelTextPrimary)),
-                                initialValue: _antigravitySendViaClipboard,
-                                decoration: InputDecoration(border: InputBorder.none),
-                                activeColor: AppColors.accent,
-                                onChanged: (val) {
-                                  _antigravitySendViaClipboard = val == true;
-                                  _onFormChanged();
-                                },
-                                onSaved: (val) {
-                                  _antigravitySendViaClipboard = val == true;
-                                },
-                              ),
-                              const SizedBox(height: 8),
-                              FormBuilderSwitch(
-                                name: 'antigravityStatusDebug',
-                                title: Text('Enable Antigravity status log check', style: TextStyle(color: AppColors.panelTextPrimary)),
-                                initialValue: _antigravityStatusDebug,
-                                decoration: InputDecoration(border: InputBorder.none),
-                                activeColor: AppColors.accent,
-                                onChanged: (val) {
-                                  _antigravityStatusDebug = val == true;
-                                },
-                                onSaved: (val) {
-                                  _antigravityStatusDebug = val == true;
-                                },
-                              ),
-                              const SizedBox(height: 16),
-                              const Divider(color: Color(0xFF2A2A2A)),
-                              const SizedBox(height: 16),
-                              Text('HANDSFREE SETTINGS', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize * 0.9, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-                              const SizedBox(height: 12),
-                              FormBuilderSwitch(
-                                name: 'antigravityHandsfreeAutoExecute',
-                                title: Text('Auto-execute prompt (Handsfree Mode)', style: TextStyle(color: AppColors.panelTextPrimary)),
-                                initialValue: _antigravityHandsfreeAutoExecute,
-                                decoration: InputDecoration(border: InputBorder.none),
-                                activeColor: AppColors.accent,
-                                onChanged: (val) {
-                                  setState(() {
-                                    _antigravityHandsfreeAutoExecute = val == true;
-                                    if (_antigravityBridgeMode == 'cli' || _antigravityBridgeMode == 'handsfree') {
-                                      final targetMode = val == true ? 'handsfree' : 'cli';
-                                      _antigravityBridgeMode = targetMode;
-                                      _formKey.currentState?.fields['antigravityBridgeMode']?.didChange(targetMode);
-                                    }
-                                  });
-                                },
-                                onSaved: (val) {
-                                  _antigravityHandsfreeAutoExecute = val == true;
-                                },
-                              ),
-                              const SizedBox(height: 16),
-                              _buildLabeled('Delay between queue items (seconds)', Icons.timer_outlined, FormBuilderTextField(
-                                name: 'aiTasksDelaySeconds',
-                                initialValue: _aiTasksDelaySeconds.toString(),
-                                style: TextStyle(color: AppColors.panelTextPrimary),
-                                decoration: _inputDecoration(),
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              )),
-                              const SizedBox(height: 16),
-                              _buildLabeled('Available Models (Comma-separated)', Icons.list, FormBuilderTextField(
-                                name: 'antigravityAvailableModels',
-                                initialValue: _antigravityAvailableModels,
-                                style: TextStyle(color: AppColors.panelTextPrimary),
-                                decoration: _inputDecoration(),
-                                onChanged: (val) {
-                                  setState(() {
-                                    _antigravityAvailableModels = val;
-                                  });
-                                  _onFormChanged();
-                                },
-                                onSaved: (val) {
-                                  _antigravityAvailableModels = val;
-                                },
-                              )),
-                              const SizedBox(height: 16),
-                              _buildLoHiDropdownsForNonSdk(),
-                              const SizedBox(height: 32),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: ElevatedButton.icon(
-                                  onPressed: _isTestingCli ? null : _testCliConnection,
-                                  icon: _isTestingCli ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.terminal),
-                                  label: Text('Test CLI Connection', style: TextStyle(fontSize: AppUIConfig.rootFontSize)),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF2A2A2A),
-                                    foregroundColor: Colors.tealAccent,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                    side: const BorderSide(color: Colors.tealAccent, width: 1)
-                                  ),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 16),
+                                      side: BorderSide(
+                                          color: AppColors.accent, width: 1)),
                                 ),
                               ),
                             ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                          ),
+                          const SizedBox(height: 32),
+                          Divider(color: AppColors.controlBorder),
+                          const SizedBox(height: 16),
+                          Text('CUSTOM CONTEXT MODEL',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Text(
+                              'Bake your project_summary.md into a custom Ollama model so context is available at zero per-request token cost. Run once whenever your project summary changes.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize * 0.85),
+                            ),
+                          ),
+                          _buildLabeled(
+                              'Base Model',
+                              Icons.memory,
+                              FutureBuilder<List<String>>(
+                                future: _ollamaModelsFuture,
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return Row(children: [
+                                      const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                                      const SizedBox(width: 12),
+                                      Text('Loading models...', style: TextStyle(color: AppColors.panelTextSecondary)),
+                                    ]);
+                                  }
+                                  final models = snapshot.data ?? [_ollamaModel ?? 'qwen2.5:3b'];
+                                  final initialValue = _ollamaModel ?? (models.isNotEmpty ? models.first : 'qwen2.5:3b');
+                                  return FormBuilderDropdown<String>(
+                                    name: 'ollamaModel',
+                                    decoration: _inputDecoration(),
+                                    dropdownColor: AppColors.panelBackground,
+                                    initialValue: initialValue,
+                                    onChanged: (val) => setState(() => _ollamaModel = val),
+                                    onSaved: (val) => _ollamaModel = val,
+                                    items: models.map((m) => DropdownMenuItem(
+                                      value: m,
+                                      child: Text(m, style: TextStyle(color: AppColors.panelTextPrimary)),
+                                    )).toList(),
+                                  );
+                                },
+                              )),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Internal Alias',
+                              Icons.smart_toy,
+                              FormBuilderTextField(
+                                name: 'ollamaCustomModelName',
+                                initialValue: LocalAiService
+                                        .instance.customModelName.isNotEmpty
+                                    ? LocalAiService.instance.customModelName
+                                    : 'gorilla-engine',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                              )),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Context Length (tokens)',
+                              Icons.straighten,
+                              FormBuilderTextField(
+                                name: 'ollamaCustomModelContextLength',
+                                initialValue: LocalAiService
+                                    .instance.customModelContextLength
+                                    .toString(),
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                                keyboardType: TextInputType.number,
+                              )),
+                          Padding(
+                            padding: const EdgeInsets.only(
+                                top: 6.0, left: 12.0, bottom: 4.0),
+                            child: Text(
+                              'Tokens available per request. qwen2.5:3b supports up to 32768. Default: 4096. Requires rebuild to apply.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize * 0.82),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Summary Trim Length (chars)',
+                              Icons.crop_outlined,
+                              FormBuilderTextField(
+                                name: 'ollamaCustomModelSummaryTrimLength',
+                                initialValue: LocalAiService
+                                    .instance.customModelSummaryTrimLength
+                                    .toString(),
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary),
+                                decoration: _inputDecoration(),
+                                keyboardType: TextInputType.number,
+                              )),
+                          Padding(
+                            padding: const EdgeInsets.only(
+                                top: 6.0, left: 12.0, bottom: 4.0),
+                            child: Builder(builder: (context) {
+                              final trimLen = LocalAiService
+                                  .instance.customModelSummaryTrimLength;
+                              final approxTokens = (trimLen / 4).round();
+                              return Text(
+                                'Max chars of combined reference files to bake in (~$approxTokens tokens). Requires rebuild to apply.',
+                                style: TextStyle(
+                                    color: AppColors.panelTextSecondary,
+                                    fontSize: AppUIConfig.rootFontSize * 0.82),
+                              );
+                            }),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                            'Reference Material Files (baked into model)',
+                            Icons.folder_open,
+                            AnimatedBuilder(
+                              animation: LocalAiService.instance,
+                              builder: (context, _) {
+                                final refFiles = LocalAiService.instance.customModelReferenceFiles;
+                                return Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppColors.border),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (refFiles.isEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                          child: Text(
+                                            'No reference files added.',
+                                            style: TextStyle(
+                                              color: AppColors.panelTextSecondary,
+                                              fontSize: AppUIConfig.rootFontSize * 0.9,
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                        )
+                                      else
+                                        ...refFiles.map((filePath) {
+                                          final fileName = path.basename(filePath);
+                                          final fileSize = LocalAiService.instance.getFileSizeString(filePath);
+                                          return Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.panelBackground,
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(color: AppColors.controlBorder),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Icon(Icons.insert_drive_file, size: 14, color: AppColors.accent),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          fileName,
+                                                          style: TextStyle(
+                                                            color: AppColors.panelTextPrimary,
+                                                            fontSize: AppUIConfig.rootFontSize * 0.95,
+                                                            fontWeight: FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          filePath,
+                                                          style: TextStyle(
+                                                            color: AppColors.panelTextSecondary,
+                                                            fontSize: AppUIConfig.rootFontSize * 0.8,
+                                                          ),
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    fileSize,
+                                                    style: TextStyle(
+                                                      color: Colors.cyanAccent,
+                                                      fontSize: AppUIConfig.rootFontSize * 0.85,
+                                                      fontFamily: 'monospace',
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  IconButton(
+                                                    icon: const Icon(Icons.delete, color: Colors.redAccent, size: 16),
+                                                    onPressed: () {
+                                                      LocalAiService.instance.removeReferenceFile(filePath);
+                                                    },
+                                                    padding: EdgeInsets.zero,
+                                                    constraints: const BoxConstraints(),
+                                                    splashRadius: 16,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        }).toList(),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: [
+                                          ElevatedButton.icon(
+                                            onPressed: () async {
+                                              FilePickerResult? result = await FilePicker.platform.pickFiles();
+                                              if (result != null && result.files.single.path != null) {
+                                                await LocalAiService.instance.addReferenceFile(result.files.single.path!);
+                                              }
+                                            },
+                                            icon: const Icon(Icons.add, size: 14),
+                                            label: Text(
+                                              'Browse to File',
+                                              style: TextStyle(fontSize: AppUIConfig.rootFontSize * 0.85),
+                                            ),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: AppColors.accent.withOpacity(0.15),
+                                              foregroundColor: AppColors.accent,
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              side: BorderSide(color: AppColors.accent, width: 1),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(left: 12.0, bottom: 16.0),
+                            child: Row(
+                              children: [
+                                Icon(Icons.account_tree_outlined,
+                                    size: 13,
+                                    color: AppColors.panelTextSecondary),
+                                const SizedBox(width: 6),
+                                Text('Root model: ',
+                                    style: TextStyle(
+                                        color: AppColors.panelTextSecondary,
+                                        fontSize:
+                                            AppUIConfig.rootFontSize * 0.85)),
+                                Text(
+                                  LocalAiService
+                                          .instance.customModelBase.isNotEmpty
+                                      ? LocalAiService.instance.customModelBase
+                                      : (_ollamaModel ?? 'qwen2.5:3b'),
+                                  style: TextStyle(
+                                      color: AppColors.accent,
+                                      fontSize: AppUIConfig.rootFontSize * 0.85,
+                                      fontFamily: 'monospace'),
+                                ),
+                                if (LocalAiService
+                                    .instance.customModelBase.isEmpty) ...[
+                                  const SizedBox(width: 6),
+                                  Text('(not yet built)',
+                                      style: TextStyle(
+                                          color: AppColors.panelTextSecondary
+                                              .withValues(alpha: 0.5),
+                                          fontSize:
+                                              AppUIConfig.rootFontSize * 0.8,
+                                          fontStyle: FontStyle.italic)),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (_buildModelMessage != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12.0),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: _buildModelSuccess
+                                      ? Colors.green.withValues(alpha: 0.1)
+                                      : Colors.red.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                      color: _buildModelSuccess
+                                          ? Colors.green.withValues(alpha: 0.4)
+                                          : Colors.red.withValues(alpha: 0.4)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                        _buildModelSuccess
+                                            ? Icons.check_circle_outline
+                                            : Icons.error_outline,
+                                        color: _buildModelSuccess
+                                            ? Colors.greenAccent
+                                            : Colors.redAccent,
+                                        size: 16),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                        child: Text(_buildModelMessage!,
+                                            style: TextStyle(
+                                                color: _buildModelSuccess
+                                                    ? Colors.greenAccent
+                                                    : Colors.redAccent,
+                                                fontSize:
+                                                    AppUIConfig.rootFontSize *
+                                                        0.85))),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: ElevatedButton.icon(
+                              onPressed: _isBuildingModel
+                                  ? null
+                                  : _buildCustomOllamaModel,
+                              icon: _isBuildingModel
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
+                                  : const Icon(Icons.build_circle_outlined),
+                              label: Text('Build Custom Model',
+                                  style: TextStyle(
+                                      fontSize: AppUIConfig.rootFontSize)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF1A2A1A),
+                                foregroundColor: Colors.greenAccent,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 16),
+                                side: const BorderSide(
+                                    color: Colors.greenAccent, width: 1),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      ListView(
+                        key: const PageStorageKey('config_tab_11'),
+                        padding: const EdgeInsets.only(right: 16),
+                        children: [
+                          const SizedBox(height: 16),
+                          Text('PROJECT SUMMARY DOCUMENT',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Project Summary (saves as markdown rules for the Agent)',
+                              Icons.summarize,
+                              FormBuilderTextField(
+                                name: 'projectSummary',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary,
+                                    fontSize: AppUIConfig.rootFontSize,
+                                    height: 1.5),
+                                maxLines: 15,
+                                minLines: 5,
+                                decoration: _inputDecoration(),
+                              )),
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: ElevatedButton.icon(
+                              onPressed: _buildProjectSummary,
+                              icon: const Icon(Icons.build),
+                              label: Text('Build Project Summary',
+                                  style: TextStyle(
+                                      fontSize: AppUIConfig.rootFontSize)),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF2A2A2A),
+                                  foregroundColor: AppColors.accent,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 16),
+                                  side: BorderSide(
+                                      color: AppColors.accent, width: 1)),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          const Divider(color: Color(0xFF2A2A2A)),
+                          const SizedBox(height: 16),
+                          Text('AI BRIDGE',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2)),
+                          const SizedBox(height: 16),
 
+                          // Hidden form field so FormBuilder includes it
+                          Visibility(
+                            visible: false,
+                            child: FormBuilderTextField(
+                              name: 'antigravityBridgeMode',
+                              initialValue: _antigravityBridgeMode ?? 'sdk',
+                            ),
+                          ),
+
+                          // Horizontal Sub-Tabs Row
+                          Row(
+                            children: [
+                              _buildSubTabBtn(0, 'SDK'),
+                              _buildSubTabBtn(1, 'Desktop'),
+                              _buildSubTabBtn(2, 'CLI'),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Active status card
+                          _buildActiveStatusCard(),
+                          const SizedBox(height: 24),
+
+                          // Render settings dynamically based on _aiBridgeSubTabIndex:
+                          if (_aiBridgeSubTabIndex == 0) ...[
+                            _buildLabeled(
+                                'Antigravity API Base URL',
+                                Icons.cloud,
+                                FormBuilderTextField(
+                                  name: 'antigravityBaseUrl',
+                                  initialValue: _antigravityBaseUrl,
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary),
+                                  decoration: _inputDecoration(),
+                                )),
+                            const SizedBox(height: 16),
+                            _buildLabeled(
+                                'Antigravity Invoke Endpoint',
+                                Icons.api,
+                                FormBuilderTextField(
+                                  name: 'antigravityInvokeEndpoint',
+                                  initialValue: _antigravityInvokeEndpoint,
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary),
+                                  decoration: _inputDecoration(),
+                                )),
+                            const SizedBox(height: 16),
+                            _buildLabeled(
+                                'Antigravity Prompt Endpoint',
+                                Icons.send,
+                                FormBuilderTextField(
+                                  name: 'antigravityPromptEndpoint',
+                                  initialValue: _antigravityPromptEndpoint,
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary),
+                                  decoration: _inputDecoration(),
+                                )),
+                            const SizedBox(height: 16),
+                            _buildLabeled(
+                                'Antigravity Startup Command',
+                                Icons.terminal,
+                                FormBuilderTextField(
+                                  name: 'antigravityStartupCommand',
+                                  initialValue: _antigravityStartupCommand,
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary),
+                                  decoration: _inputDecoration(),
+                                )),
+                            const SizedBox(height: 16),
+                            _buildLabeled(
+                                'Antigravity API Key (SDK Only)',
+                                Icons.key,
+                                FormBuilderTextField(
+                                  name: 'antigravityApiKey',
+                                  initialValue: _antigravityApiKey,
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary),
+                                  decoration: _inputDecoration(),
+                                  obscureText: true,
+                                )),
+                            const SizedBox(height: 16),
+                            _buildLabeled(
+                                'Antigravity Target Model',
+                                Icons.psychology_alt,
+                                FutureBuilder<List<AntigravityModel>>(
+                                  future: _modelsFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const SizedBox(
+                                        height: 48,
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          ),
+                                        ),
+                                      );
+                                    } else if (snapshot.hasError) {
+                                      return Text(
+                                          'Error loading models: ${snapshot.error}',
+                                          style: const TextStyle(
+                                              color: Colors.redAccent));
+                                    } else if (!snapshot.hasData ||
+                                        snapshot.data!.isEmpty) {
+                                      return const Text(
+                                          'No models found in current SDK instance.',
+                                          style: TextStyle(color: Colors.grey));
+                                    }
+
+                                    final models = snapshot.data!;
+                                    final hasSelection = models
+                                        .any((m) => m.id == _antigravityModel);
+                                    final initialValue = hasSelection
+                                        ? _antigravityModel
+                                        : (models.isNotEmpty
+                                            ? models.first.id
+                                            : 'gemini-2.0-flash');
+
+                                    return FormBuilderDropdown<String>(
+                                      name: 'antigravityModel',
+                                      decoration: _inputDecoration(),
+                                      dropdownColor: AppColors.panelBackground,
+                                      initialValue: initialValue,
+                                      onChanged: (val) {
+                                        _antigravityModel = val;
+                                      },
+                                      onSaved: (val) {
+                                        _antigravityModel = val;
+                                      },
+                                      items: models.map((m) {
+                                        return DropdownMenuItem(
+                                          value: m.id,
+                                          child: Text(m.displayName,
+                                              style: TextStyle(
+                                                  color: AppColors
+                                                      .panelTextPrimary)),
+                                        );
+                                      }).toList(),
+                                    );
+                                  },
+                                )),
+                            const SizedBox(height: 16),
+                            _buildLabeled(
+                                'Antigravity LO Model',
+                                Icons.psychology,
+                                FutureBuilder<List<AntigravityModel>>(
+                                  future: _modelsFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const SizedBox(
+                                        height: 48,
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          ),
+                                        ),
+                                      );
+                                    } else if (snapshot.hasError ||
+                                        !snapshot.hasData ||
+                                        snapshot.data!.isEmpty) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    final models = snapshot.data!;
+                                    final hasSelection = models.any(
+                                        (m) => m.id == _antigravityLoModel);
+                                    final initialValue = hasSelection
+                                        ? _antigravityLoModel
+                                        : (models.isNotEmpty
+                                            ? models.first.id
+                                            : 'gemini-2.0-flash-lite');
+                                    return FormBuilderDropdown<String>(
+                                      name: 'antigravityLoModel',
+                                      decoration: _inputDecoration(),
+                                      dropdownColor: AppColors.panelBackground,
+                                      initialValue: initialValue,
+                                      onChanged: (val) {
+                                        _antigravityLoModel = val;
+                                      },
+                                      onSaved: (val) {
+                                        _antigravityLoModel = val;
+                                      },
+                                      items: models.map((m) {
+                                        return DropdownMenuItem(
+                                          value: m.id,
+                                          child: Text(m.displayName,
+                                              style: TextStyle(
+                                                  color: AppColors
+                                                      .panelTextPrimary)),
+                                        );
+                                      }).toList(),
+                                    );
+                                  },
+                                )),
+                            const SizedBox(height: 16),
+                            _buildLabeled(
+                                'Antigravity HI Model',
+                                Icons.psychology,
+                                FutureBuilder<List<AntigravityModel>>(
+                                  future: _modelsFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const SizedBox(
+                                        height: 48,
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          ),
+                                        ),
+                                      );
+                                    } else if (snapshot.hasError ||
+                                        !snapshot.hasData ||
+                                        snapshot.data!.isEmpty) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    final models = snapshot.data!;
+                                    final hasSelection = models.any(
+                                        (m) => m.id == _antigravityHiModel);
+                                    final initialValue = hasSelection
+                                        ? _antigravityHiModel
+                                        : (models.isNotEmpty
+                                            ? models.first.id
+                                            : 'gemini-2.0-flash');
+                                    return FormBuilderDropdown<String>(
+                                      name: 'antigravityHiModel',
+                                      decoration: _inputDecoration(),
+                                      dropdownColor: AppColors.panelBackground,
+                                      initialValue: initialValue,
+                                      onChanged: (val) {
+                                        _antigravityHiModel = val;
+                                      },
+                                      onSaved: (val) {
+                                        _antigravityHiModel = val;
+                                      },
+                                      items: models.map((m) {
+                                        return DropdownMenuItem(
+                                          value: m.id,
+                                          child: Text(m.displayName,
+                                              style: TextStyle(
+                                                  color: AppColors
+                                                      .panelTextPrimary)),
+                                        );
+                                      }).toList(),
+                                    );
+                                  },
+                                )),
+                            const SizedBox(height: 32),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: ElevatedButton.icon(
+                                onPressed: _isTestingAntigravity
+                                    ? null
+                                    : _testAntigravityConnection,
+                                icon: _isTestingAntigravity
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2))
+                                    : const Icon(Icons.wifi_tethering),
+                                label: Text('Test Connection',
+                                    style: TextStyle(
+                                        fontSize: AppUIConfig.rootFontSize)),
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2A2A2A),
+                                    foregroundColor: Colors.deepPurpleAccent,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 16),
+                                    side: const BorderSide(
+                                        color: Colors.deepPurpleAccent,
+                                        width: 1)),
+                              ),
+                            ),
+                          ] else if (_aiBridgeSubTabIndex == 1) ...[
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(top: 8.0, left: 12.0),
+                              child: Text(
+                                'Desktop mode interacts with target windows using standard macros. No custom window title or focus macro configuration is required here.',
+                                style: TextStyle(
+                                    color: AppColors.panelTextSecondary,
+                                    fontSize: AppUIConfig.rootFontSize),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _buildLabeled(
+                                'Available Models (Comma-separated)',
+                                Icons.list,
+                                FormBuilderTextField(
+                                  // Use a unique name here — 'antigravityAvailableModels' is already
+                                  // registered by the CLI tab in this same FormBuilder scope.
+                                  name: 'antigravityAvailableModelsDesktop',
+                                  initialValue: _antigravityAvailableModels,
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary),
+                                  decoration: _inputDecoration(),
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _antigravityAvailableModels = val;
+                                    });
+                                    _onFormChanged();
+                                  },
+                                  onSaved: (val) {
+                                    _antigravityAvailableModels = val;
+                                  },
+                                )),
+                            const SizedBox(height: 16),
+                            _buildLoHiDropdownsForNonSdk(),
+                          ] else if (_aiBridgeSubTabIndex == 2) ...[
+                            Text('CLI SETTINGS',
+                                style: TextStyle(
+                                    color: AppColors.panelTextSecondary,
+                                    fontSize: AppUIConfig.rootFontSize * 0.9,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.5)),
+                            const SizedBox(height: 12),
+                            FormBuilderSwitch(
+                              name: 'antigravitySendViaClipboard',
+                              title: Text('Send via clipboard paste to the CLI',
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary)),
+                              initialValue: _antigravitySendViaClipboard,
+                              decoration:
+                                  InputDecoration(border: InputBorder.none),
+                              activeColor: AppColors.accent,
+                              onChanged: (val) {
+                                _antigravitySendViaClipboard = val == true;
+                                _onFormChanged();
+                              },
+                              onSaved: (val) {
+                                _antigravitySendViaClipboard = val == true;
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            FormBuilderSwitch(
+                              name: 'antigravityStatusDebug',
+                              title: Text('Enable Antigravity status log check',
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary)),
+                              initialValue: _antigravityStatusDebug,
+                              decoration:
+                                  InputDecoration(border: InputBorder.none),
+                              activeColor: AppColors.accent,
+                              onChanged: (val) {
+                                _antigravityStatusDebug = val == true;
+                              },
+                              onSaved: (val) {
+                                _antigravityStatusDebug = val == true;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            const Divider(color: Color(0xFF2A2A2A)),
+                            const SizedBox(height: 16),
+                            Text('HANDSFREE SETTINGS',
+                                style: TextStyle(
+                                    color: AppColors.panelTextSecondary,
+                                    fontSize: AppUIConfig.rootFontSize * 0.9,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.5)),
+                            const SizedBox(height: 12),
+                            FormBuilderSwitch(
+                              name: 'antigravityHandsfreeAutoExecute',
+                              title: Text(
+                                  'Auto-execute prompt (Handsfree Mode)',
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary)),
+                              initialValue: _antigravityHandsfreeAutoExecute,
+                              decoration:
+                                  InputDecoration(border: InputBorder.none),
+                              activeColor: AppColors.accent,
+                              onChanged: (val) {
+                                setState(() {
+                                  _antigravityHandsfreeAutoExecute =
+                                      val == true;
+                                  if (_antigravityBridgeMode == 'cli' ||
+                                      _antigravityBridgeMode == 'handsfree') {
+                                    final targetMode =
+                                        val == true ? 'handsfree' : 'cli';
+                                    _antigravityBridgeMode = targetMode;
+                                    _formKey.currentState
+                                        ?.fields['antigravityBridgeMode']
+                                        ?.didChange(targetMode);
+                                  }
+                                });
+                              },
+                              onSaved: (val) {
+                                _antigravityHandsfreeAutoExecute = val == true;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            _buildLabeled(
+                                'Delay between queue items (seconds)',
+                                Icons.timer_outlined,
+                                FormBuilderTextField(
+                                  name: 'aiTasksDelaySeconds',
+                                  initialValue: _aiTasksDelaySeconds.toString(),
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary),
+                                  decoration: _inputDecoration(),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                )),
+                            const SizedBox(height: 16),
+                            _buildLabeled(
+                                'Available Models (Comma-separated)',
+                                Icons.list,
+                                FormBuilderTextField(
+                                  name: 'antigravityAvailableModels',
+                                  initialValue: _antigravityAvailableModels,
+                                  style: TextStyle(
+                                      color: AppColors.panelTextPrimary),
+                                  decoration: _inputDecoration(),
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _antigravityAvailableModels = val;
+                                    });
+                                    _onFormChanged();
+                                  },
+                                  onSaved: (val) {
+                                    _antigravityAvailableModels = val;
+                                  },
+                                )),
+                            const SizedBox(height: 16),
+                            _buildLoHiDropdownsForNonSdk(),
+                            const SizedBox(height: 32),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: ElevatedButton.icon(
+                                onPressed:
+                                    _isTestingCli ? null : _testCliConnection,
+                                icon: _isTestingCli
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2))
+                                    : const Icon(Icons.terminal),
+                                label: Text('Test CLI Connection',
+                                    style: TextStyle(
+                                        fontSize: AppUIConfig.rootFontSize)),
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2A2A2A),
+                                    foregroundColor: Colors.tealAccent,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 16),
+                                    side: const BorderSide(
+                                        color: Colors.tealAccent, width: 1)),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -3834,8 +5255,6 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
       ),
     );
   }
-
-
 }
 
 class CustomWorkspacesEditor extends StatefulWidget {
@@ -3847,10 +5266,9 @@ class CustomWorkspacesEditor extends StatefulWidget {
 }
 
 class _CustomWorkspacesEditorState extends State<CustomWorkspacesEditor> {
-
   bool _showWorkspaceEditor = false;
   WorkspaceDefinition? _editingWorkspaceTarget;
-  
+
   final TextEditingController _nameCtrl = TextEditingController();
   final TextEditingController _idCtrl = TextEditingController();
   final TextEditingController _descCtrl = TextEditingController();
@@ -3874,166 +5292,248 @@ class _CustomWorkspacesEditorState extends State<CustomWorkspacesEditor> {
   Widget _buildWorkspaceEditor() {
     final isNew = _editingWorkspaceTarget == null;
     return Positioned.fill(
-      child: Container(
-        color: AppColors.background.withValues(alpha: 0.8),
-        alignment: Alignment.center,
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            width: 500,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.panelBackground,
-              borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius),
-              border: Border.all(color: AppColors.controlBorder),
-              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 4))]
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(isNew ? 'Add Workspace' : 'Edit Workspace', style: TextStyle(color: AppColors.panelTextPrimary, fontSize: AppUIConfig.headerFontSize, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  TextField(controller: _idCtrl, style: TextStyle(color: AppColors.panelTextPrimary), decoration: InputDecoration(labelText: 'ID (unique)', labelStyle: TextStyle(color: AppColors.panelTextSecondary), filled: true, fillColor: AppColors.windowBackground, border: OutlineInputBorder(borderSide: BorderSide.none))),
-                  const SizedBox(height: 12),
-                  TextField(controller: _nameCtrl, style: TextStyle(color: AppColors.panelTextPrimary), decoration: InputDecoration(labelText: 'Name', labelStyle: TextStyle(color: AppColors.panelTextSecondary), filled: true, fillColor: AppColors.windowBackground, border: OutlineInputBorder(borderSide: BorderSide.none))),
-                  const SizedBox(height: 12),
-                  TextField(controller: _shortCtrl, style: TextStyle(color: AppColors.panelTextPrimary), decoration: InputDecoration(labelText: 'Short Label', labelStyle: TextStyle(color: AppColors.panelTextSecondary), filled: true, fillColor: AppColors.windowBackground, border: OutlineInputBorder(borderSide: BorderSide.none))),
-                  const SizedBox(height: 12),
-                  TextField(controller: _descCtrl, style: TextStyle(color: AppColors.panelTextPrimary), decoration: InputDecoration(labelText: 'Description', labelStyle: TextStyle(color: AppColors.panelTextSecondary), filled: true, fillColor: AppColors.windowBackground, border: OutlineInputBorder(borderSide: BorderSide.none))),
-                  
-                  const SizedBox(height: 24),
-                  Row(
+        child: Container(
+            color: AppColors.background.withValues(alpha: 0.8),
+            alignment: Alignment.center,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 500,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                    color: AppColors.panelBackground,
+                    borderRadius:
+                        BorderRadius.circular(AppUIConfig.windowBorderRadius),
+                    border: Border.all(color: AppColors.controlBorder),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black54,
+                          blurRadius: 10,
+                          offset: Offset(0, 4))
+                    ]),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Color:', style: TextStyle(color: AppColors.panelTextSecondary)),
-                            const SizedBox(height: 8),
-                            InkWell(
-                              onTap: () {
-                                GlobalPickerState.instance.requestColor(
-                                  initialColor: _selectedColor ?? AppColors.accent,
-                                  onColorSelected: (c) => setState(() => _selectedColor = c)
-                                );
-                                showColorPickerWindow(context);
-                              },
-                              child: Container(
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: AppColors.windowBackground,
-                                  borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Container(
-                                      width: 20, height: 20,
-                                      decoration: BoxDecoration(
-                                        color: _selectedColor ?? Colors.transparent,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: AppColors.panelTextSecondary)
-                                      ),
+                      Text(isNew ? 'Add Workspace' : 'Edit Workspace',
+                          style: TextStyle(
+                              color: AppColors.panelTextPrimary,
+                              fontSize: AppUIConfig.headerFontSize,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 16),
+                      TextField(
+                          controller: _idCtrl,
+                          style: TextStyle(color: AppColors.panelTextPrimary),
+                          decoration: InputDecoration(
+                              labelText: 'ID (unique)',
+                              labelStyle: TextStyle(
+                                  color: AppColors.panelTextSecondary),
+                              filled: true,
+                              fillColor: AppColors.windowBackground,
+                              border: OutlineInputBorder(
+                                  borderSide: BorderSide.none))),
+                      const SizedBox(height: 12),
+                      TextField(
+                          controller: _nameCtrl,
+                          style: TextStyle(color: AppColors.panelTextPrimary),
+                          decoration: InputDecoration(
+                              labelText: 'Name',
+                              labelStyle: TextStyle(
+                                  color: AppColors.panelTextSecondary),
+                              filled: true,
+                              fillColor: AppColors.windowBackground,
+                              border: OutlineInputBorder(
+                                  borderSide: BorderSide.none))),
+                      const SizedBox(height: 12),
+                      TextField(
+                          controller: _shortCtrl,
+                          style: TextStyle(color: AppColors.panelTextPrimary),
+                          decoration: InputDecoration(
+                              labelText: 'Short Label',
+                              labelStyle: TextStyle(
+                                  color: AppColors.panelTextSecondary),
+                              filled: true,
+                              fillColor: AppColors.windowBackground,
+                              border: OutlineInputBorder(
+                                  borderSide: BorderSide.none))),
+                      const SizedBox(height: 12),
+                      TextField(
+                          controller: _descCtrl,
+                          style: TextStyle(color: AppColors.panelTextPrimary),
+                          decoration: InputDecoration(
+                              labelText: 'Description',
+                              labelStyle: TextStyle(
+                                  color: AppColors.panelTextSecondary),
+                              filled: true,
+                              fillColor: AppColors.windowBackground,
+                              border: OutlineInputBorder(
+                                  borderSide: BorderSide.none))),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Color:',
+                                    style: TextStyle(
+                                        color: AppColors.panelTextSecondary)),
+                                const SizedBox(height: 8),
+                                InkWell(
+                                  onTap: () {
+                                    GlobalPickerState.instance.requestColor(
+                                        initialColor:
+                                            _selectedColor ?? AppColors.accent,
+                                        onColorSelected: (c) =>
+                                            setState(() => _selectedColor = c));
+                                    showColorPickerWindow(context);
+                                  },
+                                  child: Container(
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.windowBackground,
+                                      borderRadius: BorderRadius.circular(
+                                          AppUIConfig.windowBorderRadius),
                                     ),
-                                    const SizedBox(width: 8),
-                                    Text(_selectedColor == null ? 'None' : 'Selected', style: TextStyle(color: AppColors.panelTextPrimary)),
-                                  ],
-                                ),
-                              ),
-                            )
-                          ],
-                        ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          width: 20,
+                                          height: 20,
+                                          decoration: BoxDecoration(
+                                              color: _selectedColor ??
+                                                  Colors.transparent,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                  color: AppColors
+                                                      .panelTextSecondary)),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                            _selectedColor == null
+                                                ? 'None'
+                                                : 'Selected',
+                                            style: TextStyle(
+                                                color: AppColors
+                                                    .panelTextPrimary)),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Icon:',
+                                    style: TextStyle(
+                                        color: AppColors.panelTextSecondary)),
+                                const SizedBox(height: 8),
+                                InkWell(
+                                  onTap: () {
+                                    GlobalPickerState.instance.requestIcon(
+                                        initialIcon: _selectedIcon,
+                                        onIconSelected: (ic) =>
+                                            setState(() => _selectedIcon = ic));
+                                    showIconPickerWindow(context);
+                                  },
+                                  child: Container(
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.windowBackground,
+                                      borderRadius: BorderRadius.circular(
+                                          AppUIConfig.windowBorderRadius),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(_selectedIcon ?? Icons.block,
+                                            color: AppColors.panelTextPrimary,
+                                            size: 20),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                            _selectedIcon == null
+                                                ? 'None'
+                                                : 'Selected',
+                                            style: TextStyle(
+                                                color: AppColors
+                                                    .panelTextPrimary)),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              ],
+                            ),
+                          )
+                        ],
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Icon:', style: TextStyle(color: AppColors.panelTextSecondary)),
-                            const SizedBox(height: 8),
-                            InkWell(
-                              onTap: () {
-                                GlobalPickerState.instance.requestIcon(
-                                  initialIcon: _selectedIcon,
-                                  onIconSelected: (ic) => setState(() => _selectedIcon = ic)
-                                );
-                                showIconPickerWindow(context);
+                      const SizedBox(height: 32),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                              onPressed: () =>
+                                  setState(() => _showWorkspaceEditor = false),
+                              style: TextButton.styleFrom(
+                                  foregroundColor: Colors.grey),
+                              child: Text('Cancel')),
+                          const SizedBox(width: 16),
+                          ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.accent,
+                                  foregroundColor: AppColors.panelTextPrimary),
+                              onPressed: () {
+                                if (_idCtrl.text.isEmpty ||
+                                    _nameCtrl.text.isEmpty) return;
+                                setState(() {
+                                  final newDef = WorkspaceDefinition(
+                                    id: _idCtrl.text,
+                                    name: _nameCtrl.text,
+                                    shortLabel: _shortCtrl.text,
+                                    icon: _selectedIcon ?? Icons.extension,
+                                    color: _selectedColor ?? AppColors.accent,
+                                    description: _descCtrl.text,
+                                    requiresConfig: _editingWorkspaceTarget
+                                            ?.requiresConfig ??
+                                        false,
+                                    mappedMode:
+                                        _editingWorkspaceTarget?.mappedMode,
+                                  );
+                                  if (_editingWorkspaceTarget != null) {
+                                    final idx = AppWorkspaces.available
+                                        .indexWhere((e) =>
+                                            e.id ==
+                                            _editingWorkspaceTarget!.id);
+                                    if (idx >= 0) {
+                                      AppWorkspaces.available[idx] = newDef;
+                                    } else {
+                                      AppWorkspaces.available.add(newDef);
+                                    }
+                                  } else {
+                                    AppWorkspaces.available.add(newDef);
+                                  }
+                                  _showWorkspaceEditor = false;
+                                });
+                                AppWorkspaces.saveCustom().then((_) =>
+                                    VisualEditorScreen
+                                        .configRefreshNotifier.value++);
+                                widget.onWorkspacesChanged();
                               },
-                              child: Container(
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: AppColors.windowBackground,
-                                  borderRadius: BorderRadius.circular(AppUIConfig.windowBorderRadius),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(_selectedIcon ?? Icons.block, color: AppColors.panelTextPrimary, size: 20),
-                                    const SizedBox(width: 8),
-                                    Text(_selectedIcon == null ? 'None' : 'Selected', style: TextStyle(color: AppColors.panelTextPrimary)),
-                                  ],
-                                ),
-                              ),
-                            )
-                          ],
-                        ),
+                              child: Text('Save')),
+                        ],
                       )
                     ],
                   ),
-
-                  const SizedBox(height: 32),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => setState(() => _showWorkspaceEditor = false),
-                        style: TextButton.styleFrom(foregroundColor: Colors.grey),
-                        child: Text('Cancel')
-                      ),
-                      const SizedBox(width: 16),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: AppColors.panelTextPrimary),
-                        onPressed: () {
-                          if (_idCtrl.text.isEmpty || _nameCtrl.text.isEmpty) return;
-                          setState(() {
-                            final newDef = WorkspaceDefinition(
-                              id: _idCtrl.text,
-                              name: _nameCtrl.text,
-                              shortLabel: _shortCtrl.text,
-                              icon: _selectedIcon ?? Icons.extension,
-                              color: _selectedColor ?? AppColors.accent,
-                              description: _descCtrl.text,
-                              requiresConfig: _editingWorkspaceTarget?.requiresConfig ?? false,
-                              mappedMode: _editingWorkspaceTarget?.mappedMode,
-                            );
-                            if (_editingWorkspaceTarget != null) {
-                              final idx = AppWorkspaces.available.indexWhere((e) => e.id == _editingWorkspaceTarget!.id);
-                              if (idx >= 0) {
-                                AppWorkspaces.available[idx] = newDef;
-                              } else {
-                                AppWorkspaces.available.add(newDef);
-                              }
-                            } else {
-                              AppWorkspaces.available.add(newDef);
-                            }
-                            _showWorkspaceEditor = false;
-                          });
-                          AppWorkspaces.saveCustom().then((_) => VisualEditorScreen.configRefreshNotifier.value++);
-                          widget.onWorkspacesChanged();
-                        }, 
-                        child: Text('Save')
-                      ),
-                    ],
-                  )
-                ],
+                ),
               ),
-            ),
-          ),
-        )
-      )
-    );
+            )));
   }
 
   @override
@@ -4045,34 +5545,51 @@ class _CustomWorkspacesEditorState extends State<CustomWorkspacesEditor> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('CUSTOM VIEWPORTS / WORKSPACES', style: TextStyle(color: AppColors.panelTextSecondary, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
+              Text('CUSTOM VIEWPORTS / WORKSPACES',
+                  style: TextStyle(
+                      color: AppColors.panelTextSecondary,
+                      fontSize: AppUIConfig.rootFontSize,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2)),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextButton.icon(
-                    icon: const Icon(Icons.restore, color: Colors.amberAccent, size: 16),
-                    label: const Text('Reset Defaults', style: TextStyle(color: Colors.amberAccent)),
+                    icon: const Icon(Icons.restore,
+                        color: Colors.amberAccent, size: 16),
+                    label: const Text('Reset Defaults',
+                        style: TextStyle(color: Colors.amberAccent)),
                     onPressed: () {
                       showDialog(
                         context: context,
                         builder: (ctx) => AlertDialog(
                           backgroundColor: AppColors.windowBackground,
-                          title: Text('Reset Workspaces?', style: TextStyle(color: AppColors.panelTextPrimary)),
-                          content: Text('Are you sure you want to reset all workspaces to default settings?', style: TextStyle(color: AppColors.panelTextSecondary)),
+                          title: Text('Reset Workspaces?',
+                              style:
+                                  TextStyle(color: AppColors.panelTextPrimary)),
+                          content: Text(
+                              'Are you sure you want to reset all workspaces to default settings?',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary)),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx),
-                              child: Text('Cancel', style: TextStyle(color: AppColors.panelTextSecondary)),
+                              child: Text('Cancel',
+                                  style: TextStyle(
+                                      color: AppColors.panelTextSecondary)),
                             ),
                             ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.redAccent),
                               onPressed: () async {
                                 Navigator.pop(ctx);
                                 setState(() {
-                                  AppWorkspaces.available = List.from(AppWorkspaces.initialDefaults);
+                                  AppWorkspaces.available =
+                                      List.from(AppWorkspaces.initialDefaults);
                                 });
                                 await AppWorkspaces.saveCustom();
-                                VisualEditorScreen.configRefreshNotifier.value++;
+                                VisualEditorScreen
+                                    .configRefreshNotifier.value++;
                                 widget.onWorkspacesChanged();
                               },
                               child: const Text('Reset'),
@@ -4085,8 +5602,10 @@ class _CustomWorkspacesEditorState extends State<CustomWorkspacesEditor> {
                   const SizedBox(width: 8),
                   ElevatedButton.icon(
                     icon: Icon(Icons.add, color: AppColors.panelTextPrimary),
-                    label: Text('Add Workspace', style: TextStyle(color: AppColors.panelTextPrimary)),
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+                    label: Text('Add Workspace',
+                        style: TextStyle(color: AppColors.panelTextPrimary)),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accent),
                     onPressed: () => _showEditWorkspace(null),
                   ),
                 ],
@@ -4095,10 +5614,12 @@ class _CustomWorkspacesEditorState extends State<CustomWorkspacesEditor> {
           ),
         ),
         Expanded(
-          child: ReorderableListView(key: const PageStorageKey('config_tab_7'),
+          child: ReorderableListView(
+            key: const PageStorageKey('config_tab_7'),
             padding: const EdgeInsets.only(right: 16),
             buildDefaultDragHandles: false,
-            proxyDecorator: (Widget child, int index, Animation<double> animation) {
+            proxyDecorator:
+                (Widget child, int index, Animation<double> animation) {
               return Material(
                 color: AppColors.controlBorder,
                 elevation: 4.0,
@@ -4111,7 +5632,8 @@ class _CustomWorkspacesEditorState extends State<CustomWorkspacesEditor> {
                 final item = AppWorkspaces.available.removeAt(oldIndex);
                 AppWorkspaces.available.insert(newIndex, item);
               });
-              AppWorkspaces.saveCustom().then((_) => VisualEditorScreen.configRefreshNotifier.value++);
+              AppWorkspaces.saveCustom().then(
+                  (_) => VisualEditorScreen.configRefreshNotifier.value++);
               widget.onWorkspacesChanged();
             },
             children: AppWorkspaces.available.asMap().entries.map((entry) {
@@ -4120,8 +5642,10 @@ class _CustomWorkspacesEditorState extends State<CustomWorkspacesEditor> {
               return ListTile(
                 key: ValueKey(w.id),
                 leading: Icon(w.icon, color: w.color),
-                title: Text(w.name.toUpperCase(), style: TextStyle(color: AppColors.panelTextPrimary)),
-                subtitle: Text(w.description, style: TextStyle(color: AppColors.panelTextSecondary)),
+                title: Text(w.name.toUpperCase(),
+                    style: TextStyle(color: AppColors.panelTextPrimary)),
+                subtitle: Text(w.description,
+                    style: TextStyle(color: AppColors.panelTextSecondary)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -4129,15 +5653,18 @@ class _CustomWorkspacesEditorState extends State<CustomWorkspacesEditor> {
                       icon: const Icon(Icons.delete, color: Colors.redAccent),
                       onPressed: () {
                         setState(() {
-                          AppWorkspaces.available.removeWhere((e) => e.id == w.id);
+                          AppWorkspaces.available
+                              .removeWhere((e) => e.id == w.id);
                         });
-                        AppWorkspaces.saveCustom().then((_) => VisualEditorScreen.configRefreshNotifier.value++);
+                        AppWorkspaces.saveCustom().then((_) =>
+                            VisualEditorScreen.configRefreshNotifier.value++);
                         widget.onWorkspacesChanged();
                       },
                     ),
                     ReorderableDragStartListener(
                       index: idx,
-                      child: Icon(Icons.drag_handle, color: AppColors.panelTextSecondary),
+                      child: Icon(Icons.drag_handle,
+                          color: AppColors.panelTextSecondary),
                     ),
                   ],
                 ),
@@ -4153,139 +5680,244 @@ class _CustomWorkspacesEditorState extends State<CustomWorkspacesEditor> {
     return Stack(
       children: [
         mainContent,
-        if (_showWorkspaceEditor)
-          _buildWorkspaceEditor(),
+        if (_showWorkspaceEditor) _buildWorkspaceEditor(),
       ],
     );
   }
 
-
-
-
-
-  Widget _buildGlobalActionConfig(String label, IconData defaultIcon, IconData? currentIcon, Color defaultColor, Color? currentColor, Function(IconData?) onIconChanged, Function(Color?) onColorChanged) {
-      final actualIcon = currentIcon ?? defaultIcon;
-      final actualColor = currentColor ?? defaultColor;
-      return Column(
-          children: [
-              Text(label, style: TextStyle(color: Colors.white, fontSize: AppUIConfig.smallFontSize)),
-              const SizedBox(height: 8),
-              Row(
-                 mainAxisSize: MainAxisSize.min,
-                 children: [
-                   Tooltip(
-                     message: 'Change Icon',
-                     child: InkWell(
-                        onTap: () {
-                          GlobalPickerState.instance.requestIcon(
-  initialIcon: null,
-  onIconSelected: (ic) {
-                                if (ic != null) onIconChanged(ic);
-                              },
-);
-showIconPickerWindow(context);
-                        },
+  Widget _buildGlobalActionConfig(
+      String label,
+      IconData defaultIcon,
+      IconData? currentIcon,
+      Color defaultColor,
+      Color? currentColor,
+      Function(IconData?) onIconChanged,
+      Function(Color?) onColorChanged) {
+    final actualIcon = currentIcon ?? defaultIcon;
+    final actualColor = currentColor ?? defaultColor;
+    return Column(children: [
+      Text(label,
+          style: TextStyle(
+              color: Colors.white, fontSize: AppUIConfig.smallFontSize)),
+      const SizedBox(height: 8),
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        Tooltip(
+            message: 'Change Icon',
+            child: InkWell(
+                onTap: () {
+                  GlobalPickerState.instance.requestIcon(
+                    initialIcon: null,
+                    onIconSelected: (ic) {
+                      if (ic != null) onIconChanged(ic);
+                    },
+                  );
+                  showIconPickerWindow(context);
+                },
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                      color: AppColors.panelBackground,
+                      borderRadius: BorderRadius.only(
+                          topLeft:
+                              Radius.circular(AppUIConfig.windowBorderRadius),
+                          bottomLeft:
+                              Radius.circular(AppUIConfig.windowBorderRadius)),
+                      border: Border.all(color: AppColors.controlBorder)),
+                  child: Icon(actualIcon, color: actualColor, size: 20),
+                ))),
+        Tooltip(
+            message: 'Change Color',
+            child: InkWell(
+                onTap: () {
+                  GlobalPickerState.instance.requestColor(
+                    initialColor: actualColor,
+                    onColorSelected: (cc) {
+                      onColorChanged(cc);
+                    },
+                  );
+                  showColorPickerWindow(context);
+                },
+                child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                        color: AppColors.panelBackground,
+                        borderRadius: BorderRadius.only(
+                            topRight:
+                                Radius.circular(AppUIConfig.windowBorderRadius),
+                            bottomRight: Radius.circular(
+                                AppUIConfig.windowBorderRadius)),
+                        border: Border(
+                            top: BorderSide(color: AppColors.controlBorder),
+                            right: BorderSide(color: AppColors.controlBorder),
+                            bottom:
+                                BorderSide(color: AppColors.controlBorder))),
+                    child: Center(
                         child: Container(
-                           width: 40, height: 40,
-                           decoration: BoxDecoration(
-                               color: AppColors.panelBackground,
-                               borderRadius: BorderRadius.only(topLeft: Radius.circular(AppUIConfig.windowBorderRadius), bottomLeft: Radius.circular(AppUIConfig.windowBorderRadius)),
-                               border: Border.all(color: AppColors.controlBorder)
-                           ),
-                           child: Icon(actualIcon, color: actualColor, size: 20),
-                        )
-                     )
-                   ),
-                   Tooltip(
-                     message: 'Change Color',
-                     child: InkWell(
-                        onTap: () {
-                          GlobalPickerState.instance.requestColor(
-  initialColor: actualColor,
-  onColorSelected: (cc) {
-                                onColorChanged(cc);
-                              },
-);
-showColorPickerWindow(context);
-                        },
-                        child: Container(
-                           width: 40, height: 40,
-                           decoration: BoxDecoration(
-                               color: AppColors.panelBackground,
-                               borderRadius: BorderRadius.only(topRight: Radius.circular(AppUIConfig.windowBorderRadius), bottomRight: Radius.circular(AppUIConfig.windowBorderRadius)),
-                               border: Border(top: BorderSide(color: AppColors.controlBorder), right: BorderSide(color: AppColors.controlBorder), bottom: BorderSide(color: AppColors.controlBorder))
-                           ),
-                           child: Center(
-                               child: Container(
-                                  width: 20, height: 20,
-                                  decoration: BoxDecoration(color: actualColor, shape: BoxShape.circle)
-                               )
-                           )
-                        )
-                     )
-                   ),
-                 ]
-              )
-          ]
-      );
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                                color: actualColor,
+                                shape: BoxShape.circle)))))),
+      ])
+    ]);
   }
 
   Future<void> _saveGlobalConfig(String prefKey, int? val) async {
-      final prefs = await SharedPreferences.getInstance();
-      if (val != null) await prefs.setInt(prefKey, val); else await prefs.remove(prefKey);
-      VisualEditorScreen.configRefreshNotifier.value++;
+    final prefs = await SharedPreferences.getInstance();
+    if (val != null)
+      await prefs.setInt(prefKey, val);
+    else
+      await prefs.remove(prefKey);
+    VisualEditorScreen.configRefreshNotifier.value++;
   }
 
   Widget _buildGlobalActionIconsConfig() {
-        return Container(
-              padding: const EdgeInsets.all(16),
-              color: AppColors.background,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('GLOBAL ACTION ICONS & TOOLS', style: TextStyle(color: Colors.white, fontSize: AppUIConfig.rootFontSize, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 24, runSpacing: 16,
-                    alignment: WrapAlignment.start,
-                    children: [
-                      _buildGlobalActionConfig('Config', Icons.settings, AppUIConfig.configIconCodePoint != null ? IconData(AppUIConfig.configIconCodePoint!, fontFamily: 'MaterialIcons') : null, AppColors.accent, AppUIConfig.configIconColor, 
-                        (ic) { setState(() => AppUIConfig.configIconCodePoint = ic?.codePoint); _saveGlobalConfig('ve_configIconCodePoint', ic?.codePoint); },
-                        (c) { setState(() => AppUIConfig.configIconColor = c); _saveGlobalConfig('ve_configIconColor', c?.value); }),
-                      _buildGlobalActionConfig('Bridge', Icons.rocket_launch, AppUIConfig.bridgeIconCodePoint != null ? IconData(AppUIConfig.bridgeIconCodePoint!, fontFamily: 'MaterialIcons') : null, Colors.redAccent, AppUIConfig.bridgeIconColor, 
-                        (ic) { setState(() => AppUIConfig.bridgeIconCodePoint = ic?.codePoint); _saveGlobalConfig('ve_bridgeIconCodePoint', ic?.codePoint); },
-                        (c) { setState(() => AppUIConfig.bridgeIconColor = c); _saveGlobalConfig('ve_bridgeIconColor', c?.value); }),
-                      _buildGlobalActionConfig('Exit', Icons.exit_to_app, AppUIConfig.exitIconCodePoint != null ? IconData(AppUIConfig.exitIconCodePoint!, fontFamily: 'MaterialIcons') : null, AppColors.accent, AppUIConfig.exitIconColor, 
-                        (ic) { setState(() => AppUIConfig.exitIconCodePoint = ic?.codePoint); _saveGlobalConfig('ve_exitIconCodePoint', ic?.codePoint); },
-                        (c) { setState(() => AppUIConfig.exitIconColor = c); _saveGlobalConfig('ve_exitIconColor', c?.value); }),
-                      _buildGlobalActionConfig('Zoom In', Icons.zoom_in, AppUIConfig.zoomInIconCodePoint != null ? IconData(AppUIConfig.zoomInIconCodePoint!, fontFamily: 'MaterialIcons') : null, AppColors.toolbarTextSecondary, AppUIConfig.zoomInIconColor, 
-                        (ic) { setState(() => AppUIConfig.zoomInIconCodePoint = ic?.codePoint); _saveGlobalConfig('ve_zoomInIconCodePoint', ic?.codePoint); },
-                        (c) { setState(() => AppUIConfig.zoomInIconColor = c); _saveGlobalConfig('ve_zoomInIconColor', c?.value); }),
-                      _buildGlobalActionConfig('Zoom Out', Icons.zoom_out, AppUIConfig.zoomOutIconCodePoint != null ? IconData(AppUIConfig.zoomOutIconCodePoint!, fontFamily: 'MaterialIcons') : null, AppColors.toolbarTextSecondary, AppUIConfig.zoomOutIconColor, 
-                        (ic) { setState(() => AppUIConfig.zoomOutIconCodePoint = ic?.codePoint); _saveGlobalConfig('ve_zoomOutIconCodePoint', ic?.codePoint); },
-                        (c) { setState(() => AppUIConfig.zoomOutIconColor = c); _saveGlobalConfig('ve_zoomOutIconColor', c?.value); }),
-                      _buildGlobalActionConfig('Reload', Icons.refresh, AppUIConfig.reloadIconCodePoint != null ? IconData(AppUIConfig.reloadIconCodePoint!, fontFamily: 'MaterialIcons') : null, AppColors.getAdaptiveGreen(AppColors.toolbarBackground), AppUIConfig.reloadIconColor, 
-                        (ic) { setState(() => AppUIConfig.reloadIconCodePoint = ic?.codePoint); _saveGlobalConfig('ve_reloadIconCodePoint', ic?.codePoint); },
-                        (c) { setState(() => AppUIConfig.reloadIconColor = c); _saveGlobalConfig('ve_reloadIconColor', c?.value); }),
-                      _buildGlobalActionConfig('Restart', Icons.restart_alt, AppUIConfig.restartIconCodePoint != null ? IconData(AppUIConfig.restartIconCodePoint!, fontFamily: 'MaterialIcons') : null, AppColors.getAdaptiveAmber(AppColors.toolbarBackground), AppUIConfig.restartIconColor, 
-                        (ic) { setState(() => AppUIConfig.restartIconCodePoint = ic?.codePoint); _saveGlobalConfig('ve_restartIconCodePoint', ic?.codePoint); },
-                        (c) { setState(() => AppUIConfig.restartIconColor = c); _saveGlobalConfig('ve_restartIconColor', c?.value); }),
-                      _buildGlobalActionConfig('Tools', Icons.build, AppUIConfig.toolsIconCodePoint != null ? IconData(AppUIConfig.toolsIconCodePoint!, fontFamily: 'MaterialIcons') : null, AppColors.toolbarTextSecondary, AppUIConfig.toolsIconColor, 
-                        (ic) { setState(() => AppUIConfig.toolsIconCodePoint = ic?.codePoint); _saveGlobalConfig('ve_toolsIconCodePoint', ic?.codePoint); },
-                        (c) { setState(() => AppUIConfig.toolsIconColor = c); _saveGlobalConfig('ve_toolsIconColor', c?.value); }),
-                    ],
-                  ),
-                ],
-              ),
-            );
-    }
-
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: AppColors.background,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('GLOBAL ACTION ICONS & TOOLS',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: AppUIConfig.rootFontSize,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2)),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 24,
+            runSpacing: 16,
+            alignment: WrapAlignment.start,
+            children: [
+              _buildGlobalActionConfig(
+                  'Config',
+                  Icons.settings,
+                  AppUIConfig.configIconCodePoint != null
+                      ? IconData(AppUIConfig.configIconCodePoint!,
+                          fontFamily: 'MaterialIcons')
+                      : null,
+                  AppColors.accent,
+                  AppUIConfig.configIconColor, (ic) {
+                setState(() => AppUIConfig.configIconCodePoint = ic?.codePoint);
+                _saveGlobalConfig('ve_configIconCodePoint', ic?.codePoint);
+              }, (c) {
+                setState(() => AppUIConfig.configIconColor = c);
+                _saveGlobalConfig('ve_configIconColor', c?.value);
+              }),
+              _buildGlobalActionConfig(
+                  'Bridge',
+                  Icons.rocket_launch,
+                  AppUIConfig.bridgeIconCodePoint != null
+                      ? IconData(AppUIConfig.bridgeIconCodePoint!,
+                          fontFamily: 'MaterialIcons')
+                      : null,
+                  Colors.redAccent,
+                  AppUIConfig.bridgeIconColor, (ic) {
+                setState(() => AppUIConfig.bridgeIconCodePoint = ic?.codePoint);
+                _saveGlobalConfig('ve_bridgeIconCodePoint', ic?.codePoint);
+              }, (c) {
+                setState(() => AppUIConfig.bridgeIconColor = c);
+                _saveGlobalConfig('ve_bridgeIconColor', c?.value);
+              }),
+              _buildGlobalActionConfig(
+                  'Exit',
+                  Icons.exit_to_app,
+                  AppUIConfig.exitIconCodePoint != null
+                      ? IconData(AppUIConfig.exitIconCodePoint!,
+                          fontFamily: 'MaterialIcons')
+                      : null,
+                  AppColors.accent,
+                  AppUIConfig.exitIconColor, (ic) {
+                setState(() => AppUIConfig.exitIconCodePoint = ic?.codePoint);
+                _saveGlobalConfig('ve_exitIconCodePoint', ic?.codePoint);
+              }, (c) {
+                setState(() => AppUIConfig.exitIconColor = c);
+                _saveGlobalConfig('ve_exitIconColor', c?.value);
+              }),
+              _buildGlobalActionConfig(
+                  'Zoom In',
+                  Icons.zoom_in,
+                  AppUIConfig.zoomInIconCodePoint != null
+                      ? IconData(AppUIConfig.zoomInIconCodePoint!,
+                          fontFamily: 'MaterialIcons')
+                      : null,
+                  AppColors.toolbarTextSecondary,
+                  AppUIConfig.zoomInIconColor, (ic) {
+                setState(() => AppUIConfig.zoomInIconCodePoint = ic?.codePoint);
+                _saveGlobalConfig('ve_zoomInIconCodePoint', ic?.codePoint);
+              }, (c) {
+                setState(() => AppUIConfig.zoomInIconColor = c);
+                _saveGlobalConfig('ve_zoomInIconColor', c?.value);
+              }),
+              _buildGlobalActionConfig(
+                  'Zoom Out',
+                  Icons.zoom_out,
+                  AppUIConfig.zoomOutIconCodePoint != null
+                      ? IconData(AppUIConfig.zoomOutIconCodePoint!,
+                          fontFamily: 'MaterialIcons')
+                      : null,
+                  AppColors.toolbarTextSecondary,
+                  AppUIConfig.zoomOutIconColor, (ic) {
+                setState(
+                    () => AppUIConfig.zoomOutIconCodePoint = ic?.codePoint);
+                _saveGlobalConfig('ve_zoomOutIconCodePoint', ic?.codePoint);
+              }, (c) {
+                setState(() => AppUIConfig.zoomOutIconColor = c);
+                _saveGlobalConfig('ve_zoomOutIconColor', c?.value);
+              }),
+              _buildGlobalActionConfig(
+                  'Reload',
+                  Icons.refresh,
+                  AppUIConfig.reloadIconCodePoint != null
+                      ? IconData(AppUIConfig.reloadIconCodePoint!,
+                          fontFamily: 'MaterialIcons')
+                      : null,
+                  AppColors.getAdaptiveGreen(AppColors.toolbarBackground),
+                  AppUIConfig.reloadIconColor, (ic) {
+                setState(() => AppUIConfig.reloadIconCodePoint = ic?.codePoint);
+                _saveGlobalConfig('ve_reloadIconCodePoint', ic?.codePoint);
+              }, (c) {
+                setState(() => AppUIConfig.reloadIconColor = c);
+                _saveGlobalConfig('ve_reloadIconColor', c?.value);
+              }),
+              _buildGlobalActionConfig(
+                  'Restart',
+                  Icons.restart_alt,
+                  AppUIConfig.restartIconCodePoint != null
+                      ? IconData(AppUIConfig.restartIconCodePoint!,
+                          fontFamily: 'MaterialIcons')
+                      : null,
+                  AppColors.getAdaptiveAmber(AppColors.toolbarBackground),
+                  AppUIConfig.restartIconColor, (ic) {
+                setState(
+                    () => AppUIConfig.restartIconCodePoint = ic?.codePoint);
+                _saveGlobalConfig('ve_restartIconCodePoint', ic?.codePoint);
+              }, (c) {
+                setState(() => AppUIConfig.restartIconColor = c);
+                _saveGlobalConfig('ve_restartIconColor', c?.value);
+              }),
+              _buildGlobalActionConfig(
+                  'Tools',
+                  Icons.build,
+                  AppUIConfig.toolsIconCodePoint != null
+                      ? IconData(AppUIConfig.toolsIconCodePoint!,
+                          fontFamily: 'MaterialIcons')
+                      : null,
+                  AppColors.toolbarTextSecondary,
+                  AppUIConfig.toolsIconColor, (ic) {
+                setState(() => AppUIConfig.toolsIconCodePoint = ic?.codePoint);
+                _saveGlobalConfig('ve_toolsIconCodePoint', ic?.codePoint);
+              }, (c) {
+                setState(() => AppUIConfig.toolsIconColor = c);
+                _saveGlobalConfig('ve_toolsIconColor', c?.value);
+              }),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
-
-
-
-
-
-
-
-
