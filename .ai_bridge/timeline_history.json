@@ -1,5 +1,17 @@
 [
   {
+    "id": "0808d8368db69b0bd93d2d7cfb01036beba9080f",
+    "taskIds": [
+      "1779982669757",
+      "1780078820558"
+    ],
+    "title": "OCR SUPPORT [Integrated Tesseract OCR into Flutter as OcrService (lib/services/ocr_service.dart).] | MACRO CODING GUIDE [Created .ai_bridge/knowledge/macro_coding_guide.md — a comprehensive reference for all macro commands.]",
+    "summary": "Take a screenshot and run an ocr reader on image. Determine hitboxes and strings accordingly. Provide hitbox support and search support.",
+    "commitHash": "0808d8368db69b0bd93d2d7cfb01036beba9080f",
+    "commitDate": "2026-05-29T19:27:32Z",
+    "verifiedNotes": "- Use a screenshot tool to capture the entire windows screen. Macro command should be ScreenShot. ActiveWindowScreenShot would capture only the boundaries of the active window area.\n- Import https://tesseractocr.org/ as an OCR solution into flutter\n- Macro function to pass the last captured file to the OCR reader for processing. and interact with it according to their specifications. I could see exporting things into some sort of structure for indexing and searching.\n\n- Review our Coding guide and add the OCR Macros and the Screen shot macros as well as the ActivateWindow"
+  },
+  {
     "id": "622252d168860249836193b6ce1a29b744dd6c8c",
     "taskIds": [
       "1779882820948"
@@ -324,16 +336,5 @@
     "commitHash": "ab6bcf9ff5f99769ed44176cd5b9539463614e60",
     "commitDate": "2026-05-25T13:21:44Z",
     "verifiedNotes": "- Lock a checklist item if it is currently being worked on by the LLM, since we don't want it to be out of sync.\n- Test, return immediately test"
-  },
-  {
-    "id": "4824a01f2b603c67c5c6d0edfd8ddc6c8879d42e",
-    "taskIds": [
-      "1779596049582"
-    ],
-    "title": "Task Manager [Reclassified AiBridge logs to SYNC category]",
-    "summary": "Improvements for Task Manager",
-    "commitHash": "4824a01f2b603c67c5c6d0edfd8ddc6c8879d42e",
-    "commitDate": "2026-05-25T12:54:28Z",
-    "verifiedNotes": "- Add a General tab to Config as the very first tab\nAdd list for all System Log types, and check boxes if they should be outputted to System Log and to Console Log\nLets make this editable and reorderable. System Log window would show these in order.\n- Lets reclassify some common logs entries:\n\nAiBridge > SYNC\n- If an entry is hidden in config then don't show that entry for the top bar of the system logs"
   }
 ]
