@@ -460,6 +460,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
   String? _ollamaClarityPrompt;
   String? _ollamaRewritePrompt;
   String? _ollamaGenerateTaskPrompt;
+  String? _ollamaContextInstruction;
 
   bool _isTestingAntigravity = false;
   bool _isTestingCli = false;
@@ -670,6 +671,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: {PROMPT}';
       _ollamaGenerateTaskPrompt = prefs.getString('ollamaGenerateTaskPrompt') ??
           'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"';
+      _ollamaContextInstruction = prefs.getString('ollamaContextInstruction') ?? '';
 
       _windowAvailability = loadedAvail;
 
@@ -1003,6 +1005,10 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           values.containsKey('ollamaGenerateTaskPrompt')
               ? values['ollamaGenerateTaskPrompt'] as String?
               : _ollamaGenerateTaskPrompt;
+      final newOllamaContextInstruction =
+          values.containsKey('ollamaContextInstruction')
+              ? values['ollamaContextInstruction'] as String?
+              : _ollamaContextInstruction;
 
       final newAgentRules = values.containsKey('agentRules')
           ? values['agentRules'] as String?
@@ -1191,6 +1197,16 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
               'ollamaGenerateTaskPrompt', newOllamaGenerateTaskPrompt.trim());
         } else {
           await prefs.remove('ollamaGenerateTaskPrompt');
+        }
+      }
+      if (values.containsKey('ollamaContextInstruction') &&
+          values['ollamaContextInstruction'] != null) {
+        if (newOllamaContextInstruction != null &&
+            newOllamaContextInstruction.trim().isNotEmpty) {
+          await prefs.setString(
+              'ollamaContextInstruction', newOllamaContextInstruction.trim());
+        } else {
+          await prefs.remove('ollamaContextInstruction');
         }
       }
       if (values.containsKey('backupDirectoryPath') &&
@@ -1486,6 +1502,7 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
           _ollamaClarityPrompt = newOllamaClarityPrompt;
           _ollamaRewritePrompt = newOllamaRewritePrompt;
           _ollamaGenerateTaskPrompt = newOllamaGenerateTaskPrompt;
+          _ollamaContextInstruction = newOllamaContextInstruction;
 
           // _albumFolderIds, _tagsFolderId, _languagesFolderId remain synchronously updated.
         });
@@ -4344,6 +4361,31 @@ class _ProjectConfigurationPanelState extends State<ProjectConfigurationPanel> {
                             padding: EdgeInsets.only(top: 8.0, left: 12.0),
                             child: Text(
                               'Sent to the AI when the ✨ Generate Task button is pressed in the task editor description bar. Use {DESCRIPTION} as a placeholder for the task description text.',
+                              style: TextStyle(
+                                  color: AppColors.panelTextSecondary,
+                                  fontSize: AppUIConfig.rootFontSize * 0.85),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildLabeled(
+                              'Context Instruction',
+                              Icons.tune,
+                              FormBuilderTextField(
+                                name: 'ollamaContextInstruction',
+                                initialValue: _ollamaContextInstruction ?? '',
+                                style: TextStyle(
+                                    color: AppColors.panelTextPrimary,
+                                    fontSize: AppUIConfig.rootFontSize * 0.85,
+                                    fontFamily: 'monospace',
+                                    height: 1.5),
+                                maxLines: 6,
+                                minLines: 3,
+                                decoration: _inputDecoration(),
+                              )),
+                          Padding(
+                            padding: EdgeInsets.only(top: 8.0, left: 12.0),
+                            child: Text(
+                              'Free-form context injected wherever {CONTEXT} appears in any AI prompt. Use this to provide project-specific background knowledge to the model.',
                               style: TextStyle(
                                   color: AppColors.panelTextSecondary,
                                   fontSize: AppUIConfig.rootFontSize * 0.85),

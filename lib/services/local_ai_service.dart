@@ -29,6 +29,9 @@ class LocalAiService extends ChangeNotifier {
   String rewritePrompt = 'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: {PROMPT}';
   String generateTaskPrompt = 'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"';
 
+  /// Free-form instruction injected wherever {CONTEXT} appears in any prompt.
+  String contextInstruction = '';
+
   Future<void> loadConfig() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -52,6 +55,7 @@ class LocalAiService extends ChangeNotifier {
       }
       rewritePrompt = prefs.getString('ollamaRewritePrompt') ?? 'Rewrite this prompt to make it clearer, more precise, and direct. Keep it brief. The prompt is: {PROMPT}';
       generateTaskPrompt = prefs.getString('ollamaGenerateTaskPrompt') ?? 'You are a helpful project planning assistant. Given a task description, generate a concise task title and a list of specific, actionable checklist items. Each checklist item must be a single clear sentence describing one concrete action. Return 3 to 8 checklist items. Do not add numbering or bullet symbols.\n\nTask description: "{DESCRIPTION}"';
+      contextInstruction = prefs.getString('ollamaContextInstruction') ?? '';
       customModelName = prefs.getString('ollamaCustomModelName') ?? '';
       customModelBase = prefs.getString('ollamaCustomModelBase') ?? '';
       customModelContextLength = prefs.getInt('ollamaCustomModelContextLength') ?? 4096;
@@ -285,6 +289,32 @@ class LocalAiService extends ChangeNotifier {
     }
   }
 
+  /// Applies all standard prompt tag substitutions to [prompt], iterating
+  /// until the result stabilises (i.e. no new tags are introduced by an
+  /// expanded value). Capped at 10 passes to prevent infinite loops.
+  ///
+  /// Tags: {SUMMARY} → project_summary.md file URI, {CONTEXT} → contextInstruction,
+  /// {NAME} → taskName (empty string if null), {PARENT} → parentName (empty string if null).
+  String applyPromptTags(String prompt, {String? taskName, String? parentName}) {
+    final summaryLink = Uri.file(
+      File('${AiBridgeService.instance.bridgeDirPath}/project_summary.md').absolute.path,
+    ).toString();
+    final name = taskName ?? '';
+    final parent = parentName ?? '';
+
+    String current = prompt;
+    for (int i = 0; i < 10; i++) {
+      final next = current
+          .replaceAll('{SUMMARY}', summaryLink)
+          .replaceAll('{CONTEXT}', contextInstruction)
+          .replaceAll('{NAME}', name)
+          .replaceAll('{PARENT}', parent);
+      if (next == current) break;
+      current = next;
+    }
+    return current;
+  }
+
   /// Sends a simple prompt to the /api/generate endpoint
   Future<String?> generateText(
     String prompt, {
@@ -293,9 +323,10 @@ class LocalAiService extends ChangeNotifier {
     double? topP,
     int? numPredict,
     Map<String, dynamic>? format, // Ollama structured output schema
+    String? taskName,
+    String? parentName,
   }) async {
-    final summaryLink = Uri.file(File('${AiBridgeService.instance.bridgeDirPath}/project_summary.md').absolute.path).toString();
-    final processedPrompt = prompt.replaceAll('{SUMMARY}', summaryLink);
+    final processedPrompt = applyPromptTags(prompt, taskName: taskName, parentName: parentName);
     final usedModel = model ?? effectiveModel;
     SystemLogsService.instance.addLog(
       '[AI] generateText | prompt: ${processedPrompt.length > 120 ? '${processedPrompt.substring(0, 120)}…' : processedPrompt}',
@@ -507,12 +538,13 @@ class LocalAiService extends ChangeNotifier {
   /// Checks if a checklist item prompt is clear.
   /// Returns a record: (isUnclear, notes) where notes is an explanation when unclear.
   /// Uses Ollama structured output to guarantee the response schema.
-  Future<(bool, String?)?> checkClarity(String promptText) async {
+  Future<(bool, String?)?> checkClarity(String promptText, {String? taskName, String? parentName}) async {
     final isBinary = clarityResponseFormat == 'binary';
 
-    final userPrompt = clarityPrompt.contains('{PROMPT}')
-        ? clarityPrompt.replaceAll('{PROMPT}', promptText)
-        : '$clarityPrompt $promptText';
+    final resolvedClarity = applyPromptTags(clarityPrompt, taskName: taskName, parentName: parentName);
+    final userPrompt = resolvedClarity.contains('{PROMPT}')
+        ? resolvedClarity.replaceAll('{PROMPT}', promptText)
+        : '$resolvedClarity $promptText';
 
     SystemLogsService.instance.addLog(
       '[AI] checkClarity | prompt: ${promptText.length > 80 ? '${promptText.substring(0, 80)}…' : promptText}',
@@ -582,7 +614,7 @@ class LocalAiService extends ChangeNotifier {
   /// Utility 1b: Task Generator
   /// Given a description, returns a structured task title + checklist items.
   /// Uses Ollama structured output to guarantee the response schema.
-  Future<({String title, List<String> checklistItems})?> generateTask(String description) async {
+  Future<({String title, List<String> checklistItems})?> generateTask(String description, {String? taskName, String? parentName}) async {
     SystemLogsService.instance.addLog(
       '[AI] generateTask called | desc: ${description.length > 120 ? '${description.substring(0, 120)}…' : description}',
       category: LogCategory.AI,
@@ -600,7 +632,11 @@ class LocalAiService extends ChangeNotifier {
       'required': ['title', 'checklistItems'],
     };
 
-    final prompt = generateTaskPrompt.replaceAll('{DESCRIPTION}', description);
+    final prompt = applyPromptTags(
+      generateTaskPrompt.replaceAll('{DESCRIPTION}', description),
+      taskName: taskName,
+      parentName: parentName,
+    );
 
     final raw = await generateText(
       prompt,

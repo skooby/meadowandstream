@@ -214,6 +214,18 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
         item.description.trim().toLowerCase();
   }
 
+  /// Current task name for {NAME} tag substitution in AI prompts.
+  String get _aiTaskName => nameController.text.trim();
+
+  /// Parent folder name for {PARENT} tag substitution in AI prompts.
+  String get _aiParentName {
+    if (activeParentId == null) return '';
+    return AiBridgeService.instance.tasks
+        .where((t) => t.id == activeParentId)
+        .firstOrNull
+        ?.name ?? '';
+  }
+
   List<String> fileAttachments = [];
   List<String> hyperlinks = [];
 
@@ -1582,7 +1594,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                 final val = _verificationControllers[i].text.trim();
                                                 if (val.isNotEmpty) {
                                                   Future.microtask(() async {
-                                                    final result = await LocalAiService.instance.checkClarity(val);
+                                                    final result = await LocalAiService.instance.checkClarity(val, taskName: _aiTaskName, parentName: _aiParentName);
                                                     if (result != null) {
                                                       final (isUnclear, aiNotes) = result;
                                                       setStateBuilder(() {
@@ -1813,7 +1825,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                   final instruction = rewriteTemplate.contains('{PROMPT}')
                                                       ? rewriteTemplate.replaceAll('{PROMPT}', currentPrompt)
                                                       : '$rewriteTemplate $currentPrompt';
-                                                  final retooled = await LocalAiService.instance.generateText(instruction);
+                                                  final retooled = await LocalAiService.instance.generateText(instruction, taskName: _aiTaskName, parentName: _aiParentName);
                                                   if (retooled != null && retooled.trim().isNotEmpty && context.mounted) {
                                                     setStateBuilder(() {
                                                       _verificationControllers[i].text = retooled.trim();
@@ -2269,7 +2281,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                           // Run AI clarity check on the new item
                           final newIdx = verificationCriteriaList.length - 1;
                           Future.microtask(() async {
-                            final result = await LocalAiService.instance.checkClarity(newText);
+                            final result = await LocalAiService.instance.checkClarity(newText, taskName: _aiTaskName, parentName: _aiParentName);
                             if (result != null) {
                               final (isUnclear, aiNotes) = result;
                               setStateBuilder(() {
@@ -2336,7 +2348,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                       // Run AI clarity check on the new item
                       final newIdx = verificationCriteriaList.length - 1;
                       Future.microtask(() async {
-                        final result = await LocalAiService.instance.checkClarity(newText);
+                        final result = await LocalAiService.instance.checkClarity(newText, taskName: _aiTaskName, parentName: _aiParentName);
                         if (result != null) {
                           final (isUnclear, aiNotes) = result;
                           setStateBuilder(() {
@@ -2859,7 +2871,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                               : () async {
                                                                   if (descController.text.isEmpty) return;
                                                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generating task...')));
-                                                                  final generated = await LocalAiService.instance.generateTask(descController.text);
+                                                                  final generated = await LocalAiService.instance.generateTask(descController.text, taskName: _aiTaskName, parentName: _aiParentName);
                                                                   if (generated == null) {
                                                                     if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: ${LocalAiService.instance.lastError}')));
                                                                     return;
@@ -2881,7 +2893,7 @@ class _GlobalTaskEditorWindowState extends State<GlobalTaskEditorWindow> {
                                                                     final idx = startIdx + gi;
                                                                     final itemText = generated.checklistItems[gi];
                                                                     Future.microtask(() async {
-                                                                      final clarityResult = await LocalAiService.instance.checkClarity(itemText);
+                                                                      final clarityResult = await LocalAiService.instance.checkClarity(itemText, taskName: _aiTaskName, parentName: _aiParentName);
                                                                       if (clarityResult != null) {
                                                                         final (isUnclear, aiNotes) = clarityResult;
                                                                         setStateBuilder(() {
