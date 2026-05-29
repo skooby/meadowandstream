@@ -1,5 +1,17 @@
 [
   {
+    "id": "761dbe39f707cbcc029125cdd4c3fbfaebe9d1d7",
+    "taskIds": [
+      "1780000846346",
+      "1780020112821"
+    ],
+    "title": "Fix runtime errors | LOGS [Enforced global print shadowing to route [AiBridge] logs to debugPrint and the SYNC category.]",
+    "summary": "The application encountered runtime/layout/test/dependency errors during execution. Fix them immediately.",
+    "commitHash": "761dbe39f707cbcc029125cdd4c3fbfaebe9d1d7",
+    "commitDate": "2026-05-29T05:02:05Z",
+    "verifiedNotes": "- Review all console logs and System log types to make sure they fall under the General Log Configuration types\n- \"[AiBridge][Phase] TRIGGER: agent_status.txt → \"IDLE\" detected. Queue unlocked. No active prompt — skipping lifecycle finalization.\" lets classify as [SYNC] instead. Also lets reduce how often it is output, a lot of spam\n- Any [AiBridge] should be [SYNC]\n- [AiBridge] Poller: skipping PLANNER_RESPONSE with no tool_calls — likely an extended-thinking block, not a completed turn.\n\nIn console!"
+  },
+  {
     "id": "0eb604107487268409b0ac9f8c292df3a8da4af9",
     "taskIds": [
       "1779882820948"
@@ -323,14 +335,5 @@
     "commitHash": "4a5fcdf95aa72c72e8ee8f8f8543afafc008c5b5",
     "commitDate": "2026-05-24T16:33:52Z",
     "verifiedNotes": "- Lets add a Note to the Active Tasks to be appended to the commit name\n- Commit verification check implemented and auto-triggered\n- Resolve Conflict button notifies LLM to resolve the problem with full details\n- Git error detection in diagnostics window is case-insensitive\n- database dump sync does not block or deadlock status processing\n- SharedPreferences is pre-cached to prevent platform channel channel locks\n- When sending to ai bridge... only checklist items that are unchecked and not ignored are considered. The orange ones are in testing and don't need to be sent"
-  },
-  {
-    "id": "400b2d4abc810c9b6086deb9824c267f30d33b0a",
-    "taskIds": [],
-    "title": "Bridge monitor and task manager improvements",
-    "summary": "- Remove checklists from folders\n- Limit Task Editor Name field to single line and disable enter key\n- Clear sync error status on prompt dispatch\n- Optimize brain directory scan by sorting and checking only top 3 subdirectories\n- Fix conversation_history.md crash in log outcomes monitor\n- Add simulated dry run tab to Bridge Monitor\n- Gracefully validate missing/empty local files in AudioPlayerService to prevent crashes",
-    "commitHash": "400b2d4abc810c9b6086deb9824c267f30d33b0a",
-    "commitDate": "2026-05-24T13:52:08Z",
-    "verifiedNotes": ""
   }
 ]

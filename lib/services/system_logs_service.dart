@@ -123,7 +123,7 @@ class SystemLogsService extends ChangeNotifier {
   void addLog(String message, {LogCategory category = LogCategory.GENERAL}) {
     if (message.toLowerCase().contains('[aibridge]') ||
         message.toLowerCase().contains('[ai bridge]') ||
-        message.contains('[AntigravityStatusService]')) {
+        message.contains('[SYNC]')) {
       category = LogCategory.SYNC;
     }
     // Ensure configs are loaded
@@ -135,15 +135,16 @@ class SystemLogsService extends ChangeNotifier {
       orElse: () => LogTypeConfig(category: category),
     );
 
-    // Always print AI logs to console so they're visible regardless of saved config.
-    if (category == LogCategory.AI) {
-      debugPrint('[AI] $message');
-    } else if (message.toLowerCase().contains('[aibridge]') ||
-        message.toLowerCase().contains('[ai bridge]') ||
-        message.contains('[AntigravityStatusService]')) {
-      debugPrint('[LogCategory.DIRECT] $message');
-    } else if (config.console && category != LogCategory.GENERAL) {
-      debugPrint('[$category] $message');
+    if (config.console) {
+      if (category == LogCategory.AI) {
+        debugPrint('[LogCategory.DIRECT] [AI] $message');
+      } else if (message.toLowerCase().contains('[aibridge]') ||
+          message.toLowerCase().contains('[ai bridge]') ||
+          message.contains('[SYNC]')) {
+        debugPrint('[LogCategory.DIRECT] $message');
+      } else if (category != LogCategory.GENERAL) {
+        debugPrint('[LogCategory.DIRECT] [$category] $message');
+      }
     }
 
     // AI logs always go to the system log panel regardless of saved config.

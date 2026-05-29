@@ -60,17 +60,16 @@ Future<void> main(List<String> args) async {
           message.contains('A KeyUpEvent is dispatched') ||
           message.contains('The document is empty') ||
           message.contains('Unable to parse JSON message')) return;
-      if (isLogging || message.startsWith('[LogCategory.')) {
-        if (message.startsWith('[LogCategory.DIRECT] ')) {
-          originalDebugPrint(message.substring('[LogCategory.DIRECT] '.length), wrapWidth: wrapWidth);
-        } else {
-          originalDebugPrint(message, wrapWidth: wrapWidth);
-        }
+      if (message.startsWith('[LogCategory.DIRECT] ')) {
+        originalDebugPrint(message.substring('[LogCategory.DIRECT] '.length), wrapWidth: wrapWidth);
         return;
       }
+      // Re-entrant call during log processing — silently drop to prevent console flood
+      // from Flutter framework/widget rebuild noise triggered by notifyListeners.
+      if (isLogging) return;
       isLogging = true;
       try {
-        final category = (message.contains('[AntigravityStatusService]') ||
+        final category = (message.contains('[SYNC]') ||
                           message.contains('[AiBridge]'))
             ? LogCategory.SYNC
             : LogCategory.GENERAL;

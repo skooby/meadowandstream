@@ -152,7 +152,7 @@ class AntigravityStatusService {
           _lastGlobalState = globalState;
           _lastActiveJobs = activeJobs;
           _lastIsBusy = isBusy;
-          _logBridge('[AntigravityStatusService] HTTP bridge check: state=$globalState, activeJobs=$activeJobs, isBusy=$isBusy');
+          _logBridge('[SYNC] HTTP bridge check: state=$globalState, activeJobs=$activeJobs, isBusy=$isBusy');
         }
         return isBusy;
       }
@@ -162,7 +162,7 @@ class AntigravityStatusService {
         _lastGlobalState = null;
         _lastActiveJobs = null;
         _lastIsBusy = null;
-        _logBridge('[AntigravityStatusService] HTTP bridge check: offline');
+        _logBridge('[SYNC] HTTP bridge check: offline');
       }
       return false;
     } catch (e) {
@@ -171,7 +171,7 @@ class AntigravityStatusService {
         _lastGlobalState = null;
         _lastActiveJobs = null;
         _lastIsBusy = null;
-        _logBridge('[AntigravityStatusService] HTTP bridge check: offline');
+        _logBridge('[SYNC] HTTP bridge check: offline');
       }
       return false;
     }
@@ -195,12 +195,12 @@ class AntigravityStatusService {
       final isRunning = Platform.isWindows 
           ? (output.contains('antigravity cli') || output.contains('agy.exe') || output.contains('antigravity.exe') || output.contains('antigravity'))
           : (output.contains('agy ') || output.contains('/agy') || output.contains('antigravity-server'));
-      debugPrint('[AntigravityStatusService] Process running check: $isRunning');
+      debugPrint('[SYNC] Process running check: $isRunning');
       _lastProcessCheckTime = now;
       _lastProcessCheckResult = isRunning;
       return isRunning;
     } catch (e) {
-      debugPrint('[AntigravityStatusService] Process check: offline');
+      debugPrint('[SYNC] Process check: offline');
       return false;
     }
   }
@@ -225,7 +225,7 @@ class AntigravityStatusService {
             final lastModified = stat.modified;
             final age = DateTime.now().difference(lastModified);
             if (age.inMinutes < 60) {
-              debugPrint('[AntigravityStatusService] $statusFilePath is BUSY and was updated recently (${age.inSeconds}s ago). Assuming active.');
+              debugPrint('[SYNC] $statusFilePath is BUSY and was updated recently (${age.inSeconds}s ago). Assuming active.');
               return true;
             }
           } catch (_) {}
@@ -233,13 +233,13 @@ class AntigravityStatusService {
           // Only scan processes if the file is older than 60 minutes to verify if the process is still running
           final isRunning = await isProcessRunning();
           if (!isRunning) {
-            debugPrint('[AntigravityStatusService] agent_status.txt is BUSY (starts with BU) and older than 60 minutes, HTTP bridge is offline and process is not running. Auto-recovering status to IDLE.');
+            debugPrint('[SYNC] agent_status.txt is BUSY (starts with BU) and older than 60 minutes, HTTP bridge is offline and process is not running. Auto-recovering status to IDLE.');
             try {
               statusFile.writeAsStringSync('IDLE');
             } catch (_) {}
             return false;
           }
-          debugPrint('[AntigravityStatusService] $statusFilePath is explicitly BUSY and process is running');
+          debugPrint('[SYNC] $statusFilePath is explicitly BUSY and process is running');
           return true;
         }
       }
@@ -252,7 +252,7 @@ class AntigravityStatusService {
   Future<void> ensureTerminalDaemonRunning() async {
     if (kIsWeb) return;
     if (_isSpawning) {
-      debugPrint('[AntigravityStatusService] Spawning already in progress, skipping...');
+      debugPrint('[SYNC] Spawning already in progress, skipping...');
       return;
     }
     
@@ -264,7 +264,7 @@ class AntigravityStatusService {
       final isProcRunning = await isProcessRunning();
       
       if (!isProcRunning) {
-        debugPrint('[AntigravityStatusService] Terminal daemon not found. Spawning one...');
+        debugPrint('[SYNC] Terminal daemon not found. Spawning one...');
         try {
           if (Platform.isWindows) {
             try {
@@ -315,11 +315,11 @@ class AntigravityStatusService {
       } else {
         // Process is already running, release lock immediately
         _isSpawning = false;
-        debugPrint('[AntigravityStatusService] Terminal daemon already running (isProcRunning: $isProcRunning)');
+        debugPrint('[SYNC] Terminal daemon already running (isProcRunning: $isProcRunning)');
       }
     } catch (e) {
       _isSpawning = false;
-      debugPrint('[AntigravityStatusService] Error ensuring terminal daemon: $e');
+      debugPrint('[SYNC] Error ensuring terminal daemon: $e');
     }
   }
 
@@ -338,7 +338,7 @@ wshShell.AppActivate "Antigravity CLI"
 ''');
       await Process.run('wscript', [vbsFile.path]);
     } catch (e) {
-      debugPrint('[AntigravityStatusService] Error focusing daemon window: $e');
+      debugPrint('[SYNC] Error focusing daemon window: $e');
     }
   }
 }
